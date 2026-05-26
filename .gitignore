@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor cruft
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Secrets — never commit
+*.key
+*.pem
+*.p12
+*.env
+.env.*
+!.env.example
+secrets/
+credentials/
+
+# Lab artifacts that should stay local
+*.qcow2
+*.vmdk
+*.iso
+*.ova
