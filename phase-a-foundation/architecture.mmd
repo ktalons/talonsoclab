@@ -1,0 +1,54 @@
+%% TalonSocLab — Phase A Foundation SOC Stack
+%% Single source of truth for VM names, VLANs, and data flow.
+%% IP plan uses RFC1918 placeholders — adjust to actual Saguaros allocation on first deploy.
+
+flowchart TB
+    Internet((Internet))
+
+    subgraph Saguaros["Saguaros Proxmox Host"]
+        direction TB
+
+        pfSense["pfSense Edge<br/>WAN: DHCP from Saguaros<br/>LAN VLANs: 10, 20"]
+
+        subgraph Endpoints["Endpoints VLAN 10 — 10.10.10.0/24"]
+            Win10["Win10 Workstation<br/>10.10.10.11<br/>Sysmon + Wazuh agent"]
+            WinSrv["Windows Server 2022<br/>10.10.10.12<br/>Sysmon + Wazuh agent + WEF collector"]
+            Ubuntu["Ubuntu 22.04<br/>10.10.10.21<br/>Wazuh agent + auditd"]
+        end
+
+        subgraph SOC["SOC VLAN 20 — 10.10.20.0/24"]
+            WazuhMgr["Wazuh Manager<br/>10.10.20.10<br/>:1514 agent, :1515 enroll, :55000 API"]
+            WazuhIdx["Wazuh Indexer<br/>10.10.20.10<br/>:9200 OpenSearch"]
+            WazuhDash["Wazuh Dashboard<br/>10.10.20.10<br/>:443 web UI"]
+        end
+
+        Suricata["Suricata IDS<br/>on pfSense WAN<br/>eve.json → Wazuh"]
+    end
+
+    Analyst(["Kyle — Analyst<br/>SSH + HTTPS via mgmt jump"])
+
+    Internet ==> pfSense
+    pfSense -- "WAN tap" --> Suricata
+    pfSense ==> Endpoints
+    pfSense ==> SOC
+
+    Win10  -. "TLS 1514" .-> WazuhMgr
+    WinSrv -. "TLS 1514" .-> WazuhMgr
+    Ubuntu -. "TLS 1514" .-> WazuhMgr
+    Suricata -. "filebeat → 1514" .-> WazuhMgr
+
+    WazuhMgr --> WazuhIdx
+    WazuhIdx --> WazuhDash
+    Analyst ==> WazuhDash
+
+    classDef edge fill:#1f2937,stroke:#60a5fa,color:#fff
+    classDef ep fill:#0f172a,stroke:#34d399,color:#fff
+    classDef soc fill:#0f172a,stroke:#f59e0b,color:#fff
+    classDef ids fill:#1f2937,stroke:#f87171,color:#fff
+    classDef ext fill:#374151,stroke:#9ca3af,color:#fff
+
+    class pfSense edge
+    class Win10,WinSrv,Ubuntu ep
+    class WazuhMgr,WazuhIdx,WazuhDash soc
+    class Suricata ids
+    class Internet,Analyst ext
