@@ -1,36 +1,48 @@
 %% TalonSocLab — Phase A Foundation SOC Stack
-%% Single source of truth for VM names, VLANs, and data flow.
-%% IP plan uses RFC1918 placeholders — adjust to actual Saguaros allocation on first deploy.
+%% Single source of truth for VM names, VLANs, bridges, and data flow.
+%% Host: shared Saguaros Proxmox node `tes1` — TalonSocLab is tenant-isolated via Pool + private bridge.
+%%
+%% TENANCY ISOLATION (see project-talonsoclab-tenancy memory):
+%%   - All TalonSocLab VMs live in Proxmox Pool `talonsoclab` (ACL scoped to kylev only)
+%%   - All TalonSocLab VMs are prefixed `kv-` and tagged `talonsoclab`
+%%   - `vmbr0`     = SHARED uplink bridge (other tenants on it too) — pfSense WAN ONLY
+%%   - `vmbrtalon` = PRIVATE lab bridge, VLAN-aware, NO physical NIC — all internal VLAN traffic
+%%   - `vmbr1`     = NEIGHBOR TENANT (GOAD-Range) — DO NOT TOUCH
 
 flowchart TB
     Internet((Internet))
+    SharedUplink["vmbr0 — shared uplink bridge<br/>(other tenants present)<br/>pfSense WAN only"]
 
-    subgraph Saguaros["Saguaros Proxmox Host"]
+    subgraph Saguaros["Saguaros Proxmox host `tes1` — Pool: talonsoclab"]
         direction TB
 
-        pfSense["pfSense Edge<br/>WAN: DHCP from Saguaros<br/>LAN VLANs: 10, 20"]
+        pfSense["kv-pfsense-edge<br/>NIC1 → vmbr0 (WAN, DHCP)<br/>NIC2 → vmbrtalon (LAN trunk)<br/>VLANs 10 + 20"]
+
+        TalonBridge["vmbrtalon — PRIVATE bridge<br/>no uplink, VLAN-aware<br/>carries VLAN 10 + 20"]
 
         subgraph Endpoints["Endpoints VLAN 10 — 10.10.10.0/24"]
-            Win10["Win10 Workstation<br/>10.10.10.11<br/>Sysmon + Wazuh agent"]
-            WinSrv["Windows Server 2022<br/>10.10.10.12<br/>Sysmon + Wazuh agent + WEF collector"]
-            Ubuntu["Ubuntu 22.04<br/>10.10.10.21<br/>Wazuh agent + auditd"]
+            Win10["kv-win10-ep1<br/>10.10.10.11<br/>Sysmon + Wazuh agent"]
+            WinSrv["kv-winsrv-ep2<br/>10.10.10.12<br/>Sysmon + Wazuh agent + WEF collector"]
+            Ubuntu["kv-ubuntu-ep3<br/>10.10.10.21<br/>Wazuh agent + auditd"]
         end
 
         subgraph SOC["SOC VLAN 20 — 10.10.20.0/24"]
-            WazuhMgr["Wazuh Manager<br/>10.10.20.10<br/>:1514 agent, :1515 enroll, :55000 API"]
-            WazuhIdx["Wazuh Indexer<br/>10.10.20.10<br/>:9200 OpenSearch"]
-            WazuhDash["Wazuh Dashboard<br/>10.10.20.10<br/>:443 web UI"]
+            WazuhMgr["kv-wazuh-soc — Manager<br/>10.10.20.10<br/>:1514 agent, :1515 enroll, :55000 API"]
+            WazuhIdx["kv-wazuh-soc — Indexer<br/>10.10.20.10<br/>:9200 OpenSearch"]
+            WazuhDash["kv-wazuh-soc — Dashboard<br/>10.10.20.10<br/>:443 web UI"]
         end
 
         Suricata["Suricata IDS<br/>on pfSense WAN<br/>eve.json → Wazuh"]
     end
 
-    Analyst(["Kyle — Analyst<br/>SSH + HTTPS via mgmt jump"])
+    Analyst(["Kyle — Analyst<br/>HTTPS to pfSense + Wazuh via vmbr0 mgmt"])
 
-    Internet ==> pfSense
+    Internet ==> SharedUplink
+    SharedUplink ==> pfSense
     pfSense -- "WAN tap" --> Suricata
-    pfSense ==> Endpoints
-    pfSense ==> SOC
+    pfSense ==> TalonBridge
+    TalonBridge ==> Endpoints
+    TalonBridge ==> SOC
 
     Win10  -. "TLS 1514" .-> WazuhMgr
     WinSrv -. "TLS 1514" .-> WazuhMgr
@@ -46,9 +58,11 @@ flowchart TB
     classDef soc fill:#0f172a,stroke:#f59e0b,color:#fff
     classDef ids fill:#1f2937,stroke:#f87171,color:#fff
     classDef ext fill:#374151,stroke:#9ca3af,color:#fff
+    classDef bridge fill:#312e81,stroke:#a5b4fc,color:#fff
 
     class pfSense edge
     class Win10,WinSrv,Ubuntu ep
     class WazuhMgr,WazuhIdx,WazuhDash soc
     class Suricata ids
     class Internet,Analyst ext
+    class SharedUplink,TalonBridge bridge
