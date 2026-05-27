@@ -1,3 +1,4 @@
+flowchart TB
 %% TalonSocLab — Phase A Foundation SOC Stack
 %% Single source of truth for VM names, VLANs, bridges, and data flow.
 %% Host: shared Saguaros Proxmox node `tes1` — TalonSocLab is tenant-isolated via Pool + private bridge.
@@ -9,7 +10,6 @@
 %%   - `vmbrtalon` = PRIVATE lab bridge, VLAN-aware, NO physical NIC — all internal VLAN traffic
 %%   - `vmbr1`     = NEIGHBOR TENANT (GOAD-Range) — DO NOT TOUCH
 
-flowchart TB
     Internet((Internet))
     SharedUplink["vmbr0 — shared uplink bridge<br/>(other tenants present)<br/>pfSense WAN only"]
 
