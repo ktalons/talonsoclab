@@ -21,10 +21,9 @@ If Session 2 (Jun 1) doesn't get Wazuh fully alive, the schedule absorbs as foll
 
 ## Pre-session checklist (run before each block)
 
-- [ ] Confirm Saguaros Proxmox access live
-- [ ] Pull latest `talonsoclab` from origin
-- [ ] Open `architecture.mmd` and `deployment/<runbook>.md` for the session's work
-- [ ] Timer set — match the block budget, not "until done"
+- [x] Confirm Saguaros Proxmox access live
+- [x] Pull latest `talonsoclab` from origin
+- [x] Open `architecture.mmd` and `deployment/<runbook>.md` for the session's work
 
 ## Post-session checklist
 
