@@ -25,3 +25,7 @@ credentials/
 *.vmdk
 *.iso
 *.ova
+
+# Internal design / planning documents — local-only, do not publish
+docs/superpowers/
+docs/internal/
