@@ -1,0 +1,7 @@
+# Recon pipeline — nightly at 03:00 local. Match cadence to the program's scope rules.
+# `run --rm` => the container exists only during the run, then disappears (frees memory).
+0 3 * * *  cd /opt/soc-recon && /usr/bin/docker compose run --rm recon-runner >> /var/log/soc-recon.log 2>&1
+
+# Daily digest (CASA) — 07:00, after recon + overnight Wazuh alerts have accumulated.
+# Reads WAZUH_INDEXER_* + DIGEST_* from the environment; export them or source .env first.
+0 7 * * *  cd /opt/soc-recon && set -a && . ./.env && set +a && python3 digest/generate_digest.py >> /var/log/soc-recon.log 2>&1

@@ -1,34 +1,53 @@
-# Phase A — Build Schedule
+# Build Schedule — docker-compose edition
 
-> Five build sessions across May 25 → Jun 9. Sun + Wed PM blocks per PRD time budget. Each session ends with a commit so progress is visible in `git log`.
+> Rebuilt after the BUY + docker-compose pivot (2026-06-20). The old Proxmox session
+> plan is archived under [`archive-proxmox/BUILD-SCHEDULE.md`](archive-proxmox/BUILD-SCHEDULE.md).
+> Windows are anchored to **hardware arrival** (the EliteDesk), since that gates Phase 0.
+> Sun + Wed PM blocks per the time budget; each session ends with a commit.
 
-| # | Date | Block | Goal | Commit at end |
-|---|---|---|---|---|
-| 0 | **Sun May 25** | Kickoff | Scaffold repo + architecture + schedule lock | `phase-a: scaffold + architecture` |
-| 1 | **Wed May 27 PM** | 2–3 hrs | pfSense VM up + base config (WAN/LAN VLANs 10+20) + Wazuh Manager VM created from Ubuntu 22.04 ISO | `phase-a: pfsense edge + wazuh vm provisioned` |
-| 2 | **Sun Jun 1** | 4–6 hrs | Wazuh Manager + Indexer + Dashboard installed (single-node script) + Ubuntu endpoint joined as first agent | `phase-a: wazuh single-node live + ubuntu agent enrolled` |
-| 3 | **Wed Jun 4 PM** | 2–3 hrs | Win10 + WinServer2022 deployed + Sysmon (SwiftOnSecurity config) + Wazuh agent on both | `phase-a: windows endpoints + sysmon + agent` |
-| 4 | **Sun Jun 8** | 6–8 hrs | WEF collector role on WinSrv + Suricata on pfSense WAN + Filebeat to Wazuh + 3 custom dashboards exported to ndjson + screen recording + README polish + dashboard screenshots | `phase-a: suricata + wef + dashboards + recording` |
-| 5 | **Mon Jun 9** | Ship | Final review + push tag `phase-a-v1.0` + portfolio site card flip + blog post #1 + LinkedIn post | `phase-a: ship v1.0` + site/blog/LinkedIn |
+## Phase map
+
+| Phase | Window (T = box arrives) | Deliverable | Fits 16 GB? |
+|---|---|---|---|
+| **0 — Substrate cutover** | T → T+1 weekend | Ubuntu + Docker on the EliteDesk; `deploy/soc-recon` stack green; ISM retention set; PHOENIX backups live | ✅ |
+| **A — Foundation (docker edition)** | T+1 → T+2 wk | Wazuh ingesting real telemetry from Win + Mac + host agents; Suricata container; 3 dashboards; walkthrough | ✅ |
+| **B — Detection Engineering** | A+1 → A+3 wk | Sigma pack → Wazuh XML; Atomic Red Team validation; ATT&CK coverage map; purple-team writeup | ✅ |
+| **CASA integration** *(threads B→D)* | from B onward | TalonSocLab emits `intake.json`; CASA (separate repo) reasons over it; eval writeup = capstone | ✅ |
+| **C — AD Attack & Defense** | post-B → ~Sep | Mini-AD (on-box, non-concurrent) **or** cloud-burst GOAD; top-5 AD detection chain; purple-team report | ⚠️ trim/cloud |
+| **D — Honeynet + Threat Intel** | post-C → ~Oct | T-Pot on a VPS → home Wazuh; OpenCTI (cloud/trimmed); AbuseIPDB + VT enrichment → CASA | ⚠️ cloud (correct) |
+
+## Phase 0 — Substrate cutover (the unblock)
+
+| # | Block | Goal | Commit |
+|---|---|---|---|
+| 0.1 | on arrival | Ubuntu Server 22.04 installed; `vm.max_map_count`; Docker + compose; UFW; SSH key-only | `phase-0: host base + docker` |
+| 0.2 | +1 day | `deploy/soc-recon` up; indexer healthcheck green; dashboard reachable; ISM retention set | `phase-0: wazuh stack live on owned box` |
+| 0.3 | +1 day | PHOENIX Tier 2 volume-snapshot script run + copied to external drive | `phase-0: phoenix backups verified` |
+
+## Phase A — Foundation (docker edition)
+
+| # | Block | Goal | Commit |
+|---|---|---|---|
+| A.1 | Sun | Wazuh agent + Sysmon (Hartong) on the Windows daily driver; enrolled + active | `phase-a: windows agent + sysmon` |
+| A.2 | Wed PM | Wazuh agents on the Mac + the Ubuntu host (auditd); all 3 endpoints active | `phase-a: mac + host agents` |
+| A.3 | Sun | Suricata container on host NIC; `data.suricata.*` in dashboard; 3 dashboards → ndjson | `phase-a: suricata + dashboards` |
+| A.4 | Mon | Walkthrough recording; README status 🟢; portfolio card "Live"; blog #1; LinkedIn | `phase-a: ship v1.0` |
 
 ## Slip plan
 
-If Session 2 (Jun 1) doesn't get Wazuh fully alive, the schedule absorbs as follows:
+1. If endpoints lag, ship with 2 of 3 agents and add the third in a recovery block — the
+   stack being live matters more than the third agent.
+2. If Suricata fights the host NIC, drop it to a Phase B opener (it's not core to "live SOC").
+3. Hard rule: protect health and the Sec+ / interview blocks. The lab slips before they do.
 
-1. **Add Tue Jun 3 evening recovery block** (2 hrs) — Sec+ Tue AM stays sacred, recovery is evening.
-2. **If still slipping after Jun 4:** drop Suricata from Phase A acceptance (becomes Phase B opener), ship the rest on Jun 9.
-3. **Hard slip ceiling:** Jun 16. Beyond that, Phase B start gets pushed and the cascade hurts the Aug 12 finish.
-
-## Pre-session checklist (run before each block)
-
-- [x] Confirm Saguaros Proxmox access live
-- [x] Pull latest `talonsoclab` from origin
-- [x] Open `architecture.mmd` and `deployment/<runbook>.md` for the session's work
+## Pre-session checklist
+- [ ] `git pull` latest `talonsoclab`
+- [ ] Open `architecture.mmd` + the relevant section of `README.md`
+- [ ] Confirm the box is reachable and the stack is green (`docker compose ps`)
 
 ## Post-session checklist
-
-- [ ] All config changes captured either in `scripts/` or as a runbook diff
-- [ ] Anything sensitive (passwords, API tokens, real WAN IPs) scrubbed before commit
-- [ ] Update `README.md` status badge / checklist for the acceptance criteria items satisfied
-- [ ] `git commit -m "phase-a: <what changed>"` + push
-- [ ] If memory-worthy: note for tNexus to record in `project-talonsoclab.md`
+- [ ] Config changes captured in `deploy/soc-recon/` or a runbook diff
+- [ ] Secrets scrubbed (no passwords/keys/real IPs) before commit
+- [ ] Acceptance checklist updated in `README.md`
+- [ ] PHOENIX volume snapshot if an acceptance box flipped
+- [ ] `git commit && git push`
