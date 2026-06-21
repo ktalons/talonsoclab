@@ -44,13 +44,12 @@ The build splits cleanly into two planes:
 
 Keeping them separate is the whole point: deterministic infra below, agentic reasoning above.
 
-## Why I'm building it
+## Why
 
-Strong CTF and OT SOC experience, but no public home-lab artifact a hiring manager can click on.
-TalonSocLab fixes that — particularly for senior SOC and federal detection-engineering roles
-where end-to-end SOC capability needs to be visibly demonstrated, not just described. The pivot
-itself (hardware death → owned box → containerization) is part of the story: it shows judgment
-under real constraints, not just a frictionless happy-path build.
+I learn by building the thing, not reading about it. TalonSocLab is me standing up a small SOC
+end to end — collection, detection, triage — so I actually understand how the pieces fit, and
+keeping it public so it's useful to someone coming up behind me. It also doubles as the live
+environment my [CASA](https://github.com/ktalons/casa-ai-agent) capstone reasons over.
 
 ## Follow along
 
