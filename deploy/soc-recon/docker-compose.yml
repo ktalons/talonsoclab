@@ -1,0 +1,112 @@
+# SOC + recon stack — single Docker host. Tuned for the HP EliteDesk 800 G4 Mini
+# (i5-8500T, 16 GB RAM, 256 GB NVMe). Always-on hard ceiling ≈ 6.5 GB
+# (indexer 4 + manager 1.5 + dashboard 1) + ~1.5 GB OS, leaving headroom for the
+# 2 GB ephemeral recon burst. Comfortable on 16 GB.
+#
+# Wazuh  = always-on. Memory *reservation* + OOM protection.
+# Recon  = ephemeral, cron-launched. Hard memory *cap* + OOM-preferred. Yields to Wazuh.
+#
+# DISK is the other constraint: 256 GB NVMe fills via the indexer_data volume. Set a
+# Wazuh ISM retention policy (e.g. delete wazuh-alerts-* older than 45 days) and watch
+# `df -h` — see README "Resource budget". Host prereq: vm.max_map_count=262144.
+#
+# This is the resource/scheduling skeleton. For a complete Wazuh single-node deploy
+# (cert generation, indexer security config, dashboard wiring) start from the official
+# wazuh-docker single-node compose and fold these constraints + the recon service into it.
+
+name: soc-recon
+
+services:
+  # ─────────────────────── Wazuh SOC stack (always-on) ───────────────────────
+  wazuh.indexer:
+    image: wazuh/wazuh-indexer:${WAZUH_VERSION:-4.9.2}
+    hostname: wazuh.indexer
+    restart: unless-stopped
+    environment:
+      # heap == reservation floor, keep Xms == Xmx. Tuned for a 16 GB host
+      # (INDEXER_HEAP=2g in .env). Raise only after a RAM upgrade.
+      - "OPENSEARCH_JAVA_OPTS=-Xms${INDEXER_HEAP:-2g} -Xmx${INDEXER_HEAP:-2g}"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }          # OpenSearch needs to lock memory
+      nofile:  { soft: 65536, hard: 65536 }
+    mem_reservation: 2g     # soft floor the kernel honors under contention (== heap)
+    mem_limit: 4g           # ceiling so a runaway query can't eat the host
+    oom_score_adj: -700     # near-last thing the kernel kills
+    healthcheck:
+      # gate dependents on the indexer actually answering, not just "started"
+      test: ["CMD-SHELL", "curl -sk -u admin:${WAZUH_INDEXER_PASS:-admin} https://localhost:9200/_cluster/health | grep -q '\"status\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    volumes:
+      - indexer_data:/var/lib/wazuh-indexer
+      # + certs/config volumes per the official compose
+    networks: [soc]
+
+  wazuh.manager:
+    image: wazuh/wazuh-manager:${WAZUH_VERSION:-4.9.2}
+    hostname: wazuh.manager
+    restart: unless-stopped
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    mem_reservation: 1g
+    mem_limit: 1500m        # modest with a handful of real-device agents
+    oom_score_adj: -700
+    volumes:
+      - manager_data:/var/ossec/data
+      # "Sigma + Atomic" is NOT a third container:
+      #   • Sigma  -> convert with sigma-cli to Wazuh rule XML, mount here.
+      #   • Atomic -> a test harness you run against endpoints to exercise
+      #              detections; it lives on the endpoints, not in this stack.
+      - ./wazuh/custom-rules:/var/ossec/etc/rules/custom:ro
+    networks: [soc]
+
+  wazuh.dashboard:
+    image: wazuh/wazuh-dashboard:${WAZUH_VERSION:-4.9.2}
+    hostname: wazuh.dashboard
+    restart: unless-stopped
+    mem_reservation: 512m
+    mem_limit: 1g
+    oom_score_adj: -500
+    ports:
+      - "443:5601"
+    depends_on:
+      wazuh.indexer:
+        condition: service_healthy
+    networks: [soc]
+
+  # ───────────────── Recon pipeline (cron-launched, ephemeral) ─────────────────
+  recon-runner:
+    build:
+      context: ./recon
+    image: soc-recon/recon-runner:latest
+    # profiles -> NOT started by `docker compose up`. Only runs when invoked:
+    #   docker compose run --rm recon-runner
+    profiles: ["recon"]
+    restart: "no"           # run-to-completion job; never auto-restart
+    mem_limit: 2g           # HARD cap — the real "Wazuh wins" guarantee
+    cpus: "1.5"             # don't let nuclei pin every core
+    oom_score_adj: 800      # if memory gets tight, recon dies first
+    environment:
+      - SCOPE_FILE=/scope/domains.txt
+      - OUT_DIR=/data/recon
+      - TRIAGE_DIR=/data/triage
+      - NUCLEI_SEVERITY=low,medium,high,critical
+    volumes:
+      - ./scope:/scope:ro                  # IN-SCOPE targets only (read-only)
+      - ./data:/data                       # run outputs + triage queue (host-visible)
+      - recon_config:/home/recon/.config   # nuclei templates + tool config (persist)
+    # No ports. No always-on footprint. Exists only while the job runs.
+    networks: [recon_net]                  # isolated from the SOC network
+
+volumes:
+  indexer_data:
+  manager_data:
+  recon_config:
+
+networks:
+  soc:
+    driver: bridge
+  recon_net:
+    driver: bridge

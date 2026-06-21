@@ -1,0 +1,21 @@
+# IN-SCOPE recon targets, one per line. Blank lines and lines starting with # are ignored.
+#
+# ─────────────────────────── SCOPE DISCIPLINE ───────────────────────────
+# Read this before adding ANYTHING. The recon pipeline runs subfinder/httpx/
+# nuclei against every entry here. That is active scanning. Only ever add:
+#
+#   1. Assets you OWN, or
+#   2. Targets covered by a program's WRITTEN authorization (bug bounty / engagement),
+#      with this file kept matched to that scope exactly — no wildcards beyond
+#      what the program grants.
+#
+# Phase 1 (now): your own assets only — the lab and your published portfolio.
+# Phase 2 (later): authorized bug-bounty scope, added the day you have the program's
+#                  scope in hand and removed the day the program ends.
+#
+# The live scope/domains.txt is gitignored. Never commit real scope. Copy this file:
+#   cp scope/domains.txt.example scope/domains.txt
+#
+# ──────────────────── your own assets (safe starting point) ──────────────────
+ktalons.github.io
+# talonsoclab.local            # uncomment once the lab has internal DNS

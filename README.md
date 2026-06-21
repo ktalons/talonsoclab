@@ -2,29 +2,59 @@
 
 **Personal SOC home lab** — flagship portfolio project by [Kyle Versluis](https://ktalons.github.io/).
 
-A single coherent home SOC built in four phases over 10 weeks. Each phase ships independently with its own folder, README, architecture diagram, and lessons-learned write-up. By the end this will be a working end-to-end example of "I can run a small SOC."
+A single coherent home SOC built in four phases. Each phase ships independently with its own
+folder, README, architecture diagram, and lessons-learned write-up. By the end this is a working
+end-to-end example of "I can run a small SOC" — and the **data plane** that feeds
+[CASA](https://github.com/ktalons/casa-ai-agent), my PAI-based agentic-SOC capstone.
 
 ## Status
 
-🟡 **Phase A in pivot** *(updated 2026-06-09)* — the cyber-range Proxmox host that ran Phase A's VMs went hardware-dead since approximately May 29 (PSU failure + Processor VRD critical fault, no physical access for remote-hands repair). Phase A is now in a 27-day wait window with a hard substrate decision day of **2026-07-06**: either resume on the recovered host (RECOVER) or stand the lab up on a small owned SFF (BUY). Active build work has shifted to Phase B paper deliverables — Sigma rule pack + ATT&CK coverage skeleton + Atomic Red Team mappings — on a single Ubuntu VM, all of which land cleanly into Phase B's live confirmation sprint once Wazuh is back. Full story: [TalonSocLab Phase A — schedule update](https://ktalons.github.io/blog/talonsoclab-phase-a-schedule-update/).
+🟢 **Pivot resolved → rebuilding on owned hardware** *(updated 2026-06-20)*. The shared
+University of Arizona Saguaros Proxmox host that ran Phase A went hardware-dead (~May 29:
+PSU + Processor VRD fault, no remote-hands access). Rather than wait on a repair I don't
+control, I **bought a dedicated SFF** (HP EliteDesk 800 G4 Mini — i5-8500T, 16 GB, 256 GB NVMe)
+and **pivoted from Proxmox VMs to docker-compose**. The lab is now portable and mine — no longer
+at the mercy of a shared host's wipe policy. The original Proxmox topology and runbooks are
+preserved under [`phase-a-foundation/archive-proxmox/`](phase-a-foundation/archive-proxmox/) as
+provenance for the pivot. Full story:
+[TalonSocLab Phase A — schedule update](https://ktalons.github.io/blog/talonsoclab-phase-a-schedule-update/).
 
-## Phases *(revised schedule, 2026-06-09)*
+## Phases
 
-| Phase | Window | Deliverable |
+| Phase | Deliverable | Substrate |
 |---|---|---|
-| **A — Foundation SOC Stack** | May 20 – **Aug 4 (recover) / Aug 11 (buy)** | Wazuh + Sysmon + Suricata + pfSense on Proxmox with custom dashboards |
-| **B — Detection Engineering & Threat Hunting** | Jun 9 – **Aug 18 (R) / Aug 25 (B)** | Sigma rule pack validated against Atomic Red Team + MITRE ATT&CK coverage map (paper prep underway during the Phase A wait window) |
-| **C — AD Attack & Defense** | post-Phase B → **mid-late Sep** | GOAD-style AD lab + top-5 AD attack detection chain + purple-team report |
-| **D — Honeynet + Threat Intel Pipeline** | post-Phase C → **early-mid Oct** | T-Pot → OpenCTI with automated AbuseIPDB + VirusTotal enrichment |
+| **A — Foundation SOC Stack** | Wazuh + Sysmon + Suricata in Docker, real-device agents, custom dashboards | EliteDesk (16 GB) |
+| **B — Detection Engineering & Threat Hunting** | Sigma rule pack validated against Atomic Red Team + MITRE ATT&CK coverage map | EliteDesk |
+| **C — AD Attack & Defense** | Mini-AD (on-box) or cloud-burst GOAD + top-5 AD detection chain + purple-team report | EliteDesk / cloud |
+| **D — Honeynet + Threat Intel** | T-Pot → OpenCTI with AbuseIPDB + VirusTotal enrichment | cloud (by design) |
 
-> Original schedule was May 20 – Aug 4. The pivot pushes program completion by ~6 weeks; phase ordering and scope are unchanged.
+> **16 GB note:** Phases A + B run comfortably on the box. C and D are RAM/disk-hungry —
+> they're scoped to cloud-burst or a planned 64 GB + 1 TB upgrade. Honest constraints, planned for.
+
+## Architecture
+
+The build splits cleanly into two planes:
+
+- **Data plane (this repo)** — Wazuh SIEM, Suricata IDS, an ephemeral recon pipeline, and a
+  deterministic digest collector. It collects, filters, and cites. It does **not** reason.
+  The deploy bundle lives in [`deploy/soc-recon/`](deploy/soc-recon/).
+- **Reasoning plane ([CASA](https://github.com/ktalons/casa-ai-agent))** — a separate PAI-based
+  multi-agent system on Claude that consumes this repo's structured `intake.json` and produces
+  explainable, NIST-aligned, human-in-the-loop analysis. That's the capstone.
+
+Keeping them separate is the whole point: deterministic infra below, agentic reasoning above.
 
 ## Why I'm building it
 
-Strong CTF and OT SOC experience, but no public home-lab artifact a hiring manager can click on. TalonSocLab fixes that — particularly relevant for senior SOC and federal detection-engineering roles where end-to-end SOC capability needs to be visibly demonstrated, not just described.
+Strong CTF and OT SOC experience, but no public home-lab artifact a hiring manager can click on.
+TalonSocLab fixes that — particularly for senior SOC and federal detection-engineering roles
+where end-to-end SOC capability needs to be visibly demonstrated, not just described. The pivot
+itself (hardware death → owned box → containerization) is part of the story: it shows judgment
+under real constraints, not just a frictionless happy-path build.
 
 ## Follow along
 
 - 🌐 Project page: <https://ktalons.github.io/projects/talonsoclab/>
 - 📝 Blog posts as each phase ships: <https://ktalons.github.io/blog/>
+- 🤖 CASA (reasoning layer / capstone): <https://github.com/ktalons/casa-ai-agent>
 - 💼 LinkedIn: <https://www.linkedin.com/in/ta1ons/>

@@ -1,82 +1,102 @@
-# Phase A — Foundation SOC Stack
+# Phase A — Foundation SOC Stack (docker-compose edition)
 
-> Working Wazuh SIEM ingesting from real endpoints with custom dashboards, fronted by pfSense + Suricata. The structural floor every later phase builds on.
+> Working Wazuh SIEM ingesting real telemetry from real devices, with custom dashboards
+> and a Suricata IDS — all in containers on a small box I own outright. The structural
+> floor every later phase builds on.
 
-**Window:** May 20 – Jun 9, 2026 (3 weeks)
-**Ship date:** Jun 9, 2026
-**Status:** 🟡 Scaffolded — build sessions begin Wed May 27
-**Host:** University of Arizona Saguaros Cyber Range (Proxmox)
+**Substrate:** HP EliteDesk 800 G4 Mini (i5-8500T, 16 GB RAM, 256 GB NVMe), Ubuntu Server
+22.04 LTS bare-metal + Docker.
+**Status:** 🟡 Rebuilding on owned hardware after the shared-Proxmox pivot (see below).
+**Deploy bundle:** [`deploy/soc-recon/`](../deploy/soc-recon/) — the actual compose stack.
 
 ---
 
+## Why this looks different from the runbooks in `archive-proxmox/`
+
+Phase A originally ran as Proxmox VMs (pfSense + VLANs + Windows endpoint VMs) on a shared
+University of Arizona Saguaros host. That host died (PSU + Processor VRD fault, ~May 29 2026)
+with no remote-hands access. Rather than wait on a repair I don't control, I bought a small
+SFF and **pivoted to docker-compose** — the lab is now portable and mine.
+
+The trade is deliberate and documented:
+
+| Dropped (archived) | Replaced with | Net effect |
+|---|---|---|
+| pfSense edge + 2 VLANs | host firewall (UFW) + Docker network isolation | less network realism |
+| Windows / Server endpoint VMs | **Wazuh agents on real devices** | real multi-OS telemetry, 0 extra RAM |
+| Proxmox + vzdump recovery | Docker + volume-snapshot recovery | simpler, owned, faster rebuild |
+
+Network realism is the one real loss; it can return later as a libvirt pfSense VM **if** I
+upgrade past 16 GB. The portfolio value moves to detection breadth + analyst workflow —
+which is where it should be anyway. The full original topology and six VM runbooks are
+preserved in [`archive-proxmox/`](archive-proxmox/) as provenance for the pivot.
+
 ## What ships at the end of Phase A
 
-A live SOC stack on Proxmox with:
+- **Wazuh single-node stack** (Manager + Indexer + Dashboard) in Docker, tuned for 16 GB
+  (see [`deploy/soc-recon/README.md`](../deploy/soc-recon/README.md) → Resource budget).
+- **3 real endpoints** generating live telemetry via Wazuh agents:
+  - Windows daily driver — Sysmon (Olaf Hartong modular config) + Wazuh agent
+  - macOS — Wazuh agent
+  - the Ubuntu host itself — Wazuh agent + auditd
+- **Suricata** as a container sniffing the host NIC, `eve.json` shipped to Wazuh.
+- **Custom dashboards**: top alerts, MITRE ATT&CK coverage, endpoint health → exported ndjson.
+- **2-minute screen recording** walking the stack end-to-end.
 
-- **pfSense** edge firewall + router (2 internal VLANs: Endpoints, SOC)
-- **Suricata** IDS on the pfSense WAN, eve.json shipped to Wazuh
-- **Wazuh** single-node stack (Manager + Indexer + Dashboard)
-- **3 endpoints** generating real telemetry:
-  - Windows 10 (workstation) — Sysmon + Wazuh agent
-  - Windows Server 2022 — Sysmon + Wazuh agent (+ WEF collector role)
-  - Ubuntu 22.04 — Wazuh agent + auditd
-- **Custom dashboards** in Wazuh: top alerts, MITRE ATT&CK coverage, endpoint health
-- **2-minute screen recording** walking the stack end-to-end
+## Deployment outline
 
-## Acceptance criteria (Jun 9)
+Detailed per-component runbooks get written *as each step is executed on the real box*
+(no fabricating steps for hardware that isn't here yet). The sequence:
 
-- [x] Architecture diagram (`architecture.mmd`) renders cleanly on GitHub
-- [ ] All 3 endpoints visible in Wazuh agent inventory, status = active
-- [ ] Suricata eve.json events visible in Wazuh dashboard (filter `data.suricata.*`)
-- [ ] At least one custom dashboard with ≥3 visualizations exported to `dashboards/*.ndjson`
-- [ ] Screen recording (mp4 or webm) in `screenshots/walkthrough.mp4`
-- [ ] Top-level repo README status row for Phase A flipped from 🟠 → 🟢
-- [ ] Portfolio site card (`ktalons.github.io/projects/talonsoclab/`) updated to "Live"
-- [ ] Blog post #1 published on `ktalons.github.io/blog/`
-- [ ] LinkedIn post linking the blog + screenshot
+1. **Host** — Ubuntu Server 22.04, `vm.max_map_count=262144`, Docker Engine + compose plugin,
+   UFW (allow 443/1514/1515/55000 from LAN, SSH key-only), unattended-upgrades.
+2. **Stack** — `cd deploy/soc-recon && cp .env.example .env` (set `WAZUH_INDEXER_PASS`),
+   `docker compose up -d`. Confirm indexer healthcheck green, dashboard at `https://<host>`.
+3. **Retention** — set a Wazuh ISM policy (delete `wazuh-alerts-*` > ~45 days) *day one*;
+   256 GB fills fast.
+4. **Endpoints** — install the Wazuh agent on the Windows box (+ Sysmon), the Mac, and the
+   host; enroll to the manager; confirm all three `active` in the agent inventory.
+5. **Suricata** — bring up the suricata container on the host NIC; confirm `data.suricata.*`
+   events in the dashboard.
+6. **Dashboards** — build the three visualizations, export to `dashboards/*.ndjson`.
 
-## Folder layout
+## Acceptance criteria
 
-```
-phase-a-foundation/
-├── README.md                 # this file
-├── architecture.mmd          # mermaid topology — single source of truth for IPs/VLANs
-├── BUILD-SCHEDULE.md         # day-by-day plan through Jun 9
-├── deployment/               # runbooks, one per VM/component
-│   ├── 01-pfsense-edge.md
-│   ├── 02-wazuh-stack.md
-│   ├── 03-windows-endpoints.md
-│   ├── 04-linux-endpoint.md
-│   ├── 05-wef-collector.md
-│   └── 06-suricata-ids.md
-├── scripts/                  # automation that survives a rebuild
-├── dashboards/               # exported Wazuh dashboard ndjson
-└── screenshots/              # diagrams, dashboard caps, walkthrough recording
-```
-
-## Design choices worth flagging
-
-- **Single-node Wazuh** for Phase A — production-style cluster split is out of scope; the goal is detection breadth, not HA.
-- **WEF + agent on Windows endpoints, not WEF-only** — agent for richness, WEF as a documented secondary path because real SOCs run both.
-- **Suricata on pfSense WAN, not inline IPS** — visibility first; IPS tuning is a Phase B concern.
-- **Two VLANs minimum** — Endpoints (clients) and SOC (Wazuh + future Sigma stack). Mirrors how detection traffic is actually segregated.
+- [ ] `docker compose up -d` brings the stack green; dashboard reachable at `https://<host>`
+- [ ] All 3 endpoint agents visible in Wazuh inventory, status = active
+- [ ] Suricata `eve.json` events visible in the dashboard (filter `data.suricata.*`)
+- [ ] ≥1 custom dashboard with ≥3 visualizations exported to `dashboards/*.ndjson`
+- [ ] ISM retention policy active; `df -h` headroom confirmed
+- [ ] Screen recording in `screenshots/walkthrough.mp4`
+- [ ] Top-level README Phase A status flipped to 🟢
+- [ ] Portfolio site card updated to "Live"; blog post #1 published; LinkedIn post
 
 ## What Phase A explicitly does NOT do
 
-- No Sigma rule pack — that's Phase B
-- No Active Directory — that's Phase C
-- No internet-exposed honeynet — that's Phase D
-- No HA / clustering — out of scope for portfolio piece
-- No SOAR / case management — out of scope
+- No Sigma rule pack — Phase B
+- No Active Directory — Phase C
+- No internet-exposed honeynet — Phase D (and it lives in cloud, not on this box)
+- No pfSense / VLAN segmentation — dropped in the docker pivot (see table above)
+- No HA / clustering, no SOAR — out of scope for the portfolio piece
+
+## How this feeds CASA
+
+The digest collector ([`deploy/soc-recon/digest/generate_digest.py`](../deploy/soc-recon/digest/generate_digest.py))
+emits a deterministic `{date}-intake.json`. That artifact is the integration seam for
+**[CASA](https://github.com/ktalons/casa-ai-agent)** — the PAI-based multi-agent reasoning
+layer (the capstone). TalonSocLab is the data plane; CASA does the analysis. The two stay
+cleanly separated on purpose.
 
 ## Risks tracked
 
 | Risk | Mitigation |
 |---|---|
-| Saguaros tenancy access ends post-grad | Export all VM configs + Wazuh ndjson weekly to this repo so the artifact survives even if the live lab doesn't |
-| Wazuh single-node performance with 3 endpoints + Suricata | Acceptable for Phase A traffic volume; revisit before Phase D honeynet |
-| Time slippage from interview/app sprints | Sun + Wed PM blocks are protected; slip ship date to Jun 16 before cutting scope |
+| 256 GB NVMe fills with indices | ISM retention day one; watch `df -h`; 1 TB SSD is a cheap fix |
+| 16 GB caps Phases C/D | A/B fit fine; budget 64 GB + 1 TB (~$150) as a Phase-C unlock, or cloud-burst |
+| Single owned box = single point of failure | [PHOENIX](PHOENIX.md): git source-of-truth + volume snapshots to external drive |
+| Network realism lost | Documented trade; revisit libvirt pfSense after a RAM upgrade |
 
 ## Once Phase A ships
 
-Phase B (Detection Engineering) starts the day after — the Wazuh stack from A becomes the substrate that Sigma rules + Atomic Red Team tests fire into. No rebuild needed.
+Phase B (Detection Engineering) starts immediately — the same Wazuh stack becomes the
+substrate Sigma rules + Atomic Red Team tests fire into. No rebuild. See [BUILD-SCHEDULE.md](BUILD-SCHEDULE.md).

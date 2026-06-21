@@ -1,0 +1,14 @@
+# Runtime + secrets for the soc-recon bundle — never commit these.
+.env
+data/                 # recon run outputs + triage working dir (host-visible volume)
+scope/domains.txt     # live scope; only domains.txt.example is tracked
+
+# Generated triage + digest artifacts (the .example templates ARE tracked)
+triage/*_baseline.md
+triage/*_delta.md
+digest/*-digest.md
+digest/*-intake.json
+!digest/example-digest.md
+
+# macOS
+.DS_Store
