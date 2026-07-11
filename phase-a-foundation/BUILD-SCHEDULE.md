@@ -21,7 +21,7 @@
 | # | Block | Goal | Commit |
 |---|---|---|---|
 | 0.1 | on arrival | Ubuntu Server 26.04 installed ✅; `vm.max_map_count` ✅; Docker + compose ✅; UFW ✅; SSH key-only ✅ — **complete 2026-07-11** | `phase-0: host base + docker` |
-| 0.2 | +1 day | `deploy/soc-recon` up; indexer healthcheck green; dashboard reachable; ISM retention set | `phase-0: wazuh stack live on owned box` |
+| 0.2 | +1 day | `deploy/soc-recon` up ✅; indexer healthcheck green ✅; dashboard reachable ✅; ISM retention set ✅ — **complete 2026-07-11** | `phase-0: wazuh stack live on owned box` |
 | 0.3 | +1 day | PHOENIX Tier 2 volume-snapshot script run + copied to external drive | `phase-0: phoenix backups verified` |
 
 ## Phase A — Foundation (docker edition)
