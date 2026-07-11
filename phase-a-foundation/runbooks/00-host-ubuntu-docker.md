@@ -1,9 +1,15 @@
 # Phase 0.1 — Host: Windows → Ubuntu Server 24.04 + Docker
 
-> **RESUME (2026-07-10):** last attempt stalled at installer step C.3 — "all interfaces
-> disabled," DHCPv4 autoconfiguration failed. The recovery path is **section C2** below.
-> ISO recommendation is now **24.04 LTS**: 22.04 hits end of standard support 2027-04,
-> and 24.04's newer kernel improves I219-LM NIC support — it may fix the failure outright.
+> **STATUS (2026-07-11 audit):** install state UNCONFIRMED. Recorded evidence ends at the
+> 2026-06-27 stall (installer network step, "all interfaces disabled"); the remembered SSH
+> success traced to the Parallels Kali VM, not this box — no LAN host answers SSH, no
+> `talonsoc` in known_hosts, no Ubuntu ISO on the Mac.
+> **First action: power the box on and watch what boots.**
+> Windows/OEM → the install never ran: start at section A (24.04 LTS).
+> The Ubuntu installer → resume at section C (C2 if the network step fails).
+> `talonsoc login:` → the install DID finish: log in at the keyboard, jump to section W.
+> ISO target is **24.04 LTS**: 22.04 hits end of standard support 2027-04, and 24.04's
+> newer kernel improves I219-LM NIC support — it may fix the June failure outright.
 
 > The EliteDesk 800 G4 Mini ships with Windows 10/11 Home preinstalled. Phase 0.1 wipes it
 > for **Ubuntu Server 24.04 LTS** and ends with the box reachable over SSH so the rest of
@@ -28,7 +34,8 @@
       static fallback = same subnet, high host number (e.g. `192.168.0.250/24`).
 - [ ] **Cable the box directly into a BE550 LAN port** — NOT through the TL-SG108E until
       that switch is configured. An unconfigured managed switch in line is a classic
-      silent DHCP killer.
+      silent DHCP killer. No cable long enough to reach the rack? → **section W**
+      (WiFi interim), or park the box next to the router for the install and rack it after.
 - [ ] Samsung monitor + UGREEN KVM are racked now — put the EliteDesk on a KVM port so
       keyboard work doesn't mean re-cabling. **Don't switch KVM channels mid-install** —
       composite-HID re-enumeration can drop keyboard input at GRUB/installer; keep a
@@ -131,6 +138,44 @@ reservation in step F.
 
 Choose **Continue without network** in the installer. The install completes fine offline;
 fix networking post-boot (step D0) from a full OS where `tcpdump` and friends exist.
+
+## W. Interim network — WiFi until the switch uplink exists [KEYBOARD]
+
+> The rack's TL-SG108E needs a long ethernet run to the BE550 that doesn't exist yet, so
+> the box rides **WiFi temporarily**. Wired through the switch supersedes this the day the
+> cable arrives — WiFi is a bring-up convenience, not a SOC posture. (Wazuh agent traffic
+> at Phase A volume is fine over WPA2; Suricata/SPAN work later requires wired.)
+
+1. **Does the box even have a WiFi card?** The 800 G4 Mini's WLAN module is *optional*
+   hardware — many business units shipped without one. At the keyboard:
+   `ip -br link` → look for `wlp*`/`wlo*`, or `lspci -nn | grep -i net`.
+   **No card** → the WiFi plan is off: park the box next to the BE550 on a short cable
+   (SSH doesn't care where the box physically sits), and rack it when the long cable
+   arrives. Avoid USB WiFi dongles — Realtek driver roulette on a server isn't worth it.
+2. **Fresh install, card present:** the installer's network screen can join WPA2 — select
+   the wlan device, choose the SSID, enter the passphrase, continue as normal.
+3. **Already installed, card present:** configure netplan (`wpasupplicant` ships with
+   24.04 server):
+
+   ```yaml
+   # /etc/netplan/02-wifi.yaml   (sudo chmod 600 — contains the PSK; NEVER in git)
+   network:
+     version: 2
+     wifis:
+       wlp2s0:                    # your device name from `ip -br link`
+         dhcp4: true
+         access-points:
+           "<SSID>":
+             password: "<PSK>"
+   ```
+
+   `sudo netplan apply && ip -br addr` → note the IP; SSH from the Mac takes over from
+   there (step E).
+4. **Record the WiFi MAC** (`cat /sys/class/net/<wlan>/address`) and give it a DHCP
+   reservation in the BE550 so the interim IP holds still.
+5. **When the long cable arrives:** BE550 → SG108E uplink, box onto the switch wired,
+   delete `02-wifi.yaml`, `sudo netplan apply`. The step-F UFW rules stay valid (same
+   subnet).
 
 ## D. First boot + updates — [KEYBOARD]
 
