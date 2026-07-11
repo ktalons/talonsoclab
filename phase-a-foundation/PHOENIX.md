@@ -54,7 +54,7 @@ is the only authority.
 ## The Phoenix sequence (when the box is gone or wiped)
 
 ### Stage 0 — Rebuild the host (20 min)
-1. Install Ubuntu Server 22.04 LTS on the EliteDesk.
+1. Install Ubuntu Server 24.04 LTS on the EliteDesk (see `runbooks/00-host-ubuntu-docker.md`).
 2. `sudo sysctl -w vm.max_map_count=262144` and persist it in `/etc/sysctl.conf`.
 3. Install Docker Engine + the compose plugin; add your user to the `docker` group.
 4. UFW: allow `443/1514/1515/55000` from the LAN, SSH key-only, deny the rest inbound.
