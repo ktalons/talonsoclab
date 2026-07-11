@@ -2,6 +2,7 @@
 .env
 data/                 # recon run outputs + triage working dir (host-visible volume)
 scope/domains.txt     # live scope; only domains.txt.example is tracked
+config/wazuh_indexer_ssl_certs/   # generated TLS certs + private keys — never commit
 
 # Generated triage + digest artifacts (the .example templates ARE tracked)
 triage/*_baseline.md

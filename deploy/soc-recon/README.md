@@ -68,18 +68,26 @@ Set a Wazuh ISM retention policy (delete `wazuh-alerts-*` older than ~45 days) a
 - `cp scope/domains.txt.example scope/domains.txt` — start with your own assets only.
 - The recon container runs as uid 10001; make the bind mount writable: `chown -R 10001 data`
   (or run Docker rootless) so writes to `./data` succeed.
-- This skeleton overlays the **resource model**. For a complete Wazuh single-node deploy
-  (cert generation, indexer security config, dashboard), start from the official
-  `wazuh-docker` single-node compose and fold these constraints + the recon service into it.
+- **TLS certs are generated once** by `generate-indexer-certs.yml` into
+  `config/wazuh_indexer_ssl_certs/` (gitignored). This is the official `wazuh-docker`
+  single-node security model (cert-based TLS + indexer security config), with this lab's
+  16 GB resource model and the ephemeral recon service folded in — a complete working deploy,
+  not just a resource skeleton.
 
 ## Run
 
 ```bash
-cp .env.example .env          # set WAZUH_VERSION, INDEXER_HEAP, WAZUH_INDEXER_PASS
+cp .env.example .env          # set WAZUH_VERSION, INDEXER_HEAP, and the stack passwords
 cp scope/domains.txt.example scope/domains.txt   # your own assets only, to start
 mkdir -p data && chown -R 10001 data
 
-docker compose up -d                       # always-on stack (recon excluded by profile)
+# 1. Generate TLS certs ONCE (writes to config/wazuh_indexer_ssl_certs/):
+docker compose -f generate-indexer-certs.yml run --rm generator
+
+# 2. Bring up the always-on stack (recon excluded by profile):
+docker compose up -d
+#    Watch the indexer go healthy, then reach the dashboard at https://<host> (admin / .env pass).
+
 docker compose run --rm recon-runner       # recon, one-shot — this is what cron runs
 
 # Daily digest + CASA intake: live indexer mode writes {date}-digest.md + {date}-intake.json
@@ -90,6 +98,21 @@ python3 digest/generate_digest.py --alerts-file samples/attack-day.json --stdout
 
 Nothing auto-submits anywhere. Recon writes deltas to `triage/`; the digest only
 collects and cites — you review and decide.
+
+### Hardening (before exposure)
+
+The `.env` defaults are the **well-known Wazuh single-node defaults** (`admin` /
+`SecretPassword`, `kibanaserver`, `wazuh-wui`). They're fine for the first bring-up on a
+LAN-only box behind UFW, but change them before this box is reachable from anywhere it
+shouldn't be. The password change is two-sided:
+
+1. Set the new values in `.env` (`WAZUH_INDEXER_PASS`, `WAZUH_DASHBOARD_PASS`, `WAZUH_API_PASS`).
+2. Regenerate the matching bcrypt hashes in `config/wazuh_indexer/internal_users.yml`
+   (`docker run --rm wazuh/wazuh-indexer:${WAZUH_VERSION} \
+   bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/hash.sh -p '<newpass>'`),
+   then apply them with the indexer's `securityadmin.sh`. Restart the stack.
+
+Until that's done, keep the dashboard port (443) closed to anything but the LAN.
 
 ## CASA — where the reasoning actually happens
 
