@@ -30,7 +30,11 @@
       that switch is configured. An unconfigured managed switch in line is a classic
       silent DHCP killer.
 - [ ] Samsung monitor + UGREEN KVM are racked now — put the EliteDesk on a KVM port so
-      keyboard work doesn't mean re-cabling.
+      keyboard work doesn't mean re-cabling. **Don't switch KVM channels mid-install** —
+      composite-HID re-enumeration can drop keyboard input at GRUB/installer; keep a
+      direct keyboard within reach as fallback.
+- [ ] When racking after the install: the BE550 and SG108E belong on the UPS with the box —
+      a power blip that drops the LAN also drops SSH and any in-flight agent enrollments.
 - [ ] Decide a username (e.g. `kyle`) and have your SSH **public** key ready
       (`~/.ssh/id_ed25519.pub` on this Mac — `cat` it, or import from GitHub during install).
 
