@@ -33,13 +33,17 @@ Named-volume tarballs so a known-good Wazuh state restores without re-enrolling 
 - **Retention:** keep last 3 snapshots; delete older to manage disk.
 
 ```bash
-# On the EliteDesk — snapshot the always-on Wazuh volumes:
+# On the EliteDesk — snapshot the stateful Wazuh volumes.
+# (manager state is split across etc/queue/api volumes — there is no "manager_data")
+# Stop the stack first so the tarballs are consistent; ~1 min of downtime.
 DATE=$(date +%Y-%m-%d); mkdir -p ~/vol-snap
-for v in soc-recon_indexer_data soc-recon_manager_data; do
+cd ~/talonsoclab/deploy/soc-recon && docker compose stop
+for v in soc-recon_indexer_data soc-recon_wazuh_etc soc-recon_wazuh_queue soc-recon_wazuh_api_configuration; do
   docker run --rm -v "$v":/from -v ~/vol-snap:/to alpine \
     tar czf "/to/${v}_${DATE}.tar.gz" -C /from .
 done
-# Then copy ~/vol-snap/*.tar.gz to /Volumes/MacbookXD/talonsoclab/volumes/$DATE/ (scp/rsync).
+docker compose start
+# Then pull ~/vol-snap/*.tar.gz to /Volumes/MacbookXD/talonsoclab/volumes/$DATE/ (rsync from the Mac).
 ```
 
 ### Tier 3 — Secrets in password manager
@@ -74,7 +78,7 @@ sudo chmod 755 config/wazuh_indexer_ssl_certs && sudo chmod 644 config/wazuh_ind
 ### Stage 2 — Restore state, or start clean (10–30 min)
 **Path A — restore from Tier 2 snapshot (fast, keeps history):**
 ```bash
-for v in soc-recon_indexer_data soc-recon_manager_data; do
+for v in soc-recon_indexer_data soc-recon_wazuh_etc soc-recon_wazuh_queue soc-recon_wazuh_api_configuration; do
   docker volume create "$v"
   docker run --rm -v "$v":/to -v /Volumes/MacbookXD/talonsoclab/volumes/<DATE>:/from alpine \
     sh -c "tar xzf /from/${v}_<DATE>.tar.gz -C /to"
