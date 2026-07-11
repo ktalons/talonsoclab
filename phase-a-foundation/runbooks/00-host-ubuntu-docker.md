@@ -287,6 +287,6 @@ Then Phase 0.2 = clone the repo on the box, `cd deploy/soc-recon`, generate cert
 - [x] Ubuntu Server 26.04 LTS booting on the EliteDesk; Windows gone *(verified over SSH 2026-07-11)*
 - [x] `ssh talon@<box-ip>` logs in with key, no password prompt *(verified 2026-07-11)*
 - [x] `sysctl vm.max_map_count` ≥ `262144` *(26.04 default: 1048576)*
-- [ ] `docker compose version` succeeds; `talon` in the `docker` group
-- [ ] `sudo ufw status` → deny incoming, LAN-only allows for 22/443/1514/1515/55000
+- [x] `docker compose version` succeeds; `talon` in the `docker` group *(Docker 29.6.1 / Compose v5.3.1, verified 2026-07-11)*
+- [x] `sudo ufw status` → deny incoming, LAN-only allows for 22/443/1514/1515/55000 *(verified 2026-07-11)*
 - [ ] Box IP pinned (reservation or static) and recorded here: `__________`
