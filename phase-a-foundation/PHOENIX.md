@@ -66,6 +66,9 @@ cd ~/talonsoclab/deploy/soc-recon
 cp .env.example .env        # set WAZUH_VERSION, INDEXER_HEAP, WAZUH_INDEXER_PASS (from pw manager)
 cp scope/domains.txt.example scope/domains.txt
 mkdir -p data && sudo chown -R 10001 data
+docker compose -f generate-indexer-certs.yml run --rm generator
+# generator writes a root-owned 500 dir — container uids can't read it without this:
+sudo chmod 755 config/wazuh_indexer_ssl_certs && sudo chmod 644 config/wazuh_indexer_ssl_certs/*
 ```
 
 ### Stage 2 — Restore state, or start clean (10–30 min)
