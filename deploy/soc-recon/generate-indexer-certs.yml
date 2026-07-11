@@ -1,0 +1,14 @@
+# One-shot TLS cert generation for the Wazuh single-node stack.
+# Run ONCE before the first `docker compose up -d`:
+#   docker compose -f generate-indexer-certs.yml run --rm generator
+# Writes node + admin + root-CA certs into ./config/wazuh_indexer_ssl_certs/
+# (gitignored — never commit generated keys). Re-run only to rotate certs.
+name: soc-recon-certs
+
+services:
+  generator:
+    image: wazuh/wazuh-certs-generator:0.0.2
+    hostname: wazuh-certs-generator
+    volumes:
+      - ./config/wazuh_indexer_ssl_certs/:/certificates/
+      - ./config/certs.yml:/config/certs.yml
