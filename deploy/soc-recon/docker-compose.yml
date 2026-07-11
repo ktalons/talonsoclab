@@ -99,7 +99,12 @@ services:
       #   • Sigma  -> convert with sigma-cli to Wazuh rule XML, mount here.
       #   • Atomic -> a test harness you run against endpoints to exercise
       #              detections; it lives on the endpoints, not in this stack.
-      - ./wazuh/custom-rules:/var/ossec/etc/rules/custom:ro
+      # GOTCHA: never bind-mount inside /var/ossec/etc — the image's init skips
+      # installing the FULL etc payload (shared/, decoders, lists…) if the fresh
+      # volume is non-empty, and a nested mountpoint makes it non-empty. Route
+      # custom content through /wazuh-config-mount instead; the entrypoint syncs
+      # it into /var/ossec AFTER the payload install, on every boot.
+      - ./wazuh/custom-rules:/wazuh-config-mount/etc/rules/custom:ro
     networks: [soc]
 
   wazuh.dashboard:
