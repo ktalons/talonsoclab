@@ -1,23 +1,20 @@
 # Phase 0.1 — Host: Windows → Ubuntu Server 24.04 + Docker
 
-> **STATUS (2026-07-11 audit):** install state UNCONFIRMED. Recorded evidence ends at the
-> 2026-06-27 stall (installer network step, "all interfaces disabled"); the remembered SSH
-> success traced to the Parallels Kali VM, not this box — no LAN host answers SSH, no
-> `talonsoc` in known_hosts, no Ubuntu ISO on the Mac.
-> **First action: power the box on and watch what boots.**
-> Windows/OEM → the install never ran: start at section A (24.04 LTS).
-> The Ubuntu installer → resume at section C (C2 if the network step fails).
-> `talonsoc login:` → the install DID finish: log in at the keyboard, jump to section W.
-> ISO target is **24.04 LTS**: 22.04 hits end of standard support 2027-04, and 24.04's
-> newer kernel improves I219-LM NIC support — it may fix the June failure outright.
+> **STATUS (2026-07-11, verified over SSH):** install CONFIRMED — Ubuntu Server **26.04
+> LTS** ("resolute"), kernel 7.0.0-27-generic, hostname `talonsoclab`, user `talon`,
+> online via USB-WiFi adapter with a DHCP lease; GitHub key import worked (key-based SSH
+> from the Mac verified live). Wired `eno1` is healthy but cable-less (`NO-CARRIER`) —
+> June's "all interfaces disabled" was almost certainly just the missing cable.
+> **Current blocker: forgotten login password** → section **R** at the keyboard. sudo is
+> gated on it; SSH is not. After R, continue at step **F** (Docker, UFW, IP reservation).
 
 > The EliteDesk 800 G4 Mini ships with Windows 10/11 Home preinstalled. Phase 0.1 wipes it
-> for **Ubuntu Server 24.04 LTS** and ends with the box reachable over SSH so the rest of
+> for **Ubuntu Server LTS** (26.04 "resolute" as installed) and ends with the box reachable over SSH so the rest of
 > the build is driven remotely. Steps are split: **[KEYBOARD]** = done at the box (no OS = no
 > SSH yet); **[SSH]** = run after the box is reachable. Capture real output back into this
 > file as you go — don't trust a step until you've seen it succeed.
 
-**Target:** HP EliteDesk 800 G4 Mini · i5-8500T · 16 GB · 256 GB NVMe → hostname `talonsoc`.
+**Target:** HP EliteDesk 800 G4 Mini · i5-8500T · 16 GB · 256 GB NVMe → hostname `talonsoclab` (as installed).
 
 ---
 
@@ -72,11 +69,11 @@ Walk the guided installer:
    **Gotcha:** guided LVM only allocates ~half the disk to `ubuntu-lv`. On the summary
    screen, edit `ubuntu-lv` → set size to the maximum — the indexer needs the full
    256 GB. Confirm the destructive write when prompted.
-6. **Profile** →
-   - Your name: `Kyle`
-   - Server name (hostname): `talonsoc`
-   - Username: `kyle`
-   - Password: a strong one (you'll mostly use the SSH key after this).
+6. **Profile** → as installed (2026-07-11):
+   - Server name (hostname): `talonsoclab`
+   - Username: `talon`
+   - Password: a strong one, **stored in the password manager** (PHOENIX Tier 3 —
+     see §R for what happens when it isn't).
 7. **SSH Setup** → ✅ **Install OpenSSH server** — *this is the step that lets me take over.*
    - ✅ Import SSH identity → **from GitHub** (`ktalons`) if your key is there, or skip and we
      add the key in step E.
@@ -146,6 +143,12 @@ fix networking post-boot (step D0) from a full OS where `tcpdump` and friends ex
 > cable arrives — WiFi is a bring-up convenience, not a SOC posture. (Wazuh agent traffic
 > at Phase A volume is fine over WPA2; Suricata/SPAN work later requires wired.)
 
+> **Reality check (2026-07-11):** no internal WLAN card, but a USB adapter (`wlx…`,
+> in-kernel driver) came up fine with a DHCP lease — the dongle warning below proved too
+> pessimistic. Optional stability tweak once sudo works:
+> `sudo apt install iw && sudo iw dev <wlan> set power_save off`. Wired `eno1` verified
+> healthy and waiting on the long cable — the wired cutover still supersedes WiFi.
+
 1. **Does the box even have a WiFi card?** The 800 G4 Mini's WLAN module is *optional*
    hardware — many business units shipped without one. At the keyboard:
    `ip -br link` → look for `wlp*`/`wlo*`, or `lspci -nn | grep -i net`.
@@ -177,6 +180,25 @@ fix networking post-boot (step D0) from a full OS where `tcpdump` and friends ex
    delete `02-wifi.yaml`, `sudo netplan apply`. The step-F UFW rules stay valid (same
    subnet).
 
+## R. Forgot the login password — reset at the keyboard [KEYBOARD]
+
+> SSH key login still works (`talon`), but tty login and **sudo** need the password.
+> Reset takes ~3 minutes at the console:
+
+1. Reboot the box. Hold **Esc** (or **Shift**) during boot for the GRUB menu.
+2. **Advanced options for Ubuntu** → the top kernel's **(recovery mode)** entry.
+3. Recovery menu → **root — Drop to root shell prompt**.
+4. At the `#` prompt:
+   ```bash
+   mount -o remount,rw /
+   passwd talon        # set the new password, twice
+   reboot
+   ```
+5. If recovery mode won't cooperate: at GRUB press `e` on the default entry, append
+   ` init=/bin/bash` to the `linux` line, **Ctrl+X** to boot, run the same
+   `mount -o remount,rw / && passwd talon`, then `exec /sbin/init`.
+6. Put it in the password manager this time — PHOENIX Tier 3 exists for exactly this.
+
 ## D. First boot + updates — [KEYBOARD]
 
 **D0 — only if you installed without network:** create `/etc/netplan/01-lan.yaml`:
@@ -200,16 +222,14 @@ sudo reboot                            # if a kernel updated
 ## E. Confirm SSH from the Mac — [SSH] (from this Mac)
 
 ```bash
-# If you imported the key during install, this just works:
-ssh kyle@<box-ip>
+# Key was imported from GitHub during install — verified working 2026-07-11:
+ssh talon@<box-ip>
 
-# If you skipped key import, copy it now (one-time, uses your password):
-ssh-copy-id kyle@<box-ip>
-ssh kyle@<box-ip>                      # should NOT prompt for a password now
+# (If a future rebuild skips key import, copy it with: ssh-copy-id talon@<box-ip>)
 ```
 
-Once `ssh kyle@<box-ip>` logs in with the key and no password → **the box is mine to drive.**
-Give me `kyle@<box-ip>` and I take it from step F.
+Once `ssh talon@<box-ip>` logs in with the key and no password → **the box is mine to drive.**
+Give me `talon@<box-ip>` and I take it from step F.
 
 > Harden SSH (disable password login) only **after** key login is confirmed working:
 > in `/etc/ssh/sshd_config.d/99-hardening.conf` set `PasswordAuthentication no` and
@@ -224,11 +244,14 @@ The plan I'll execute over SSH (recorded here so it's reviewable; real output ge
 ```bash
 # 1. Stable IP — DHCP reservation on the router (preferred) OR a static netplan.
 
-# 2. Kernel param the Wazuh indexer requires:
+# 2. Kernel param the Wazuh indexer requires — 26.04 already defaults to 1048576
+#    (≥ 262144), so this is belt-and-suspenders for PHOENIX rebuild determinism:
 echo 'vm.max_map_count=262144' | sudo tee /etc/sysctl.d/99-wazuh.conf
-sudo sysctl --system && sysctl vm.max_map_count    # expect 262144
+sudo sysctl --system && sysctl vm.max_map_count    # expect ≥ 262144
 
-# 3. Docker Engine + compose plugin (official apt repo):
+# 3. Docker Engine + compose plugin (official apt repo). If Docker hasn't published
+#    the "resolute" (26.04) suite yet, apt update will 404 on docker.list —
+#    substitute the previous LTS codename in that file and it works fine:
 sudo apt -y install ca-certificates curl
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -238,7 +261,7 @@ https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CO
   | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 sudo apt update
 sudo apt -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo usermod -aG docker kyle           # log out/in so `docker` works without sudo
+sudo usermod -aG docker talon          # log out/in so `docker` works without sudo
 docker --version && docker compose version
 
 # 4. UFW — default deny in, SSH + Wazuh ports from the LAN only (adjust 192.168.x.0/24):
@@ -261,9 +284,9 @@ Then Phase 0.2 = clone the repo on the box, `cd deploy/soc-recon`, generate cert
 
 ## Acceptance — Phase 0.1
 
-- [ ] Ubuntu Server 24.04 LTS booting on the EliteDesk; Windows gone
-- [ ] `ssh kyle@<box-ip>` logs in with key, no password prompt
-- [ ] `sysctl vm.max_map_count` → `262144`
-- [ ] `docker compose version` succeeds; `kyle` in the `docker` group
+- [x] Ubuntu Server 26.04 LTS booting on the EliteDesk; Windows gone *(verified over SSH 2026-07-11)*
+- [x] `ssh talon@<box-ip>` logs in with key, no password prompt *(verified 2026-07-11)*
+- [x] `sysctl vm.max_map_count` ≥ `262144` *(26.04 default: 1048576)*
+- [ ] `docker compose version` succeeds; `talon` in the `docker` group
 - [ ] `sudo ufw status` → deny incoming, LAN-only allows for 22/443/1514/1515/55000
 - [ ] Box IP pinned (reservation or static) and recorded here: `__________`
