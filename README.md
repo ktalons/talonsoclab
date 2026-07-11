@@ -9,17 +9,9 @@ end-to-end example of "I can run a small SOC" — and the **data plane** that fe
 
 ## Status
 
-🟢 **Pivot resolved → rebuilding on owned hardware** *(updated 2026-06-20)*. The shared
-University of Arizona Saguaros Proxmox host that ran Phase A went hardware-dead (~May 29:
-PSU + Processor VRD fault, no remote-hands access). Rather than wait on a repair I don't
-control, I **bought a dedicated SFF** (HP EliteDesk 800 G4 Mini — i5-8500T, 16 GB, 256 GB NVMe)
-and **pivoted from Proxmox VMs to docker-compose**. The lab is now portable and mine — no longer
-at the mercy of a shared host's wipe policy. The original Proxmox topology and runbooks are
-preserved under [`phase-a-foundation/archive-proxmox/`](phase-a-foundation/archive-proxmox/) as
-provenance for the pivot. Full story:
-[TalonSocLab Phase A — schedule update](https://ktalons.github.io/blog/talonsoclab-phase-a-schedule-update/).
-
-## Phases
+🟢 **Pivot resolved → rebuilding on owned hardware** *(updated 2026-06-20)*.
+I **bought a dedicated SFF** (HP EliteDesk 800 G4 Mini — i5-8500T, 16 GB, 256 GB NVMe)
+and **pivoted from Proxmox VMs to docker-compose**.
 
 | Phase | Deliverable | Substrate |
 |---|---|---|
