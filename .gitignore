@@ -30,3 +30,5 @@ credentials/
 docs/superpowers/
 docs/internal/
 /ISA.md
+# hardware inventory + spend + rack topology — internal
+/lab-hardware-update.md
