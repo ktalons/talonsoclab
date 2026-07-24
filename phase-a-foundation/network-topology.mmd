@@ -1,0 +1,48 @@
+flowchart TB
+%% TalonSocLab — Physical / L2 network topology (home-lab edition)
+%% Companion to architecture.mmd (which is the *container* topology).
+%% This diagram is the WIRING: what plugs into what, and at which layer.
+%%
+%% Legend: solid = wired now · dashed = planned (Dell AD lab, Pi sensor, SPAN, VLANs)
+%% Gateway/DHCP/DNS all live on the BE550 (L3). The SG108E is L2 fan-out.
+
+    Internet((Internet / ISP))
+
+    subgraph LAN["Home LAN — 192.168.x.0/24 · single broadcast domain (flat, VLANs = Phase C)"]
+        direction TB
+
+        Router["TP-Link Archer BE550 (WiFi 7)<br/>Role: L3 gateway · DHCP server · DNS · WiFi AP<br/>LAN gateway .1"]
+
+        Switch["TP-Link TL-SG108E — 8-port Easy Smart switch<br/>Role: L2 fan-out for the rack<br/>Mgmt UI (default 192.168.0.1) · 802.1Q VLAN + SPAN capable"]
+
+        subgraph Rack["VEVOR 12U rack — all on the CyberPower UPS"]
+            direction TB
+            Elite["HP EliteDesk 800 G4 Mini<br/>eno1 (wired) · Ubuntu 26.04<br/>SOC stack: Wazuh + recon (Docker)"]
+            Dell["Dell OptiPlex 7070 Micro<br/>AD lab / victim net"]
+            Pi["Raspberry Pi 5<br/>Zeek/Suricata sensor · honeypot"]
+        end
+
+        Mac(["MacBook — analyst workstation<br/>WiFi to BE550"])
+    end
+
+    Internet ==>|WAN| Router
+    Router ==>|"LAN port → switch (single uplink, no loops)"| Switch
+    Switch ==>|"port · gigabit"| Elite
+    Switch -. "planned port" .-> Dell
+    Switch -. "planned port" .-> Pi
+    Router -. "WiFi 7" .-> Mac
+    Mac ==>|"HTTPS 443 → dashboard"| Elite
+
+    Switch -. "SPAN / port-mirror → sensor (Phase A.3 / B)" .-> Pi
+
+    classDef net fill:#0f172a,stroke:#f59e0b,color:#fff
+    classDef sw  fill:#1f2937,stroke:#38bdf8,color:#fff
+    classDef host fill:#0f172a,stroke:#34d399,color:#fff
+    classDef planned fill:#111827,stroke:#6b7280,color:#9ca3af,stroke-dasharray:4 3
+    classDef ext fill:#374151,stroke:#9ca3af,color:#fff
+
+    class Router net
+    class Switch sw
+    class Elite host
+    class Dell,Pi planned
+    class Internet,Mac ext

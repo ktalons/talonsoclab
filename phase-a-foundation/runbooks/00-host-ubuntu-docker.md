@@ -289,4 +289,4 @@ Then Phase 0.2 = clone the repo on the box, `cd deploy/soc-recon`, generate cert
 - [x] `sysctl vm.max_map_count` ≥ `262144` *(26.04 default: 1048576)*
 - [x] `docker compose version` succeeds; `talon` in the `docker` group *(Docker 29.6.1 / Compose v5.3.1, verified 2026-07-11)*
 - [x] `sudo ufw status` → deny incoming, LAN-only allows for 22/443/1514/1515/55000 *(verified 2026-07-11)*
-- [ ] Box IP pinned (reservation or static) and recorded here: `__________`
+- [x] Box IP pinned (reservation or static) and recorded — *2026-07-24: BE550 DHCP reservation on `eno1`'s MAC; the wired cutover + reservation are documented in [`01-network-switch-cutover.md`](01-network-switch-cutover.md). Real IP lives in the git-ignored notes.*
