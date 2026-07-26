@@ -7,6 +7,8 @@ config/wazuh_indexer_ssl_certs/   # generated TLS certs + private keys — never
 # Publishing password hashes to a public portfolio repo is exactly what ISA
 # "no real secrets committed" exists to prevent. Only the .example is tracked.
 config/wazuh_indexer/internal_users.yml
+# Holds the wazuh-wui API password in PLAINTEXT. Only the .example is tracked.
+config/wazuh_dashboard/wazuh.yml
 
 # Generated triage + digest artifacts (the .example templates ARE tracked)
 triage/*_baseline.md
