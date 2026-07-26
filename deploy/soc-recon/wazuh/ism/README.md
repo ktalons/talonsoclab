@@ -73,6 +73,25 @@ A managed index reports `index.plugins.index_state_management.policy_id` and a n
 `policy_id`. `"total_managed_indices": 0` with indices present means the policy registered but
 never attached — go back and run the `add` call.
 
+## What healthy looks like
+
+ISM's UI is easy to misread, because a correctly working policy looks like a job that never
+finishes.
+
+| What you see | What it means |
+|---|---|
+| Job Status: **Running** | Steady state. The index is under active management. It reads `Running` for the policy's whole lifetime, not just while something is happening. |
+| `Evaluating transition conditions [index=wazuh-alerts-4.x-YYYY.MM.DD]` | The policy is attached and doing its job — checking `min_index_age >= 45d`, getting "no", and leaving the index in `hot`. Expect this same message on every job interval for 45 days. |
+| State: `hot` on a young index | Correct. `delete` is only entered once the index is genuinely 45 days old. |
+
+ISM evaluates on its own schedule (~5 min interval, jittered) entirely server-side. Nothing
+about it is tied to the shell that applied the policy — closing or interrupting a `curl` has no
+effect on a job already registered.
+
+**The failure signal isn't a long-running job.** It's `"total_managed_indices": 0` while
+`wazuh-alerts-*` indices exist, which means the policy registered but never attached. That's
+what the `_ism/add` call above is for.
+
 ## Watch the disk regardless
 
 ```bash
