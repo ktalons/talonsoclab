@@ -1,0 +1,35 @@
+{
+  "policy": {
+    "description": "Delete wazuh-alerts-* indices older than 45 days. Hard requirement on a 256 GB NVMe: without this the indexer fills the disk and the stack dies. See phase-a-foundation/README.md 'Resource budget'.",
+    "default_state": "hot",
+    "ism_template": [
+      {
+        "index_patterns": ["wazuh-alerts-*"],
+        "priority": 100
+      }
+    ],
+    "states": [
+      {
+        "name": "hot",
+        "actions": [],
+        "transitions": [
+          {
+            "state_name": "delete",
+            "conditions": {
+              "min_index_age": "45d"
+            }
+          }
+        ]
+      },
+      {
+        "name": "delete",
+        "actions": [
+          {
+            "delete": {}
+          }
+        ],
+        "transitions": []
+      }
+    ]
+  }
+}
