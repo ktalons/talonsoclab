@@ -1,0 +1,51 @@
+---
+# Internal user database for the Wazuh indexer (OpenSearch security plugin).
+#
+# ── COPY TO internal_users.yml AND REPLACE BOTH HASHES BEFORE USE ──
+# The real file is gitignored. The hashes below are Wazuh's PUBLISHED DEMO HASHES —
+# they are in a public GitHub repo and are equivalent to no password at all.
+#
+#   cp config/wazuh_indexer/internal_users.yml.example \
+#      config/wazuh_indexer/internal_users.yml
+#
+# Generate a bcrypt hash (you will be prompted for the password, and it is not echoed):
+#
+#   docker compose exec wazuh.indexer \
+#     env OPENSEARCH_JAVA_HOME=/usr/share/wazuh-indexer/jdk \
+#     bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/hash.sh
+#
+# Paste each resulting hash below, then push the security config to the running
+# indexer — editing this file alone changes nothing, because the live config lives
+# in the indexer's .opendistro_security index:
+#
+#   see ../../wazuh/SECURITY.md for the securityadmin.sh invocation
+#
+# Passwords must ALSO be set in .env (WAZUH_INDEXER_PASS, WAZUH_DASHBOARD_PASS) and
+# stored in the password manager (PHOENIX Tier 3). Three places, or things break in
+# confusing ways.
+
+_meta:
+  type: "internalusers"
+  config_version: 2
+
+# ── Accounts this stack actually uses ────────────────────────────────────────
+# Wazuh's four other demo users (kibanaro, logstash, readall, snapshotrestore)
+# are deliberately ABSENT. Nothing here uses them, they ship with published
+# hashes, and they carry backend_roles (readall, kibanauser, logstash). Unused
+# accounts with known credentials are pure attack surface — don't re-add them
+# without a reason.
+
+# Filebeat (manager -> indexer), the dashboard's indexer connection, and the
+# CASA digest script all authenticate as `admin`. Must match WAZUH_INDEXER_PASS.
+admin:
+  hash: "$2y$12$K/SpwjtB.wOHJ/Nc6GVRDuc1h0rM1DfvziFRNPtk27P.c4yDr9njO"
+  reserved: true
+  backend_roles:
+  - "admin"
+  description: "Stack admin — REPLACE HASH"
+
+# The dashboard's own service account. Must match WAZUH_DASHBOARD_PASS.
+kibanaserver:
+  hash: "$2a$12$4AcgAt3xwOWadA5s5blL6ev39OXDNhmOesEoo33eZtrq2N0YrU3H."
+  reserved: true
+  description: "Dashboard service account — REPLACE HASH"
