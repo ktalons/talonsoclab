@@ -24,7 +24,7 @@
 | 0.2 | +1 day | `deploy/soc-recon` up ✅; indexer healthcheck green ✅; dashboard reachable ✅; ISM retention set ✅ — **complete 2026-07-11** | `phase-0: wazuh stack live on owned box` |
 | 0.3 | +1 day | PHOENIX Tier 2 volume-snapshot script run ✅ + copied to external drive ✅ (integrity-checked) — **complete 2026-07-11** | `phase-0: phoenix backups verified` |
 | 0.4 | cable arrival | Wired cutover: box on TL-SG108E @1000Mb/s ✅; `eno1` DHCP fixed + reserved ✅; interim WiFi stripped ✅; BIOS After-Power-Loss=On ✅; stack re-verified green ✅ — **complete 2026-07-24** | `phase-0.4: switch cutover + wired` |
-| 0.5 | before A.1 | Stack 4.9.2 → **4.14.6** clean rebuild (indexer config-root move; certs regenerated w/ cert-tool 4.14); ISM retention **re-applied**; version floor set before any enrollment — [runbook](runbooks/02-wazuh-4.14-upgrade.md) | `phase-0.5: wazuh 4.14.6 upgrade` |
+| 0.5 | before A.1 | Stack 4.9.2 → **4.14.6** clean rebuild ✅; certs regenerated w/ cert-tool 4.14 ✅; 10 daemons ✅; filebeat→indexer TLS1.2 ✅; health yellow (correct single-node) ✅; ISM retention re-applied, version-controlled, `total_managed_indices: 1` ✅ — **complete 2026-07-25. PHASE 0 DONE.** [runbook](runbooks/02-wazuh-4.14-upgrade.md) | `phase-0.5: wazuh 4.14.6 upgrade` |
 
 ## Phase A — Foundation (docker edition)
 
