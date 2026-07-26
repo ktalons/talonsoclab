@@ -158,13 +158,20 @@ index from scratch. `start_period` in the healthcheck is 120s; give it that befo
 
 Don't mark this done on `up -d` returning cleanly. Work the list:
 
+> **Indexer API calls must run inside a container.** `9200` is not host-published by design,
+> so `curl https://localhost:9200` from the host reaches nothing — and with `-s` it fails
+> *silently*, which reads as an empty result rather than an error. Route them through
+> `docker compose exec`.
+
 ```bash
+PASS=$(grep ^WAZUH_INDEXER_PASS .env | cut -d= -f2 | awk '{print $1}')
+
 # 1. all three containers up, indexer healthy, versions correct
 sudo docker compose ps
 
 # 2. indexer answers over TLS and reports green/yellow (yellow is fine single-node)
-curl -sk -u admin:"$(grep ^WAZUH_INDEXER_PASS .env | cut -d= -f2 | awk '{print $1}')" \
-  https://localhost:9200/_cluster/health | jq
+sudo docker compose exec -T wazuh.indexer \
+  curl -sk -u admin:"$PASS" https://localhost:9200/_cluster/health | jq
 
 # 3. manager daemons — expect 10 running, with clusterd/maild/agentlessd off
 sudo docker compose exec wazuh.manager /var/ossec/bin/wazuh-control status
@@ -197,8 +204,14 @@ new session TTL by leaving it idle 15 minutes and watching it bounce you to logi
 `ISA.md` records it as verified via the explain API back at Phase 0.2 — that verification is
 now void. On a 256 GB NVMe with no retention policy, the indexer will happily fill the disk.
 
-Re-apply it before enrolling any agent, and re-verify with the explain API rather than
-assuming the PUT took.
+The policy is now captured in git at
+[`deploy/soc-recon/wazuh/ism/`](../../deploy/soc-recon/wazuh/ism/) — it wasn't before, which is
+how it managed to disappear without anything noticing. Apply and verify per that README.
+
+Re-apply it before enrolling any agent, and re-verify with the explain API rather than assuming
+the PUT took. Note that on a freshly rebuilt stack the explain call returns empty because no
+`wazuh-alerts-*` index exists yet — `ism_template` attaches to indices as they're created, so
+the meaningful check is *after* the first agent reports.
 
 ---
 
