@@ -30,7 +30,7 @@
 
 | # | Block | Goal | Commit |
 |---|---|---|---|
-| A.1 | Sun | Wazuh agent + Sysmon (Hartong) on the Windows daily driver; enrolled + active | `phase-a: windows agent + sysmon` |
+| A.1 | Sun | Wazuh agent + Sysmon (Hartong) on the **Dell OptiPlex 7070** (Win 11 Pro, bare metal); enrolled into `phase-a-windows`, status active | `phase-a: windows agent + sysmon` |
 | A.2 | Wed PM | Wazuh agents on the Mac + the Ubuntu host (auditd); all 3 endpoints active | `phase-a: mac + host agents` |
 | A.3 | Sun | Suricata container on host NIC; `data.suricata.*` in dashboard; 3 dashboards → ndjson | `phase-a: suricata + dashboards` |
 | A.4 | Mon | Walkthrough recording; README status 🟢; portfolio card "Live"; blog #1; LinkedIn | `phase-a: ship v1.0` |
