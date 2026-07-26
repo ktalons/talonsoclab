@@ -48,7 +48,14 @@ docker compose start
 
 ### Tier 3 — Secrets in password manager
 - Wazuh `admin`, `kyle-admin`, `kyle-analyst` passwords; `WAZUH_INDEXER_PASS` for the digest
+- `WAZUH_DASHBOARD_PASS` (kibanaserver) and `WAZUH_API_PASS` (wazuh-wui) — all three `.env`
+  passwords, since `.env` is gitignored and nothing else holds them
 - Any API keys (AbuseIPDB, VirusTotal — Phase D)
+
+> Losing these means a full credential reset, not just a restore: the live indexer
+> credentials live in the `.opendistro_security` index inside the `indexer_data` volume,
+> and the bcrypt hashes in `internal_users.yml` are one-way. A Tier 2 snapshot restores
+> the *hashes*, never the passwords.
 
 **Never** in repo. **Never** baked into images. `.env` is gitignored; the password manager
 is the only authority.
@@ -68,6 +75,11 @@ is the only authority.
 git clone https://github.com/ktalons/talonsoclab.git ~/talonsoclab
 cd ~/talonsoclab/deploy/soc-recon
 cp .env.example .env        # set WAZUH_VERSION, INDEXER_HEAP, WAZUH_INDEXER_PASS (from pw manager)
+# internal_users.yml is gitignored (it holds real bcrypt hashes). Restore it:
+cp config/wazuh_indexer/internal_users.yml.example config/wazuh_indexer/internal_users.yml
+# then regenerate both hashes from the password-manager passwords and re-run
+# securityadmin — see deploy/soc-recon/wazuh/SECURITY.md. Leaving the .example
+# hashes in place means running Wazuh's PUBLISHED demo credentials.
 cp scope/domains.txt.example scope/domains.txt
 mkdir -p data && sudo chown -R 10001 data
 docker compose -f generate-indexer-certs.yml run --rm generator
