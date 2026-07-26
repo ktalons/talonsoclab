@@ -90,6 +90,23 @@ docker compose up -d
 docker compose up -d        # clean Wazuh; re-import dashboards from configs/, re-enroll agents
 ```
 
+**Either path — re-apply the two things that live only inside volumes.** Both were found the
+hard way during the Phase 0.5 rebuild; neither errors when missing, they just silently don't work.
+
+```bash
+# 1. ISM retention — see deploy/soc-recon/wazuh/ism/README.md
+#    Without it the 256 GB NVMe fills and takes the indexer down.
+
+# 2. Shared agent-group ownership. The entrypoint creates group dirs as root:root,
+#    but wazuh-remoted (user `wazuh`) must write merged.mg there or agents never
+#    receive their group config. One-time per volume lifetime.
+for g in phase-a-windows; do
+  docker compose exec wazuh.manager chown -R wazuh:wazuh "/var/ossec/etc/shared/$g"
+  docker compose exec wazuh.manager chmod 770 "/var/ossec/etc/shared/$g"
+done
+docker compose exec wazuh.manager ls -la /var/ossec/etc/shared/phase-a-windows/  # want merged.mg
+```
+
 ### Stage 3 — Re-enroll endpoints (15 min)
 Reinstall / re-point the Wazuh agents on the Windows box, Mac, and host at the manager
 (`<host-ip>:1514`, enroll on `:1515`). Confirm all three show `active` in the inventory.
