@@ -36,6 +36,13 @@ sudo docker compose exec -T wazuh.indexer \
 
 `-d @-` reads the policy from stdin; `exec -T` is what pipes the host-side file through.
 
+> **Always give `exec -T` an stdin source.** With `-T` and stdin still attached to your
+> terminal, the exec session won't close after curl exits — it sits waiting for an EOF that
+> never arrives, and looks exactly like a hung request. The command already ran; only the
+> session is stuck. Here `< wazuh/ism/...json` supplies the EOF. Every call below that doesn't
+> need stdin gets `< /dev/null` for the same reason. Ctrl-C is safe — it kills your client, not
+> the server-side work.
+
 `ism_template` auto-attaches the policy to **newly created** indices matching
 `wazuh-alerts-*`. Indices that already exist when you apply it need attaching by hand:
 
@@ -44,7 +51,7 @@ sudo docker compose exec -T wazuh.indexer \
   curl -sk -u admin:"$PASS" \
   -H 'Content-Type: application/json' \
   -X POST "https://localhost:9200/_plugins/_ism/add/wazuh-alerts-*" \
-  -d '{"policy_id":"wazuh-alerts-retention"}' | jq
+  -d '{"policy_id":"wazuh-alerts-retention"}' < /dev/null | jq
 ```
 
 That second call returns `no indices found` on a freshly rebuilt stack. Expected — nothing has
@@ -57,7 +64,8 @@ Don't trust the PUT. Check that the policy is registered:
 ```bash
 sudo docker compose exec -T wazuh.indexer \
   curl -sk -u admin:"$PASS" \
-  "https://localhost:9200/_plugins/_ism/policies/wazuh-alerts-retention" | jq '.policy.states'
+  "https://localhost:9200/_plugins/_ism/policies/wazuh-alerts-retention" \
+  < /dev/null | jq '.policy.states'
 ```
 
 And once indices exist, confirm the policy is actually managing them — this is the explain API,
@@ -66,7 +74,7 @@ the check `ISA.md` refers to:
 ```bash
 sudo docker compose exec -T wazuh.indexer \
   curl -sk -u admin:"$PASS" \
-  "https://localhost:9200/_plugins/_ism/explain/wazuh-alerts-*" | jq
+  "https://localhost:9200/_plugins/_ism/explain/wazuh-alerts-*" < /dev/null | jq
 ```
 
 A managed index reports `index.plugins.index_state_management.policy_id` and a non-null

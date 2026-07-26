@@ -171,7 +171,7 @@ sudo docker compose ps
 
 # 2. indexer answers over TLS and reports green/yellow (yellow is fine single-node)
 sudo docker compose exec -T wazuh.indexer \
-  curl -sk -u admin:"$PASS" https://localhost:9200/_cluster/health | jq
+  curl -sk -u admin:"$PASS" https://localhost:9200/_cluster/health < /dev/null | jq
 
 # 3. manager daemons — expect 10 running, with clusterd/maild/agentlessd off
 sudo docker compose exec wazuh.manager /var/ossec/bin/wazuh-control status
