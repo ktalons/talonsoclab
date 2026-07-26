@@ -14,6 +14,7 @@ silently.** This table is the whole job — miss one cell and something breaks f
 | `WAZUH_INDEXER_PASS` | `admin` | bcrypt in `config/wazuh_indexer/internal_users.yml`, pushed via `securityadmin` | `.env` → filebeat, dashboard, CASA digest, indexer healthcheck | hash / plaintext |
 | `WAZUH_DASHBOARD_PASS` | `kibanaserver` | bcrypt in `internal_users.yml`, pushed via `securityadmin` | `.env` → dashboard service account | hash / plaintext |
 | `WAZUH_API_PASS` | `wazuh-wui` | `.env` → manager `API_PASSWORD`, applied every start | **`config/wazuh_dashboard/wazuh.yml`** → dashboard's API connection | plaintext / plaintext |
+| enrollment password | authd (`:1515`) | `wazuh/authd.pass` → synced to `/var/ossec/etc/authd.pass` | every agent, at install time (`WAZUH_REGISTRATION_PASSWORD`) | plaintext / plaintext |
 
 Plus the password manager (PHOENIX Tier 3), which is the only place any of them can be
 *recovered* from — a Tier 2 snapshot restores hashes, never passwords.
@@ -198,6 +199,67 @@ confirming the dashboard itself:
 
 A rotation is only complete when both the old credential is rejected **and** every client
 presents the new one.
+
+## Agent enrollment password (authd)
+
+Without this, `:1515` accepts enrollment from **anything that can reach it**. UFW restricts that
+to the LAN /24, but "any device on the home network" includes whatever you don't fully control.
+An unauthenticated peer can register as an agent and inject events into the SIEM.
+
+Enabled in `config/wazuh_cluster/wazuh_manager.conf`:
+
+```xml
+<use_password>yes</use_password>
+```
+
+The password itself goes in `wazuh/authd.pass` — one line, no trailing content. Gitignored;
+`authd.pass.example` is the tracked placeholder.
+
+```bash
+LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > wazuh/authd.pass
+echo >> wazuh/authd.pass
+sudo docker compose restart wazuh.manager
+```
+
+Store it in the password manager — every future agent install needs it, and it is not
+recoverable from the manager once set (see verification below for how to read it back if you
+lose it *before* rotating).
+
+> **The failure mode is generous, not loud.** If `use_password` is `yes` and `authd.pass` is
+> missing or unreadable, authd does not refuse to start — it **generates a random password**
+> and carries on. Agents then fail enrollment with `Invalid password` while the manager looks
+> perfectly healthy. Always verify what authd actually loaded rather than what you wrote.
+
+### Verify
+
+```bash
+# what authd actually has — not what you think you wrote
+sudo docker compose exec -T wazuh.manager cat /var/ossec/etc/authd.pass < /dev/null
+
+sudo docker compose exec -T wazuh.manager \
+  stat -c '%U:%G %a %n' /var/ossec/etc/authd.pass < /dev/null
+
+sudo docker compose logs wazuh.manager --tail 40 | grep -i authd
+```
+
+If the file contents don't match what you generated, the bind mount didn't land and authd
+invented its own. Enrolling agents then use `WAZUH_REGISTRATION_PASSWORD` matching whatever
+that `cat` returned.
+
+### Agent side
+
+```
+msiexec.exe /i wazuh-agent-4.14.6-1.msi /q ^
+  WAZUH_MANAGER="<manager-ip>" ^
+  WAZUH_REGISTRATION_SERVER="<manager-ip>" ^
+  WAZUH_REGISTRATION_PASSWORD="<the authd password>" ^
+  WAZUH_AGENT_NAME="<hostname>" ^
+  WAZUH_AGENT_GROUP="phase-a-windows" ^
+  WAZUH_PROTOCOL="tcp"
+```
+
+The password is written to `authd.pass` on the agent too, under
+`C:\Program Files (x86)\ossec-agent\`. It's only used at enrollment, not per-message.
 
 ## Accounts deliberately removed
 

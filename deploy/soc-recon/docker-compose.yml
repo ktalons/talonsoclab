@@ -113,6 +113,12 @@ services:
       # every boot. In git because /var/ossec/etc/shared/ is inside the wazuh_etc
       # volume and does NOT survive `down -v`.
       - ./wazuh/shared:/wazuh-config-mount/etc/shared:ro
+      # Agent enrollment password (authd). Gitignored — only authd.pass.example is
+      # tracked. Lives in the wazuh_etc volume otherwise, so it would not survive
+      # `down -v`. If this file is missing while <use_password>yes</use_password> is
+      # set, authd GENERATES a random password instead of failing — agents then get
+      # "Invalid password" and the manager log is the only place that says why.
+      - ./wazuh/authd.pass:/wazuh-config-mount/etc/authd.pass:ro
     networks: [soc]
 
   wazuh.dashboard:
