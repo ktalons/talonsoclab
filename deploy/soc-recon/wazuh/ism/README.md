@@ -17,21 +17,31 @@ This is the single cheapest piece of insurance in the stack.
 
 ## Apply
 
+> **Run every indexer API call from inside a container.** `9200` is deliberately **not**
+> host-published (see `docker-compose.yml` — the indexer exposes no `0.0.0.0` binding), so
+> `curl https://localhost:9200` from the host connects to nothing. With `curl -s` that failure
+> is silent and `jq` prints nothing on empty input, so a call that never left the host looks
+> identical to one that returned an empty result. Use `docker compose exec`.
+
 ```bash
 cd ~/talonsoclab/deploy/soc-recon
 PASS=$(grep ^WAZUH_INDEXER_PASS .env | cut -d= -f2 | awk '{print $1}')
 
-curl -sk -u admin:"$PASS" \
+sudo docker compose exec -T wazuh.indexer \
+  curl -sk -u admin:"$PASS" \
   -H 'Content-Type: application/json' \
   -X PUT "https://localhost:9200/_plugins/_ism/policies/wazuh-alerts-retention" \
-  -d @wazuh/ism/wazuh-alerts-retention.json | jq
+  -d @- < wazuh/ism/wazuh-alerts-retention.json | jq
 ```
+
+`-d @-` reads the policy from stdin; `exec -T` is what pipes the host-side file through.
 
 `ism_template` auto-attaches the policy to **newly created** indices matching
 `wazuh-alerts-*`. Indices that already exist when you apply it need attaching by hand:
 
 ```bash
-curl -sk -u admin:"$PASS" \
+sudo docker compose exec -T wazuh.indexer \
+  curl -sk -u admin:"$PASS" \
   -H 'Content-Type: application/json' \
   -X POST "https://localhost:9200/_plugins/_ism/add/wazuh-alerts-*" \
   -d '{"policy_id":"wazuh-alerts-retention"}' | jq
@@ -45,7 +55,8 @@ been indexed yet. Re-run it after the first agent enrolls and alerts start landi
 Don't trust the PUT. Check that the policy is registered:
 
 ```bash
-curl -sk -u admin:"$PASS" \
+sudo docker compose exec -T wazuh.indexer \
+  curl -sk -u admin:"$PASS" \
   "https://localhost:9200/_plugins/_ism/policies/wazuh-alerts-retention" | jq '.policy.states'
 ```
 
@@ -53,7 +64,8 @@ And once indices exist, confirm the policy is actually managing them — this is
 the check `ISA.md` refers to:
 
 ```bash
-curl -sk -u admin:"$PASS" \
+sudo docker compose exec -T wazuh.indexer \
+  curl -sk -u admin:"$PASS" \
   "https://localhost:9200/_plugins/_ism/explain/wazuh-alerts-*" | jq
 ```
 
