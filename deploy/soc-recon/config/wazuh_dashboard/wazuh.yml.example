@@ -1,0 +1,24 @@
+# Wazuh dashboard -> Wazuh manager API connection.
+#
+# ── COPY TO wazuh.yml AND SET THE REAL PASSWORD ──
+# The real file is gitignored: this password is stored in PLAINTEXT, not hashed.
+#
+#   cp config/wazuh_dashboard/wazuh.yml.example config/wazuh_dashboard/wazuh.yml
+#
+# `password` must equal WAZUH_API_PASS in .env. They are two independent copies of
+# the same secret: .env sets it on the manager (API_PASSWORD, applied every start),
+# this file is what the dashboard presents when it connects. Rotate one without the
+# other and the dashboard shows "No API available to connect" while the manager API
+# itself is perfectly healthy — the failure surfaces nowhere near its cause.
+#
+# After editing:  docker compose restart wazuh.dashboard
+#
+# The value below is Wazuh's PUBLISHED DEFAULT. Replace it.
+
+hosts:
+  - 1513629884013:
+      url: "https://wazuh.manager"
+      port: 55000
+      username: wazuh-wui
+      password: "MyS3cr37P450r.*-"
+      run_as: false
