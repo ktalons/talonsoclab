@@ -108,6 +108,11 @@ services:
       # custom content through /wazuh-config-mount instead; the entrypoint syncs
       # it into /var/ossec AFTER the payload install, on every boot.
       - ./wazuh/custom-rules:/wazuh-config-mount/etc/rules/custom:ro
+      # Shared agent-group configs. Same reasoning as custom-rules above: routed
+      # through /wazuh-config-mount so the entrypoint syncs it into /var/ossec on
+      # every boot. In git because /var/ossec/etc/shared/ is inside the wazuh_etc
+      # volume and does NOT survive `down -v`.
+      - ./wazuh/shared:/wazuh-config-mount/etc/shared:ro
     networks: [soc]
 
   wazuh.dashboard:
