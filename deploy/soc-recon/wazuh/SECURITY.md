@@ -6,17 +6,32 @@ record of what worked, not a draft.
 
 ## What you're rotating, and where each password lives
 
-| Password | Account | Lives in | Consumed by |
-|---|---|---|---|
-| `WAZUH_INDEXER_PASS` | `admin` | `.env` **and** a bcrypt hash in `config/wazuh_indexer/internal_users.yml` | filebeat (manager→indexer), dashboard's indexer connection, CASA digest |
-| `WAZUH_DASHBOARD_PASS` | `kibanaserver` | `.env` **and** a bcrypt hash in `internal_users.yml` | dashboard service account |
-| `WAZUH_API_PASS` | `wazuh-wui` | `.env` only | Wazuh manager API (`:55000`) |
+**Every secret here lives in at least two places, and the copies fail independently and
+silently.** This table is the whole job — miss one cell and something breaks far from the cause.
 
-`wazuh-wui` is **not** an indexer internal user — it's a manager API account, applied from
-`API_PASSWORD` on every container start. It needs no hash and no `securityadmin` run.
+| Password | Account | Server-side copy | Client-side copy | Format |
+|---|---|---|---|---|
+| `WAZUH_INDEXER_PASS` | `admin` | bcrypt in `config/wazuh_indexer/internal_users.yml`, pushed via `securityadmin` | `.env` → filebeat, dashboard, CASA digest, indexer healthcheck | hash / plaintext |
+| `WAZUH_DASHBOARD_PASS` | `kibanaserver` | bcrypt in `internal_users.yml`, pushed via `securityadmin` | `.env` → dashboard service account | hash / plaintext |
+| `WAZUH_API_PASS` | `wazuh-wui` | `.env` → manager `API_PASSWORD`, applied every start | **`config/wazuh_dashboard/wazuh.yml`** → dashboard's API connection | plaintext / plaintext |
 
-Three places for the indexer passwords: `.env`, `internal_users.yml`, and your password
-manager. Miss one and you get an authentication failure with no useful error.
+Plus the password manager (PHOENIX Tier 3), which is the only place any of them can be
+*recovered* from — a Tier 2 snapshot restores hashes, never passwords.
+
+`wazuh-wui` is **not** an indexer internal user. It's a manager API account: no bcrypt hash, no
+`securityadmin` run. It needs `.env` **and** `wazuh.yml`.
+
+> **The `wazuh.yml` copy is the one that gets forgotten.** Rotate `.env` without it and the
+> manager API is completely healthy while the dashboard overview reports
+> **"No API available to connect"**. Testing `curl -u wazuh-wui:<new> :55000` returns `200` and
+> looks like proof — it isn't. That proves the *server* accepted the new password. It says
+> nothing about whether every *client* was updated. Verified the hard way, 2026-07-26.
+
+Both `internal_users.yml` and `wazuh.yml` are **gitignored** — they hold a real bcrypt hash and
+a real plaintext password respectively. Only their `.example` files are tracked. After any
+`git pull` that first introduces the ignore rule, git **deletes** your local copy; recreate it
+from the `.example` before restarting anything, or Docker will create a directory at the
+bind-mount path.
 
 ## Why lockout isn't a risk
 
@@ -99,7 +114,22 @@ image defaults.
 Expect `Connected as "CN=admin,OU=Wazuh,..."`, `Force type: internalusers`, and
 `updated_config_size: 1`.
 
-### 5. Recreate
+### 5. Update the dashboard's copy of the API password
+
+Separate file, plaintext, and easy to miss because nothing references it during the indexer work.
+
+```bash
+nano config/wazuh_dashboard/wazuh.yml    # password: must equal WAZUH_API_PASS in .env
+```
+
+If the file is absent (a `git pull` removed it when the ignore rule landed):
+
+```bash
+cp config/wazuh_dashboard/wazuh.yml.example config/wazuh_dashboard/wazuh.yml
+ls -la config/wazuh_dashboard/    # confirm it's a FILE, not a directory
+```
+
+### 6. Recreate
 
 ```bash
 sudo docker compose up -d --force-recreate
@@ -152,9 +182,22 @@ curl -sk -o /dev/null -w 'HTTP %{http_code}\n' \
   -X POST https://localhost:55000/security/user/authenticate
 ```
 
-Want `401`. Verified 2026-07-26: `API_PASSWORD` is applied on every manager start, so the API
-password rotates from `.env` alone — no separate procedure needed, despite the RBAC database
-persisting in the `wazuh_api_configuration` volume.
+Want `401`. Verified 2026-07-26: `API_PASSWORD` is applied on every manager start, so the
+*manager side* rotates from `.env` alone, despite the RBAC database persisting in the
+`wazuh_api_configuration` volume.
+
+### Client-side check — do not skip this
+
+Server-side `200`/`401` results say nothing about whether clients were updated. Finish by
+confirming the dashboard itself:
+
+- Log into the dashboard and check the **API card on the overview page reads `Online v4.14.6`**.
+  "No API available to connect" means `wazuh.yml` still holds the old password.
+- `docker compose ps` shows all three containers, with the indexer `(healthy)` — the dashboard
+  cannot start at all unless the indexer's healthcheck authenticated with the `.env` password.
+
+A rotation is only complete when both the old credential is rejected **and** every client
+presents the new one.
 
 ## Accounts deliberately removed
 
