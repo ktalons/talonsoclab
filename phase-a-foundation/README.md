@@ -62,11 +62,11 @@ Detailed per-component runbooks get written *as each step is executed on the rea
 
 ## Acceptance criteria
 
-- [ ] `docker compose up -d` brings the stack green; dashboard reachable at `https://<host>`
+- [x] `docker compose up -d` brings the stack green; dashboard reachable at `https://<host>` *(4.14.6, 2026-07-25)*
 - [ ] All 3 endpoint agents visible in Wazuh inventory, status = active
 - [ ] Suricata `eve.json` events visible in the dashboard (filter `data.suricata.*`)
 - [ ] ≥1 custom dashboard with ≥3 visualizations exported to `dashboards/*.ndjson`
-- [ ] ISM retention policy active; `df -h` headroom confirmed
+- [x] ISM retention policy active; `df -h` headroom confirmed *(`total_managed_indices: 1`; 184G avail, 17% used, 2026-07-25)*
 - [ ] Screen recording in `screenshots/walkthrough.mp4`
 - [ ] Top-level README Phase A status flipped to 🟢
 - [ ] Portfolio site card updated to "Live"; blog post #1 published; LinkedIn post
