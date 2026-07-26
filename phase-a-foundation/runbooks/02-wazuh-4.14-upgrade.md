@@ -58,12 +58,34 @@ curl -sk -H "Authorization: Bearer $TOKEN" \
   "https://localhost:55000/agents?select=id,name,version,status" | jq '.data.affected_items'
 ```
 
-Then snapshot before touching anything — the post-session checklist calls for a PHOENIX Tier 2
-snapshot whenever an acceptance box flips, and this flips several:
+Then take a **PHOENIX Tier 2 snapshot** ([`PHOENIX.md`](../PHOENIX.md) § Tier 2). Its stated
+cadence is "before any risky change," and `down -v` qualifies.
+
+Be clear about what this snapshot is for. It is **not** protecting the data — we chose the
+clean rebuild precisely because these volumes hold nothing but manager self-alerts. It's
+protecting the **rollback path**: if 4.14.6 misbehaves, this is what lets you get a working
+4.9.2 stack back (see § 7). Two minutes for a known-good escape hatch.
 
 ```bash
-# PHOENIX Tier 2 volume snapshot — see phase-a-foundation/PHOENIX.md
+DATE=$(date +%Y-%m-%d); mkdir -p ~/vol-snap
+cd ~/talonsoclab/deploy/soc-recon && sudo docker compose stop
+for v in soc-recon_indexer_data soc-recon_wazuh_etc soc-recon_wazuh_queue soc-recon_wazuh_api_configuration; do
+  sudo docker run --rm -v "$v":/from -v ~/vol-snap:/to alpine \
+    tar czf "/to/${v}_${DATE}.tar.gz" -C /from .
+done
+sudo docker compose start
+ls -lh ~/vol-snap/
 ```
+
+Then pull them to the external drive — run this **from the Mac**, not the box:
+
+```bash
+DATE=$(date +%Y-%m-%d)
+mkdir -p "/Volumes/MacbookXD/talonsoclab/volumes/$DATE"
+rsync -avh talon@talonsoclab:~/vol-snap/ "/Volumes/MacbookXD/talonsoclab/volumes/$DATE/"
+```
+
+Four tarballs on the external drive before you proceed. Not three.
 
 ---
 
@@ -114,6 +136,12 @@ rm -rf config/wazuh_indexer_ssl_certs/*
 
 # regenerate certs with the 4.14 cert tool
 sudo docker compose -f generate-indexer-certs.yml run --rm generator
+
+# REQUIRED — the generator writes a root-owned 0500 dir that container UIDs
+# cannot traverse. Skip this and the indexer dies on unreadable certs.
+# (This is the same trap recorded in PHOENIX.md Stage 1.)
+sudo chmod 755 config/wazuh_indexer_ssl_certs
+sudo chmod 644 config/wazuh_indexer_ssl_certs/*
 ls -la config/wazuh_indexer_ssl_certs/
 
 # pull 4.14.6 images, then bring it up
@@ -183,3 +211,46 @@ only becomes relevant for the *next* jump, once these agents exist.
 
 Post-session checklist: secrets scrubbed, acceptance boxes updated in `README.md`, PHOENIX
 snapshot of the newly-green 4.14.6 stack, commit + push.
+
+---
+
+## 7. Rollback — if 4.14.6 won't come up
+
+This is what the § 1 snapshot bought. Rolling back is **two moves, not one** — the volumes and
+the config have to go back together, because the 4.9.2 volumes only work with 4.9.2's mount
+paths. Restore one without the other and you get the same cert-not-found failure from the
+opposite direction.
+
+```bash
+cd ~/talonsoclab/deploy/soc-recon
+
+# 1. config back to 4.9.2
+git revert --no-edit a796f31
+sed -i 's/^WAZUH_VERSION=.*/WAZUH_VERSION=4.9.2/' .env
+
+# 2. volumes back to the snapshot
+sudo docker compose down -v
+DATE=<the snapshot date>
+for v in soc-recon_indexer_data soc-recon_wazuh_etc soc-recon_wazuh_queue soc-recon_wazuh_api_configuration; do
+  sudo docker volume create "$v"
+  sudo docker run --rm -v "$v":/to -v ~/vol-snap:/from alpine \
+    sh -c "tar xzf /from/${v}_${DATE}.tar.gz -C /to"
+done
+
+# 3. certs must go back to the 0.0.2 / 4.9 set too
+rm -rf config/wazuh_indexer_ssl_certs/*
+sudo docker compose -f generate-indexer-certs.yml run --rm generator
+sudo chmod 755 config/wazuh_indexer_ssl_certs && sudo chmod 644 config/wazuh_indexer_ssl_certs/*
+
+sudo docker compose up -d
+```
+
+**Before reaching for this**, check the likely failure first — most 4.14 boot failures on this
+stack will be the cert permissions from § 3, not the version:
+
+```bash
+sudo docker compose logs wazuh.indexer | tail -40
+```
+
+If you see permission or "file not found" errors on anything under
+`/usr/share/wazuh-indexer/config/certs/`, that's the chmod, not a reason to roll back.
