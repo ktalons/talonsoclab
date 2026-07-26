@@ -3,12 +3,19 @@
 #   docker compose -f generate-indexer-certs.yml run --rm generator
 # Writes node + admin + root-CA certs into ./config/wazuh_indexer_ssl_certs/
 # (gitignored — never commit generated keys). Re-run only to rotate certs.
+#
+# 4.14 NOTE: the generator image and CERT_TOOL_VERSION are a matched pair. Bumping
+# WAZUH_VERSION in .env without bumping these leaves you with certs the 4.14 indexer
+# won't accept. Clear ./config/wazuh_indexer_ssl_certs/ before re-running — the tool
+# will not overwrite an existing cert set.
 name: soc-recon-certs
 
 services:
   generator:
-    image: wazuh/wazuh-certs-generator:0.0.2
+    image: wazuh/wazuh-certs-generator:0.0.4
     hostname: wazuh-certs-generator
+    environment:
+      - CERT_TOOL_VERSION=4.14
     volumes:
       - ./config/wazuh_indexer_ssl_certs/:/certificates/
       - ./config/certs.yml:/config/certs.yml
