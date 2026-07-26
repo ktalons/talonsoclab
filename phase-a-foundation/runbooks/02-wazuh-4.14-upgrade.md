@@ -209,9 +209,14 @@ The policy is now captured in git at
 how it managed to disappear without anything noticing. Apply and verify per that README.
 
 Re-apply it before enrolling any agent, and re-verify with the explain API rather than assuming
-the PUT took. Note that on a freshly rebuilt stack the explain call returns empty because no
-`wazuh-alerts-*` index exists yet — `ism_template` attaches to indices as they're created, so
-the meaningful check is *after* the first agent reports.
+the PUT took.
+
+The explain call is meaningful **immediately**, not only after agents enroll — the manager
+generates alerts about itself from first boot, so `wazuh-alerts-4.x-<today>` exists within
+minutes of the stack coming up and `ism_template` attaches the policy on index creation. Expect
+`total_managed_indices: 1` and state `hot` right away. See
+[`wazuh/ism/README.md`](../../deploy/soc-recon/wazuh/ism/README.md) § "What healthy looks like"
+before concluding anything is stuck.
 
 ---
 
