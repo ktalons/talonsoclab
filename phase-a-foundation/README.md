@@ -20,7 +20,7 @@ Docker. **Stack:** [`deploy/soc-recon/`](../deploy/soc-recon/).
 
 - [x] Stack green; dashboard reachable *(4.14.6)*
 - [x] ISM retention policy active and version-controlled
-- [ ] All 3 endpoint agents active *(1 of 3: Windows)*
+- [x] All 3 endpoint agents active — Windows, Linux, macOS
 - [ ] Suricata events visible in the dashboard
 - [ ] ≥1 custom dashboard with ≥3 visualizations exported
 - [ ] Walkthrough recording; blog post
