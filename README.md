@@ -17,8 +17,8 @@ This is my first home lab. I learn by building the thing instead of reading abou
 
 ## Follow along
 
-<img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> Project page: <https://ktalons.github.io/projects/talonsoclab/>
-<img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> Blog posts as each phase ships: <https://ktalons.github.io/blog/>
-<img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> CASA (reasoning layer / capstone): <https://github.com/ktalons/casa-ai-agent>
-<img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> Main site: <https://ktalons.github.io/>
+<img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> Project page: <https://ktalons.github.io/projects/talonsoclab/><br>
+<img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> Blog posts as each phase ships: <https://ktalons.github.io/blog/><br>
+<img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> CASA (reasoning layer / capstone): <https://github.com/ktalons/casa-ai-agent><br>
+<img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> Main site: <https://ktalons.github.io/><br>
 <img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> LinkedIn: <https://www.linkedin.com/in/ta1ons/>
