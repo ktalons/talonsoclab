@@ -1,56 +1,59 @@
-# Build Schedule — docker-compose edition
+# Build Schedule
 
-> Rebuilt after the BUY + docker-compose pivot (2026-06-20). The old Proxmox session
-> plan is archived under [`archive-proxmox/BUILD-SCHEDULE.md`](archive-proxmox/BUILD-SCHEDULE.md).
-> Windows are anchored to **hardware arrival** (the EliteDesk), since that gates Phase 0.
-> Sun + Wed PM blocks per the time budget; each session ends with a commit.
+> Phase plan for the docker-compose build. The old Proxmox session plan is archived under
+> [`archive-proxmox/BUILD-SCHEDULE.md`](archive-proxmox/BUILD-SCHEDULE.md).
+>
+> Constraint that shapes everything below: **16 GB RAM and a 256 GB NVMe**. Indexer heap is
+> capped at 2g, always-on footprint at roughly 6.5 GB, and retention is set day one.
 
-## Phase map
+## Phases
 
-| Phase | Window (T = box arrives) | Deliverable | Fits 16 GB? |
-|---|---|---|---|
-| **0 — Substrate cutover** | T → T+1 weekend | Ubuntu + Docker on the EliteDesk; `deploy/soc-recon` stack green; ISM retention set; PHOENIX backups live | ✅ |
-| **A — Foundation (docker edition)** | T+1 → T+2 wk | Wazuh ingesting real telemetry from Win + Mac + host agents; Suricata container; 3 dashboards; walkthrough | ✅ |
-| **B — Detection Engineering** | A+1 → A+3 wk | Sigma pack → Wazuh XML; Atomic Red Team validation; ATT&CK coverage map; purple-team writeup | ✅ |
-| **CASA integration** *(threads B→D)* | from B onward | TalonSocLab emits `intake.json`; CASA (separate repo) reasons over it; eval writeup = capstone | ✅ |
-| **C — AD Attack & Defense** | post-B → ~Sep | Mini-AD (on-box, non-concurrent) **or** cloud-burst GOAD; top-5 AD detection chain; purple-team report | ⚠️ trim/cloud |
-| **D — Honeynet + Threat Intel** | post-C → ~Oct | T-Pot on a VPS → home Wazuh; OpenCTI (cloud/trimmed); AbuseIPDB + VT enrichment → CASA | ⚠️ cloud (correct) |
+| Phase | Deliverable | Status |
+|---|---|---|
+| **0 — Substrate** | Ubuntu + Docker on the EliteDesk; Wazuh stack green; ISM retention; backups verified | ✅ complete |
+| **A — Foundation** | Wazuh ingesting real telemetry from Windows + Mac + host; Suricata; dashboards | 🚧 in progress |
+| **B — Detection Engineering** | Sigma pack → Wazuh rules; Atomic Red Team validation; ATT&CK coverage map | 🔴 not started |
+| **C — AD Attack & Defense** | Mini-AD, top-5 AD detection chain, purple-team report | 🔴 not started |
+| **D — Honeynet + Threat Intel** | T-Pot → Wazuh; OpenCTI; AbuseIPDB + VT enrichment | 🔴 not started |
 
-## Phase 0 — Substrate cutover (the unblock)
+**CASA integration** threads from Phase B onward: TalonSocLab emits `intake.json`,
+[CASA](https://github.com/ktalons/casa-ai-agent) reasons over it, and the evaluation writeup is
+the capstone.
 
-| # | Block | Goal | Commit |
-|---|---|---|---|
-| 0.1 | on arrival | Ubuntu Server 26.04 installed ✅; `vm.max_map_count` ✅; Docker + compose ✅; UFW ✅; SSH key-only ✅ — **complete 2026-07-11** | `phase-0: host base + docker` |
-| 0.2 | +1 day | `deploy/soc-recon` up ✅; indexer healthcheck green ✅; dashboard reachable ✅; ISM retention set ✅ — **complete 2026-07-11** | `phase-0: wazuh stack live on owned box` |
-| 0.3 | +1 day | PHOENIX Tier 2 volume-snapshot script run ✅ + copied to external drive ✅ (integrity-checked) — **complete 2026-07-11** | `phase-0: phoenix backups verified` |
-| 0.4 | cable arrival | Wired cutover: box on TL-SG108E @1000Mb/s ✅; `eno1` DHCP fixed + reserved ✅; interim WiFi stripped ✅; BIOS After-Power-Loss=On ✅; stack re-verified green ✅ — **complete 2026-07-24** | `phase-0.4: switch cutover + wired` |
-| 0.5 | before A.1 | Stack 4.9.2 → **4.14.6** clean rebuild ✅; certs regenerated w/ cert-tool 4.14 ✅; 10 daemons ✅; filebeat→indexer TLS1.2 ✅; health yellow (correct single-node) ✅; ISM retention re-applied, version-controlled, `total_managed_indices: 1` ✅ — **complete 2026-07-25. PHASE 0 DONE.** [runbook](runbooks/02-wazuh-4.14-upgrade.md) | `phase-0.5: wazuh 4.14.6 upgrade` |
+## Phase 0 — Substrate ✅
 
-## Phase A — Foundation (docker edition)
+| # | Deliverable | Runbook |
+|---|---|---|
+| 0.1 | Ubuntu Server + Docker + UFW; SSH key-only | [00](runbooks/00-host-ubuntu-docker.md) |
+| 0.2 | `deploy/soc-recon` stack up; indexer healthy; dashboard reachable; ISM retention set | [deploy README](../deploy/soc-recon/README.md) |
+| 0.3 | Volume snapshots verified onto external storage | [PHOENIX](PHOENIX.md) |
+| 0.4 | Wired cutover through the smart switch; DHCP reservation; BIOS power posture | [01](runbooks/01-network-switch-cutover.md) |
+| 0.5 | Wazuh 4.9.2 → **4.14.6** clean rebuild; certs regenerated; ISM version-controlled | [02](runbooks/02-wazuh-4.14-upgrade.md) |
 
-| # | Block | Goal | Commit |
-|---|---|---|---|
-| A.0 | before A.1 | SSH access to the **Dell OptiPlex 7070** (`talondellbox`): OpenSSH Server ✅; StartType Automatic ✅; `NetworkCategory` Public→Private (silently voided the firewall rule) ✅; dedicated lab keypair ✅; `administrators_authorized_keys` + ACL ✅; key-only login proven under `BatchMode` ✅; DefaultShell→PowerShell ✅ — **complete 2026-07-26.** [runbook](runbooks/03-windows-ssh-access.md) | `phase-a.0: ssh access to windows endpoint` |
-| A.1 | Sun | Wazuh agent + Sysmon on the **Dell OptiPlex 7070** (`talondellbox`, Win 11 Pro 26200, bare metal): PowerShell 7.6.4 ✅; Sysmon 15.21 + sysmon-modular (hash-pinned, schema 4.90) ✅; `SysmonDrv` loaded ✅; agent 4.14.6 enrolled into `phase-a-windows` as `001`, **Active**, connected on 1514/tcp ✅; enrollment password moved as bytes, never on a command line, removed post-enrollment ✅; Sysmon telemetry queryable in the indexer ✅; ISM verified on the newly-rolled index ✅ — **complete 2026-07-26.** [runbook](runbooks/04-windows-agent-sysmon.md) | `phase-a.1: windows agent + sysmon` |
-| A.2 | Wed PM | Wazuh agents on the Mac + the Ubuntu host (auditd); all 3 endpoints active | `phase-a: mac + host agents` |
-| A.3 | Sun | Suricata container on host NIC; `data.suricata.*` in dashboard; 3 dashboards → ndjson | `phase-a: suricata + dashboards` |
-| A.4 | Mon | Walkthrough recording; README status 🟢; portfolio card "Live"; blog #1; LinkedIn | `phase-a: ship v1.0` |
+The version jump landed here deliberately: the manager must be at or above every agent that
+reports to it, and the floor is cheapest to set when nothing is enrolled yet.
+
+## Phase A — Foundation 🚧
+
+| # | Deliverable | Status |
+|---|---|---|
+| A.0 | SSH access to the Windows endpoint; key-only login | ✅ [03](runbooks/03-windows-ssh-access.md) |
+| A.1 | Wazuh agent + Sysmon on Windows, enrolled and verified from the manager | ✅ [04](runbooks/04-windows-agent-sysmon.md) |
+| A.2 | Agents on the Mac and the Ubuntu host (auditd); all three endpoints active | ⬜ |
+| A.3 | Suricata on the host NIC; `data.suricata.*` in the dashboard; 3 dashboards exported | ⬜ |
+| A.4 | Walkthrough recording; README status green; blog post | ⬜ |
 
 ## Slip plan
 
-1. If endpoints lag, ship with 2 of 3 agents and add the third in a recovery block — the
-   stack being live matters more than the third agent.
-2. If Suricata fights the host NIC, drop it to a Phase B opener (it's not core to "live SOC").
-3. Hard rule: protect health and the Sec+ / interview blocks. The lab slips before they do.
+1. If endpoints lag, ship with 2 of 3 agents and add the third later. The stack being live
+   matters more than the third agent.
+2. If Suricata fights the host NIC, drop it to a Phase B opener. It isn't core to "live SOC."
+3. Health and study blocks come first. The lab slips before they do.
 
-## Pre-session checklist
-- [ ] `git pull` latest `talonsoclab`
-- [ ] Open `architecture.mmd` + the relevant section of `README.md`
-- [ ] Confirm the box is reachable and the stack is green (`docker compose ps`)
+## Session checklist
 
-## Post-session checklist
-- [ ] Config changes captured in `deploy/soc-recon/` or a runbook diff
-- [ ] Secrets scrubbed (no passwords/keys/real IPs) before commit
-- [ ] Acceptance checklist updated in `README.md`
-- [ ] PHOENIX volume snapshot if an acceptance box flipped
-- [ ] `git commit && git push`
+**Before:** `git pull`; confirm the box is reachable and `docker compose ps` is green.
+
+**After:** config changes captured in `deploy/soc-recon/` or a runbook; secrets and real IPs
+scrubbed; acceptance boxes updated; PHOENIX snapshot if an acceptance box flipped; commit and
+push.
