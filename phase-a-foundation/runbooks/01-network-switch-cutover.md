@@ -97,33 +97,3 @@ hard-coded on the box.
 Left unconfigured on purpose: **802.1Q VLANs** (segmenting management / victim / sensor —
 Phase C) and **SPAN** (Phase A.3, once there's a sensor to mirror to). Flat L2 is the correct
 Phase 0 state.
-
----
-
-## Findings
-
-**A declared interface is not a leasing interface.** `eno1` came up at gigabit with carrier and
-had no IPv4 at all. The installer's `00-installer-config.yaml` declared it properly — a `match:`
-plus `set-name:` block — but the only `dhcp4: true` in the file sat under the **`wifis:`**
-block. A fully declared interface with no `dhcp4` of its own never asks for an address. It
-presents as a link problem and isn't one. Fix is `dhcp4: true` plus `optional: true` under
-`eno1`.
-
-**The WiFi config wasn't in its own file.** The plan said "delete `02-wifi.yaml`." That file
-never existed. Ubuntu's installer folds the WPA join, SSID and PSK included, into a `wifis:`
-block inside the same installer netplan file. The teardown is removing a block, not deleting a
-file — and since that block is the tail of the file, `sed '/wifis:/,$d'` does it cleanly.
-
-**Use `netplan`, not `dhclient`.** Ubuntu 26.04 ships `systemd-networkd`, not the ISC client.
-`netplan apply` and `networkctl renew` are the right tools; reaching for `dhclient` out of habit
-produces confusing errors.
-
-**Terminal type breaks remote editors.** SSHing from Ghostty, remote `nano` dies with
-`cannot initialize terminal type ($TERM="xterm-ghostty")` — the box's ncurses has no terminfo
-for it. Another argument for `sed` over an interactive editor in a runbook. Workaround:
-`sudo TERM=xterm nano <file>`.
-
-**Default credentials on the management plane.** The SG108E pulled its own DHCP lease and
-appeared as a wired client, still on `admin`/`admin`. A managed switch is a management plane
-sitting inside the network it manages — exactly the anti-pattern this lab is meant to teach.
-Flagged and deferred to Phase C rather than left unnoticed.

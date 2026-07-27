@@ -283,4 +283,4 @@ cp config/wazuh_indexer/internal_users.yml.example \
    config/wazuh_indexer/internal_users.yml
 ```
 
-See [`PHOENIX.md`](../../../phase-a-foundation/PHOENIX.md) Stage 1.
+See the recovery runbook, Stage 1.
