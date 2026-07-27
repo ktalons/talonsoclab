@@ -48,7 +48,7 @@ appeared within 30 seconds.
 **One-time per volume lifetime, not per boot.** The entrypoint leaves an existing directory's
 ownership alone; confirmed across a `docker compose restart wazuh.manager`. It only recurs
 after the volume is destroyed, which is why it's also recorded in
-[`PHOENIX.md`](../../../phase-a-foundation/PHOENIX.md) Stage 2.
+[`PHOENIX.md`](../../../../phase-a-foundation/PHOENIX.md) Stage 2.
 
 ## Verify
 

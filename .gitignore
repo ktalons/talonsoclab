@@ -32,3 +32,8 @@ docs/internal/
 /ISA.md
 # hardware inventory + spend + rack topology — internal
 /lab-hardware-update.md
+# Detailed personal-record versions of the public runbooks. The public tree carries
+# the summarized walkthroughs; these keep the full failure analysis and correction
+# trails. Mirrors the public path layout so provenance is obvious.
+# NOT version-controlled — PHOENIX Tier 2 rsyncs this to the external drive.
+/internal/
