@@ -240,8 +240,65 @@ Applies to the next new session; no service restart.
 - [x] Key-only login confirmed under `BatchMode=yes`
 - [x] `administrators_authorized_keys` ACL = SYSTEM + Administrators only
 - [x] Host key fingerprint verified out-of-band
-- [x] Default shell = PowerShell
-- [ ] Password authentication disabled *(deferred — after A.1, while console access is easy)*
+- [x] Default shell = PowerShell — **corrected 2026-07-27.** This box was ticked in error: the
+  `New-ItemProperty` above never took, `HKLM\SOFTWARE\OpenSSH` had no `DefaultShell` value, and
+  the remote shell stayed `cmd.exe`. It surfaced when a `|` in a remote command was interpreted by
+  cmd instead of PowerShell (`'PubkeyAuthentication' is not recognized`). Now set, and pointed at
+  `C:\Program Files\PowerShell\7\pwsh.exe` rather than Windows PowerShell 5.1. Verified by
+  `ssh talondell '$PSVersionTable.PSVersion.ToString()'` → `7.6.4`, and `scp` re-tested afterwards
+  (unaffected — OpenSSH 9.5 runs scp over the SFTP subsystem, not the login shell).
+- [x] Password authentication disabled — **completed 2026-07-27, after A.1.**
+
+### Closing password auth — the part most guides miss
+
+`PasswordAuthentication no` **is not sufficient on Windows.** With only that set, the refusal reads:
+
+```
+Permission denied (publickey,keyboard-interactive).
+```
+
+`KbdInteractiveAuthentication` is a *separate* method, defaults to `yes`, and on Microsoft's
+OpenSSH port it performs password validation — handing back the exact login path you meant to
+close. Both directives are required:
+
+```
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+```
+
+**Placement matters more than the values.** `sshd_config` ends with a `Match Group administrators`
+block, and **`Match` scopes everything after it until the next `Match` or EOF** — so appending to
+the end of the file silently scopes your hardening to that one group. That happened here: an
+`Add-Content` landed the directive below the `Match` line and `sshd -T` kept reporting
+`kbdinteractiveauthentication yes`, because `sshd -T` without `-C` prints only the global config.
+The line has to go **above** the `Match` block. Verify by line number, not by assumption:
+
+```powershell
+Select-String -Path C:\ProgramData\ssh\sshd_config -Pattern '^\s*(PasswordAuthentication|KbdInteractiveAuthentication|Match)'
+# want both directives at lower line numbers than the Match line
+```
+
+Always validate before restarting — a bad config means sshd doesn't come back:
+
+```powershell
+& 'C:\Windows\System32\OpenSSH\sshd.exe' -T > C:\lab\install\sshd-effective.txt 2>&1
+"config valid: " + ($LASTEXITCODE -eq 0)
+```
+
+Edit with **PowerShell 7**, not 5.1 — `Set-Content -Encoding utf8NoBOM` matters here, since 5.1's
+`utf8` writes a BOM that sshd cannot parse past. Same trap as `administrators_authorized_keys`.
+
+**Acceptance is the refusal message, not the config file.** From the Mac:
+
+```bash
+ssh -o BatchMode=yes talondell hostname                                    # key auth still works
+ssh -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=0 talondell true # want: Permission denied (publickey).
+```
+
+The second must list **`(publickey)` only**. Any additional method in those parentheses is a
+remaining password path. Note that `NumberOfPasswordPrompts=0` makes the client give up before
+attempting, so a bare "Permission denied" from that flag alone proves nothing — it's the *method
+list* that carries the evidence.
 
 ## Parked decision — Phase C
 
