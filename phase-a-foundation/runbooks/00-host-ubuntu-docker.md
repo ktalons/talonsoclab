@@ -80,27 +80,3 @@ this address, so a moving IP means stale `known_hosts` entries and re-touching e
 
 Next: [`01-network-switch-cutover.md`](01-network-switch-cutover.md), then the stack itself
 (`deploy/soc-recon/README.md`).
-
----
-
-## Findings
-
-**The NIC failure was a missing cable.** The first install attempt died at "all interfaces
-disabled, DHCPv4 autoconfiguration failed." That reads like a driver problem, and a fair
-amount of time went into the e1000e branch — firmware checksum quirks, hardware unit hangs,
-AMT interference. `eno1` turned out to be perfectly healthy and simply cable-less: the lab
-didn't own an ethernet run long enough to reach the rack. Physical layer first isn't just
-triage etiquette, it's where the prior actually sits.
-
-**`carrier` splits the problem in one command.** `cat /sys/class/net/<iface>/carrier` returns
-`1` for a link problem you can stop investigating, `0` for one you can't. That single read
-separates "the cable/port is bad" from "DHCP is bad" before any driver archaeology starts.
-
-**USB WiFi was fine, against expectations.** The original plan avoided USB adapters as
-"Realtek driver roulette on a server." The adapter came up on the in-kernel driver with a
-DHCP lease and carried the box for two weeks. The useful advice was a stability tweak
-(`iw dev <wlan> set power_save off`) and a wired-supersedes plan, not avoidance.
-
-**Guided LVM under-allocates the disk.** It assigns roughly half the volume to `ubuntu-lv`
-and leaves the rest unclaimed, with no warning. On a 256 GB box running an indexer that is
-not a detail you find later at a convenient moment.

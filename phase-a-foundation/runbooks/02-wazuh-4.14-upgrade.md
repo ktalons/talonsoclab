@@ -43,9 +43,8 @@ curl -sk -H "Authorization: Bearer $TOKEN" \
   "https://localhost:55000/agents?select=id,name,version,status" | jq '.data.affected_items'
 ```
 
-Then take a PHOENIX Tier 2 snapshot ([`PHOENIX.md`](../PHOENIX.md)). Its stated cadence is
-"before any risky change," and `down -v` qualifies. Be clear what it's for: **not** protecting
-the data (we chose the rebuild because the volumes hold nothing of value) but protecting the
+Then take a volume snapshot. `down -v` qualifies as a risky change. It isn't protecting the
+data — we chose the rebuild because the volumes hold nothing of value — it's protecting the
 **rollback path**.
 
 ## 2. The change set — [MAC]
@@ -112,33 +111,3 @@ curl -skI https://localhost:443 | head -1
 - [x] ISM retention policy re-applied and **version-controlled**
 
 Next: [`03-windows-ssh-access.md`](03-windows-ssh-access.md).
-
----
-
-## Findings
-
-**The ISM retention policy died with the volumes, and nothing noticed.** It had been applied via
-the indexer API two weeks earlier and marked complete in the build schedule, but it existed only
-inside the `indexer_data` volume. `down -v` erased it. The repo had been asserting an active
-retention policy while holding no copy of it — and on a 256 GB NVMe, no retention is a scheduled
-disk-full incident. It's now version-controlled at
-[`deploy/soc-recon/wazuh/ism/`](../../deploy/soc-recon/wazuh/ism/).
-
-The general rule this produced: **before ticking any acceptance box, ask whether the thing being
-asserted would survive a volume wipe.** If it lives only in a running service, write it to the
-repo first with an apply-and-verify procedure. The same question was still open for dashboard
-saved objects and index templates, which made it cheap to establish the pattern before Phase B
-adds real detection content.
-
-**Cert permissions are a required step, not a cleanup.** The generator writes a root-owned `0500`
-directory that container UIDs cannot traverse. Skip the `chmod` and the indexer dies on
-unreadable certs, which reads like a TLS misconfiguration.
-
-**Upstream 4.14 pins TLS 1.2 and disables 1.3.** This stack negotiated 1.3 fine at 4.9. It's kept
-as upstream ships it so the upgrade lands on a known-good baseline, but it is a downgrade on
-paper and worth revisiting. One line to change back.
-
-**Rollback is two moves, not one.** The 4.9.2 volumes only work with 4.9.2's mount paths, so
-config and volumes have to go back together — restore one without the other and you get the same
-cert-not-found failure from the opposite direction. Certs have to be regenerated with the old
-tool version too. Worth writing down *before* you need it, at 11pm, with the stack down.

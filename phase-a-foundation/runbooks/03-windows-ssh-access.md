@@ -40,8 +40,10 @@ Get-NetConnectionProfile | Select-Object InterfaceAlias, NetworkCategory
 Set-NetConnectionProfile -InterfaceAlias Ethernet -NetworkCategory Private
 ```
 
-Private is correct for a lab LAN regardless, and it matters again for agent↔manager traffic in
-A.1. See Findings for why this was the actual blocker.
+A firewall rule only applies to the profiles it is scoped to. Windows classifies a new wired
+connection as **Public**, so the OpenSSH rule reads `Enabled: True` and is simultaneously not in
+effect — connections time out rather than being refused. Private is also correct for a lab LAN
+regardless, and it matters again for agent↔manager traffic in A.1.
 
 ## 3. Key generation — [MAC]
 
@@ -140,43 +142,3 @@ Any additional method listed in those parentheses is a remaining password path.
 When the Dell becomes the victim network, SSH is either **disabled** or **kept as intentional
 attack surface**. Decide deliberately and write it down. The failure mode is letting an
 admin-authorized key on a deliberately-vulnerable host persist by accident.
-
----
-
-## Findings
-
-**"Timed out" is not "connection refused."** With `sshd` Running and an inbound rule reporting
-`Enabled: True`, every packet still dropped. *Refused* means the packet arrived and something
-declined it. *Timed out* means silent drops, which is firewall-shaped. Windows had classified
-the wired connection as **Public**, so the rule was enabled and simultaneously not in effect —
-a rule only applies to the profiles it's scoped to. Generalise it: **service running + rule
-enabled + still unreachable, on Windows, is the network profile roughly every time.** Check
-`NetworkCategory` before touching anything else.
-
-Ping proved nothing either way, incidentally — Defender blocks inbound ICMP by default, so a
-silent ping is a red herring that sends you looking at the wrong layer.
-
-**Two encoding traps, both presenting as an unexplained password prompt.** PowerShell 5.1's
-`-Encoding utf8` writes a **BOM**, and `sshd` cannot parse past it. `>` or `Out-File` is worse
-— UTF-16LE, nothing works. Use `-Encoding ascii` in 5.1, or PowerShell 7 where `utf8NoBOM` is
-the default. Separately, `/inheritance:r` is mandatory: `sshd` refuses the key file if any
-account beyond Administrators and SYSTEM can write it, and says nothing useful about why.
-
-**`IdentityFile` accumulates rather than first-match-wins.** A `Host *` block above your
-specific host gets its key offered first on every connection, producing one **failed publickey
-attempt logged per login** — self-inflicted false-positive noise in a lab whose whole purpose
-is alerting on failed logons.
-
-**`PasswordAuthentication no` does not close password auth on Windows.**
-`KbdInteractiveAuthentication` is a separate method, defaults to `yes`, and on Microsoft's port
-performs password validation. Both are required, and **placement decides whether they apply at
-all**: `sshd_config` ends with `Match Group administrators`, and `Match` scopes everything after
-it until the next `Match` or EOF. Appending to the end of the file silently scoped the hardening
-to one group — and `sshd -T` without `-C` prints only the global config, so it kept reporting
-`kbdinteractiveauthentication yes` while the file looked correct.
-
-**An acceptance box was ticked and false.** "Default shell = PowerShell" was marked complete,
-but the registry value was never created and the remote shell was still `cmd.exe`. It surfaced
-only when a `|` in a remote command got interpreted by cmd instead of PowerShell. Worth naming
-because it's the same shape as the ISM policy in Phase 0.5: a checked box asserting something
-that nothing had actually verified.
