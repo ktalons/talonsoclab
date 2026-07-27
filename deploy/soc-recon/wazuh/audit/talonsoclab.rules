@@ -29,9 +29,14 @@
 -a never,exit -F arch=b32 -S execve -F exe=/usr/bin/containerd-shim-runc-v2
 -a never,exit -F arch=b64 -S execve -F exe=/usr/bin/containerd
 -a never,exit -F arch=b32 -S execve -F exe=/usr/bin/containerd
-# runc as seen from inside a container's mount namespace -- same binary, different path.
--a never,exit -F arch=b64 -S execve -F exe=/runc
--a never,exit -F arch=b32 -S execve -F exe=/runc
+
+## NOT excludable: runc as seen from inside a container's mount namespace, which the
+## audit log records as exe="/runc". auditd resolves `-F exe=` against the HOST
+## filesystem when the rule loads, `/runc` does not exist there, and the load FAILS --
+## `Error sending add rule data request (No such file or directory)`. Worse, that error
+## aborts the entire load, so the collection rules below never register either and the
+## host silently stops auditing. Verified the hard way 2026-07-27.
+## Net effect: host-side runc is filtered, container-namespace runc is not. Accepted.
 
 ## Command execution, root and non-root, 64-bit.
 -a exit,always -F arch=b64 -F euid=0 -S execve -k audit-wazuh-c
