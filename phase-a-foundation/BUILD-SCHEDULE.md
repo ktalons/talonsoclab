@@ -31,7 +31,7 @@
 | # | Block | Goal | Commit |
 |---|---|---|---|
 | A.0 | before A.1 | SSH access to the **Dell OptiPlex 7070** (`talondellbox`): OpenSSH Server ✅; StartType Automatic ✅; `NetworkCategory` Public→Private (silently voided the firewall rule) ✅; dedicated lab keypair ✅; `administrators_authorized_keys` + ACL ✅; key-only login proven under `BatchMode` ✅; DefaultShell→PowerShell ✅ — **complete 2026-07-26.** [runbook](runbooks/03-windows-ssh-access.md) | `phase-a.0: ssh access to windows endpoint` |
-| A.1 | Sun | Wazuh agent + Sysmon (Hartong) on the **Dell OptiPlex 7070** (`talondellbox`, Win 11 Pro 26200, bare metal); enrolled into `phase-a-windows`, status active | `phase-a: windows agent + sysmon` |
+| A.1 | Sun | Wazuh agent + Sysmon on the **Dell OptiPlex 7070** (`talondellbox`, Win 11 Pro 26200, bare metal): PowerShell 7.6.4 ✅; Sysmon 15.21 + sysmon-modular (hash-pinned, schema 4.90) ✅; `SysmonDrv` loaded ✅; agent 4.14.6 enrolled into `phase-a-windows` as `001`, **Active**, connected on 1514/tcp ✅; enrollment password moved as bytes, never on a command line, removed post-enrollment ✅; Sysmon telemetry queryable in the indexer ✅; ISM verified on the newly-rolled index ✅ — **complete 2026-07-26.** [runbook](runbooks/04-windows-agent-sysmon.md) | `phase-a.1: windows agent + sysmon` |
 | A.2 | Wed PM | Wazuh agents on the Mac + the Ubuntu host (auditd); all 3 endpoints active | `phase-a: mac + host agents` |
 | A.3 | Sun | Suricata container on host NIC; `data.suricata.*` in dashboard; 3 dashboards → ndjson | `phase-a: suricata + dashboards` |
 | A.4 | Mon | Walkthrough recording; README status 🟢; portfolio card "Live"; blog #1; LinkedIn | `phase-a: ship v1.0` |
