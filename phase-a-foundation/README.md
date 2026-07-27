@@ -39,5 +39,4 @@ capstone. TalonSocLab is the data plane; CASA does the analysis.
 ## History
 
 Phase A originally ran as Proxmox VMs on a shared university host. That host died in May 2026,
-so I bought a small SFF and pivoted to docker-compose. The original topology and six VM
-runbooks are preserved in [`archive-proxmox/`](archive-proxmox/).
+so I bought a small SFF and pivoted to docker-compose.
