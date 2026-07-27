@@ -10,10 +10,33 @@
 # platforms in Phase B. Broader file/network auditing is a Phase B decision, not a
 # foundation one -- audit volume is easy to turn on and expensive to turn off.
 
-# Command execution, root and non-root, 64-bit.
+## Exclusions -- MUST come first. auditd rules are first-match, so a `never` rule
+## placed after the `always` rules below would have no effect at all.
+##
+## The container runtime spawns processes constantly (every healthcheck) and none of it
+## is security signal on the host: runc and containerd-shim exist to set up namespaces.
+## Measured 2026-07-27: 4 of 17 execve records in an idle 60s window, and that share
+## grows with every container added.
+##
+## Deliberate blind spot, stated plainly: execs performed BY the runtime itself are no
+## longer recorded. Processes running INSIDE containers still are -- they are ordinary
+## execve calls on the shared kernel, and only the runtime binaries are filtered here.
+## `curl`, `bash`, `grep` and friends are intentionally NOT excluded; they carry real
+## signal and excluding them to save volume would defeat the point of collecting at all.
+-a never,exit -F arch=b64 -S execve -F exe=/usr/bin/runc
+-a never,exit -F arch=b32 -S execve -F exe=/usr/bin/runc
+-a never,exit -F arch=b64 -S execve -F exe=/usr/bin/containerd-shim-runc-v2
+-a never,exit -F arch=b32 -S execve -F exe=/usr/bin/containerd-shim-runc-v2
+-a never,exit -F arch=b64 -S execve -F exe=/usr/bin/containerd
+-a never,exit -F arch=b32 -S execve -F exe=/usr/bin/containerd
+# runc as seen from inside a container's mount namespace -- same binary, different path.
+-a never,exit -F arch=b64 -S execve -F exe=/runc
+-a never,exit -F arch=b32 -S execve -F exe=/runc
+
+## Command execution, root and non-root, 64-bit.
 -a exit,always -F arch=b64 -F euid=0 -S execve -k audit-wazuh-c
 -a exit,always -F arch=b64 -F euid!=0 -S execve -k audit-wazuh-c
 
-# 32-bit equivalents. Cheap to include; a 32-bit binary is otherwise a blind spot.
+## 32-bit equivalents. Cheap to include; a 32-bit binary is otherwise a blind spot.
 -a exit,always -F arch=b32 -F euid=0 -S execve -k audit-wazuh-c
 -a exit,always -F arch=b32 -F euid!=0 -S execve -k audit-wazuh-c
