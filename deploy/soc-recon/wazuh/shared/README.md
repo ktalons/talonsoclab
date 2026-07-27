@@ -10,6 +10,8 @@ survive `docker compose down -v` — same failure class as the ISM policy
 | Group | Purpose |
 |---|---|
 | `phase-a-windows` | Windows endpoints. Adds the Sysmon eventchannel collector on top of the agent's default Security/System/Application channels. |
+| `phase-a-linux` | Linux endpoints. Adds `/var/log/audit/audit.log`; the default config collects syslog and auth.log but not audit. Rules in [`../audit/`](../audit/). |
+| `phase-a-macos` | macOS endpoints. Adds a filtered unified-log collector. The default `/var/log/system.log` carries almost nothing on modern macOS. |
 
 ## How it reaches an agent
 

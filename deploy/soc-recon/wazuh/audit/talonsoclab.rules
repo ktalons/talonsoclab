@@ -1,0 +1,19 @@
+# auditd rules for phase-a-linux endpoints.
+# Deployed to /etc/audit/rules.d/talonsoclab.rules, then `augenrules --load`.
+#
+# In git because /etc/audit/rules.d/ lives on the endpoint, and an endpoint rebuild
+# would otherwise silently produce an agent that reports healthy while collecting
+# nothing useful -- the same failure class as the ISM policy and the agent group config.
+#
+# Scope is deliberately narrow: execve only. That gives Linux process-creation events
+# to pair with Sysmon Event ID 1 on Windows, so the same detection logic can cover both
+# platforms in Phase B. Broader file/network auditing is a Phase B decision, not a
+# foundation one -- audit volume is easy to turn on and expensive to turn off.
+
+# Command execution, root and non-root, 64-bit.
+-a exit,always -F arch=b64 -F euid=0 -S execve -k audit-wazuh-c
+-a exit,always -F arch=b64 -F euid!=0 -S execve -k audit-wazuh-c
+
+# 32-bit equivalents. Cheap to include; a 32-bit binary is otherwise a blind spot.
+-a exit,always -F arch=b32 -F euid=0 -S execve -k audit-wazuh-c
+-a exit,always -F arch=b32 -F euid!=0 -S execve -k audit-wazuh-c
