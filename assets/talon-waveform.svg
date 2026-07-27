@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 360" width="1060" height="360" role="img" aria-label="TalonSocLab">
+  <rect width="1060" height="360" fill="#0A0E12"/>
+  <line x1="424" y1="320.5" x2="1000" y2="320.5" stroke="#00A9E0" stroke-width="1.5" opacity="0.25"/>
+  <path fill="#E6E9ED" d="M90 52 C 250 68 370 168 424 320 C 356 202 252 120 140 112 C 124 92 107 72 90 52 Z"/>
+  <text x="470" y="148" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="54" font-weight="800" letter-spacing="14" fill="#E6E9ED">TALONSOCLAB</text>
+  <text x="472" y="186" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="15" font-weight="500" letter-spacing="4.2" fill="#00A9E0" opacity="0.8">PERSONAL SOC HOME LAB</text>
+  <g>
+    <rect x="470.0" y="291.1" width="11" height="28.9" rx="2" fill="#E6E9ED" opacity="1.0"/>
+    <rect x="491.1" y="275.8" width="11" height="44.2" rx="2" fill="#E6E9ED" opacity="1.0"/>
+    <rect x="512.2" y="294.5" width="11" height="25.5" rx="2" fill="#E6E9ED" opacity="1.0"/>
+    <rect x="533.3" y="262.2" width="11" height="57.8" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="554.3" y="282.6" width="11" height="37.4" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="575.4" y="245.2" width="11" height="74.8" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="596.5" y="287.7" width="11" height="32.3" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="617.6" y="269.0" width="11" height="51.0" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="638.7" y="231.6" width="11" height="88.4" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="659.8" y="280.9" width="11" height="39.1" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="680.9" y="258.8" width="11" height="61.2" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="702.0" y="190.8" width="11" height="129.2" rx="2" fill="#E2603C" opacity="1.0"/>
+    <rect x="723.0" y="270.7" width="11" height="49.3" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="744.1" y="241.8" width="11" height="78.2" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="765.2" y="286.0" width="11" height="34.0" rx="2" fill="#00A9E0" opacity="1.0"/>
+    <rect x="786.3" y="263.9" width="11" height="56.1" rx="2" fill="#00A9E0" opacity="0.85"/>
+    <rect x="807.4" y="291.1" width="11" height="28.9" rx="2" fill="#00A9E0" opacity="0.7"/>
+    <rect x="828.5" y="253.7" width="11" height="66.3" rx="2" fill="#00A9E0" opacity="0.6"/>
+    <rect x="849.6" y="279.2" width="11" height="40.8" rx="2" fill="#00A9E0" opacity="0.5"/>
+    <rect x="870.7" y="294.5" width="11" height="25.5" rx="2" fill="#00A9E0" opacity="0.42"/>
+    <rect x="891.7" y="272.4" width="11" height="47.6" rx="2" fill="#00A9E0" opacity="0.34"/>
+    <rect x="912.8" y="297.9" width="11" height="22.1" rx="2" fill="#00A9E0" opacity="0.28"/>
+    <rect x="933.9" y="287.7" width="11" height="32.3" rx="2" fill="#00A9E0" opacity="0.2"/>
+    <rect x="955.0" y="301.3" width="11" height="18.7" rx="2" fill="#00A9E0" opacity="0.14"/>
+  </g>
+</svg>
