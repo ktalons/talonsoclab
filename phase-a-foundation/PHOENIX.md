@@ -36,15 +36,59 @@ Named-volume tarballs so a known-good Wazuh state restores without re-enrolling 
 # On the EliteDesk — snapshot the stateful Wazuh volumes.
 # (manager state is split across etc/queue/api volumes — there is no "manager_data")
 # Stop the stack first so the tarballs are consistent; ~1 min of downtime.
-DATE=$(date +%Y-%m-%d); mkdir -p ~/vol-snap
+# DATE is UTC on purpose — see "Date convention" below.
+DATE=$(date -u +%Y-%m-%d); mkdir -p ~/vol-snap
 cd ~/talonsoclab/deploy/soc-recon && docker compose stop
+
+# wazuh_queue needs exclusions — see "What NOT to snapshot" below.
+QUEUE_EXCLUDES="--exclude=./vd --exclude=./vd_updater --exclude=./indexer --exclude=./harvester"
+
 for v in soc-recon_indexer_data soc-recon_wazuh_etc soc-recon_wazuh_queue soc-recon_wazuh_api_configuration; do
+  EX=""; [ "$v" = "soc-recon_wazuh_queue" ] && EX="$QUEUE_EXCLUDES"
   docker run --rm -v "$v":/from -v ~/vol-snap:/to alpine \
-    tar czf "/to/${v}_${DATE}.tar.gz" -C /from .
+    tar czf "/to/${v}_${DATE}.tar.gz" -C /from $EX .
 done
 docker compose start
-# Then pull ~/vol-snap/*.tar.gz to /Volumes/MacbookXD/talonsoclab/volumes/$DATE/ (rsync from the Mac).
+
+# Verify before trusting. A tarball that won't list is not a backup.
+for f in ~/vol-snap/*_${DATE}.tar.gz; do tar -tzf "$f" >/dev/null && echo "OK $f"; done
+# Then rsync ~/vol-snap/*_$DATE.tar.gz to /Volumes/MacbookXD/talonsoclab/volumes/$DATE/ from the Mac,
+# using the SAME UTC date for the directory name.
 ```
+
+> `tar: ./alerts/execq: socket ignored` is expected and harmless — those are Unix domain
+> sockets in the alerts queue, not data.
+
+#### What NOT to snapshot (found 2026-07-27)
+
+`/var/ossec/queue/vd` is the **Vulnerability Detection CVE database — 12 GB on disk**, and it
+dominated every snapshot taken before this was caught: the `wazuh_queue` tarball was 819 MB with
+*zero agents enrolled*, and 1.3 GB after A.1. Excluding the four directories below takes it to
+**5.5 MB**, and the whole snapshot set from ~1.3 GB to ~7.7 MB.
+
+| Excluded | Size on disk | Why |
+|---|---|---|
+| `vd` | 12 G | CVE database, re-downloaded from Wazuh CTI on start. A restored copy is *stale* — worse than refetching. |
+| `vd_updater` | 40 M | Updater working state for the above |
+| `indexer` | 264 M | Spool of documents pending write to the indexer — transient; restoring it replays stale docs |
+| `harvester` | 75 M | Transient collection buffer |
+
+What remains is the state that actually matters, ~31 MB total: `db` (agent databases), `rids`
+(agent counters — needed so agents aren't seen as replaying), `fim` (file-integrity baselines),
+`syscollector`, `keystore`, `tasks`.
+
+**Restore consequence:** the vulnerability database rebuilds itself on first start. Expect the
+vulnerability dashboard to be empty for the first several minutes after a Phoenix restore. That is
+the correct trade — 12 GB of re-fetchable reference data does not belong in a backup set whose
+whole purpose is fast recovery.
+
+#### Date convention
+
+**Use UTC (`date -u`) for both the tarball names and the directory name.** The box runs UTC while
+the Mac runs MST, so `date +%Y-%m-%d` on each gives different answers for ~7 hours a day. That
+already bit us: `volumes/2026-07-25/` contains tarballs named `..._2026-07-26.tar.gz`, because the
+directory was created Mac-side and the tarballs box-side. UTC also matches the index naming
+(`wazuh-alerts-4.x-2026.07.27`), which is what you'd be correlating against during a restore.
 
 ### Tier 3 — Secrets in password manager
 - Wazuh `admin`, `kyle-admin`, `kyle-analyst` passwords; `WAZUH_INDEXER_PASS` for the digest
