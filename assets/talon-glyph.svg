@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="TalonSocLab talon glyph">
+  <rect width="512" height="512" rx="96" fill="#0A0E12"/>
+  <g transform="translate(256 284) scale(0.9) translate(-256 -284)">
+    <path fill="#E6E9ED" d="M118 96 L394 96
+      C 408 96 416 106 418 120
+      C 426 200 432 300 430 444
+      C 400 372 356 286 302 214
+      C 294 300 278 392 256 472
+      C 234 392 218 300 210 214
+      C 156 286 112 372 82 444
+      C 80 300 86 200 94 120
+      C 96 106 104 96 118 96 Z"/>
+  </g>
+</svg>
