@@ -4,7 +4,10 @@ flowchart TB
 %% Companion: network-topology.mmd holds the physical / L2 network (router, switch, rack).
 %% Host: HP EliteDesk 800 G4 Mini (i5-8500T, 16 GB, 256 GB NVMe) — OWNED outright.
 %% Substrate: Ubuntu Server 26.04 LTS bare-metal + Docker (no Proxmox).
-%%
+%% Legend: solid = running now · dashed edge = telemetry / handoff · grey dashed node = not deployed
+%% Deployment status verified on the box 2026-07-29: indexer, manager, dashboard and all three
+%%   agents are up. Suricata, recon-runner, digest and triage exist in the repo but are NOT
+%%   running — no suricata service in compose, no recon image built, no cron installed.
 %% PIVOT NOTE: this replaced an earlier Proxmox/pfSense/VLAN topology. It trades
 %%   network realism (pfSense, VLANs, Windows endpoint VMs) for portability +
 %%   detection breadth.
@@ -21,24 +24,24 @@ flowchart TB
             Dashboard["wazuh.dashboard<br/>:443 web UI"]
         end
 
-        Suricata["suricata (container)<br/>sniffs host NIC<br/>eve.json → manager"]
+        Suricata["suricata — NOT DEPLOYED (ISC-26)<br/>sniffs host NIC<br/>eve.json → manager"]
 
         subgraph ReconNet["docker network: recon_net (isolated)"]
-            Recon["recon-runner (ephemeral)<br/>subfinder→httpx→nuclei→diff<br/>cron: run --rm, 2g cap"]
+            Recon["recon-runner — NOT DEPLOYED<br/>subfinder→httpx→nuclei→diff<br/>cron: run --rm, 2g cap"]
         end
 
-        Digest["digest collector<br/>generate_digest.py<br/>→ {date}-intake.json"]
+        Digest["digest collector — NOT DEPLOYED<br/>generate_digest.py · cron 07:00<br/>→ {date}-intake.json"]
     end
 
-    subgraph Endpoints["Real-device Wazuh agents (no VMs on the box)"]
-        Win["Windows daily driver<br/>Sysmon + Wazuh agent"]
-        Mac["macOS<br/>Wazuh agent"]
-        UbuntuHost["Ubuntu host (self)<br/>Wazuh agent + auditd"]
+    subgraph Endpoints["Real-device Wazuh agents (no VMs on the box) — all Active"]
+        Win["Dell OptiPlex 7070 — talondellbox<br/>Windows 11 Pro · Sysmon + agent 001"]
+        Mac["MacBook — talonmacbook<br/>filtered unified log · agent 003"]
+        UbuntuHost["EliteDesk, self-monitoring — talonsoclab<br/>auditd + agent 002"]
     end
 
-    Analyst(["Kyle — Analyst<br/>HTTPS to dashboard"])
-    CASA["CASA — casa-ai-agent<br/>PAI multi-agent on Claude<br/>(separate reasoning plane)"]
-    Triage["triage/ queue<br/>human review gate"]
+    Analyst(["Kyle — Analyst, on talonmacbook<br/>HTTPS to dashboard"])
+    CASA["CASA — casa-ai-agent<br/>multi-agent reasoning on Claude<br/>(separate plane, not yet fed)"]
+    Triage["triage/ queue — NOT DEPLOYED<br/>human review gate"]
 
     Internet ==> Host
     Win  -. "TLS 1514" .-> Manager
@@ -57,15 +60,13 @@ flowchart TB
     CASA -. "explainable, NIST-aligned analysis" .-> Analyst
 
     classDef soc fill:#0f172a,stroke:#f59e0b,color:#fff
-    classDef ids fill:#1f2937,stroke:#f87171,color:#fff
     classDef ep fill:#0f172a,stroke:#34d399,color:#fff
     classDef ext fill:#374151,stroke:#9ca3af,color:#fff
-    classDef recon fill:#312e81,stroke:#a5b4fc,color:#fff
     classDef casa fill:#3b0764,stroke:#c084fc,color:#fff
+    classDef planned fill:#111827,stroke:#6b7280,color:#9ca3af,stroke-dasharray:4 3
 
     class Indexer,Manager,Dashboard soc
-    class Suricata ids
     class Win,Mac,UbuntuHost ep
     class Internet,Analyst ext
-    class Recon,Digest,Triage recon
+    class Suricata,Recon,Digest,Triage planned
     class CASA casa
