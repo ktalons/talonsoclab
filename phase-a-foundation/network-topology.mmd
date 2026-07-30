@@ -2,8 +2,7 @@ flowchart TB
 %% TalonSocLab — Physical / L2 network topology (home-lab edition)
 %% Companion to architecture.mmd (which is the *container* topology).
 %% This diagram is the WIRING: what plugs into what, and at which layer.
-%%
-%% Legend: solid = wired now · dashed = planned (Dell AD lab, Pi sensor, SPAN, VLANs)
+%% Legend: solid = wired now · dashed = planned (Dell AD lab, Pi sensor, SPAN, VLANs) or wireless
 %% Gateway/DHCP/DNS all live on the BE550 (L3). The SG108E is L2 fan-out.
 
     Internet((Internet / ISP))
@@ -22,15 +21,16 @@ flowchart TB
             Pi["Raspberry Pi 5<br/>Zeek/Suricata sensor · honeypot"]
         end
 
-        Mac(["MacBook — analyst workstation<br/>WiFi to BE550"])
+        Mac(["MacBook — analyst workstation + Wazuh agent<br/>USB-C dock ethernet to SG108E (primary) · WiFi to BE550 (fallback)"])
     end
 
     Internet ==>|WAN| Router
     Router ==>|"LAN port → switch (single uplink, no loops)"| Switch
     Switch ==>|"port · gigabit"| Elite
+    Switch ==>|"port · gigabit → USB-C dock"| Mac
     Switch -. "planned port" .-> Dell
     Switch -. "planned port" .-> Pi
-    Router -. "WiFi 7" .-> Mac
+    Router -. "WiFi 7 (fallback)" .-> Mac
     Mac ==>|"HTTPS 443 → dashboard"| Elite
 
     Switch -. "SPAN / port-mirror → sensor (Phase A.3 / B)" .-> Pi
