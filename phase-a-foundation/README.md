@@ -15,6 +15,7 @@ Docker. **Stack:** [`deploy/soc-recon/`](../deploy/soc-recon/).
 | [02](runbooks/02-wazuh-4.14-upgrade.md) | Wazuh 4.9.2 → 4.14.6 clean rebuild | ✅ |
 | [03](runbooks/03-windows-ssh-access.md) | SSH access to the Windows endpoint | ✅ |
 | [04](runbooks/04-windows-agent-sysmon.md) | Wazuh agent + Sysmon on Windows | ✅ |
+| [05](runbooks/05-wazuh-agent-update.md) | Native agent version management (Wazuh remote upgrade) | ✅ |
 
 ## Acceptance
 
