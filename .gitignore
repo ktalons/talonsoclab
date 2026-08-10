@@ -37,3 +37,9 @@ docs/internal/
 # trails. Mirrors the public path layout so provenance is obvious.
 # NOT version-controlled — PHOENIX Tier 2 rsyncs this to the external drive.
 /internal/
+# Working plan files from agent sessions — scratch, superseded once the work
+# lands in a runbook + the ISA decision log. Same class as /ISA.md.
+/Plans/
+# Interceptor's `screenshot --save` writes to the CWD, which is this repo when a
+# verification runs from here. Verification artifacts belong in ~/Downloads.
+/interceptor-screenshot-*.png

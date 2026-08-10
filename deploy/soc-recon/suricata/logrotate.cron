@@ -1,0 +1,13 @@
+# Mounted to /etc/cron.d/suricata-logrotate. Requires ENABLE_CRON=yes on the
+# suricata service — the image's entrypoint only starts crond when that is set.
+#
+# WHY THIS FILE EXISTS: the image ships /etc/logrotate.d/suricata (daily,
+# rotate 3, postrotate `suricatasc -c reopen-log-files`) but NOTHING ever runs
+# it. AlmaLinux drives logrotate from a systemd timer, and there is no systemd
+# in a container; /etc/cron.daily is empty in the image. So the rotation policy
+# is present, correct, and dead on arrival. Measured 2026-08-09 on an idle LAN:
+# eve.json + stats.log + fast.log grow ~240 MB/day, unbounded, against a 256 GB
+# NVMe that the ISM retention policy is already sized around.
+#
+# /etc/cron.d entries take a user field; /etc/cron.daily scripts do not.
+0 4 * * * root /usr/sbin/logrotate /etc/logrotate.d/suricata

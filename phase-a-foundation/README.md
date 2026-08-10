@@ -16,14 +16,19 @@ Docker. **Stack:** [`deploy/soc-recon/`](../deploy/soc-recon/).
 | [03](runbooks/03-windows-ssh-access.md) | SSH access to the Windows endpoint | ✅ |
 | [04](runbooks/04-windows-agent-sysmon.md) | Wazuh agent + Sysmon on Windows | ✅ |
 | [05](runbooks/05-wazuh-agent-update.md) | Native agent version management (Wazuh remote upgrade) | ✅ |
+| [06](runbooks/06-suricata-ids-dashboards.md) | Suricata IDS on the host NIC + SOC Overview dashboard | ✅ |
 
 ## Acceptance
 
 - [x] Stack green; dashboard reachable *(4.14.6)*
 - [x] ISM retention policy active and version-controlled
 - [x] All 3 endpoint agents active — Windows, Linux, macOS
-- [ ] Suricata events visible in the dashboard
-- [ ] ≥1 custom dashboard with ≥3 visualizations exported
+- [x] Suricata events visible in the dashboard *(Suricata 8.0.6 on `eno1`, ET Open 52,245 rules;
+      proven with a live `GPL ATTACK_RESPONSE id check returned root` hit, not just "sensor up")*
+- [x] ≥1 custom dashboard with ≥3 visualizations exported —
+      [`dashboards/talonsoclab-soc-overview.ndjson`](../dashboards/talonsoclab-soc-overview.ndjson)
+      (5 panels: alerts over time by endpoint, severity, MITRE ATT&CK tactics, top rules,
+      Suricata signatures)
 - [ ] Walkthrough recording; blog post
 
 ## Not in Phase A
