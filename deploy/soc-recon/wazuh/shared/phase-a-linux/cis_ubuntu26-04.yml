@@ -25,8 +25,31 @@
 # name or a config path, an individual check can report a false pass or a false
 # fail. This buys real coverage on a host that had none; it is NOT an audited
 # 26.04 benchmark, and a finding should be confirmed by hand before it is
-# treated as authoritative. Replace this file when upstream publishes a genuine
-# 26.04 policy.
+# treated as authoritative.
+#
+# UPSTREAM CORROBORATION (checked 2026-08-09). Wazuh has since published an
+# official cis_ubuntu26-04.yml (PR #36708, merged 2026-06-01, issue #35336), and
+# it is THE SAME ADAPTATION. Its own header still reads "CIS Checks for Ubuntu
+# Linux 24.04 LTS"; its description says "for Ubuntu Linux 26.04 LTS based on
+# ... Ubuntu Linux 24.04 LTS Benchmark v1.0.0 - 08-26-2024"; its gate is the
+# identical `f:/etc/os-release -> r:Ubuntu 26.04`. Compared mechanically: both
+# carry 279 checks and **all 279 check labels match exactly, zero differences in
+# either direction**. So the caveat above is not a weakness of this file — it is
+# equally true of the official policy, and worth knowing before anyone treats
+# an upstream "26.04 benchmark" as an audited 26.04 benchmark.
+#
+# WHY THIS FILE STILL EXISTS RATHER THAN THE OFFICIAL ONE: the official policy
+# is on `main` (the 5.x line) ONLY. It is absent from v4.14.6 and from v4.14.7,
+# and no 4.x backport is in flight. It is also written to the 5.x SCA schema —
+# it uses `name:` for the per-check label (1028 occurrences) and `title:` ZERO
+# times, where a 4.x agent expects `title:`. Dropping it into this 4.14.6 agent
+# is therefore not a safe substitution.
+#
+# SWAP TRIGGER: when this lab runs a Wazuh release that ships
+# ruleset/sca/ubuntu/cis_ubuntu26-04.yml, delete this file AND the <sca>
+# <policies> block in agent.conf, then force-recreate the manager. Note the
+# check IDs shift 35500-35778 -> 41500-41778 (a flat +6000), so historical
+# findings will not correlate across the swap.
 # ─────────────────────────────────────────────────────────────────────────────
 # Security Configuration Assessment
 # CIS Checks for Ubuntu Linux 24.04 LTS
