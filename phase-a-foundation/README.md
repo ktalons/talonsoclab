@@ -30,7 +30,7 @@ Docker. **Stack:** [`deploy/soc-recon/`](../deploy/soc-recon/).
       [`dashboards/talonsoclab-soc-overview.ndjson`](../dashboards/talonsoclab-soc-overview.ndjson)
       (5 panels: alerts over time by endpoint, severity, MITRE ATT&CK tactics, top rules,
       Suricata signatures)
-- [ ] Walkthrough recording; blog post
+- [x] [Post portfolio site blog post](https://ktalons.github.io/blog/phase-a-active-is-not-proof/)
 
 ## Not in Phase A
 

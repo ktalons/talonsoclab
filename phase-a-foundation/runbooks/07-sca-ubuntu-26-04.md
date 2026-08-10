@@ -9,7 +9,7 @@
 > **Why it matters for a SOC:** SCA is the "is this host built correctly" half of endpoint
 > coverage, next to "what is happening on this host" (auditd/Sysmon). Before this, the Windows
 > endpoint was assessed against `cis_win11_enterprise.yml` and the Linux host was assessed
-> against **nothing** — an asymmetric blind spot that no alert would ever surface, because
+> against **nothing**: an asymmetric blind spot that no alert would ever surface, because
 > *absence* of assessment produces no events.
 
 ---
@@ -34,7 +34,7 @@ docker compose exec -T wazuh.manager ls /var/ossec/ruleset/sca/ | grep -i ubuntu
 ```
 
 4.14.6 ships **14.04, 16.04, 18.04, 20.04, 22.04 and 24.04**. (An earlier note in this project
-claimed 20.04/22.04 only — that was generalised from one log line, never from the directory.)
+claimed 20.04/22.04 only; that was generalised from one log line, never from the directory.)
 Every policy is gated by the same shape:
 
 ```yaml
@@ -47,7 +47,7 @@ requirements:
 ```
 
 This host reports `PRETTY_NAME="Ubuntu 26.04 LTS"`, so it matches **none** of the six and all of
-them are skipped. That is the whole gap — not a missing feature, one unmatched string.
+them are skipped. That is the whole gap: not a missing feature, one unmatched string.
 
 ## 2. Derive the 26.04 policy — [BOX]
 
@@ -67,7 +67,7 @@ Four substitutions, each asserted present **before** rewriting and re-asserted a
 
 > **Assert the version rule occurs exactly once** before rewriting. If a substitution silently
 > matched nothing, the resulting policy loads, skips on the gate, and the API returns
-> `"No SCA information was returned"` — **identical to the state you started in.** Success and
+> `"No SCA information was returned"`, **identical to the state you started in.** Success and
 > failure are indistinguishable from the outside, so the check has to happen at transform time.
 
 The committed artifact is `deploy/soc-recon/wazuh/shared/phase-a-linux/cis_ubuntu26-04.yml`; its
@@ -87,10 +87,10 @@ The policy lives in the group folder, so the group push puts it on the agent und
 ```
 
 ```bash
-docker compose up -d --force-recreate wazuh.manager    # NOT restart — see runbook 06 § 3
+docker compose up -d --force-recreate wazuh.manager    # NOT restart; see runbook 06 § 3
 ```
 
-Verify delivery by hash, not by "Active" — a 590 KB file that staged but never shipped looks the
+Verify delivery by hash, not by "Active". A 590 KB file that staged but never shipped looks the
 same from `agent_control -l`:
 
 ```bash
@@ -98,7 +98,7 @@ docker compose exec -T wazuh.manager md5sum /var/ossec/etc/shared/phase-a-linux/
 docker compose exec -T wazuh.manager /var/ossec/bin/agent_control -i 002 | grep "Shared file hash"
 ```
 
-The agent restarts its modules when `merged.mg` changes and scans on start — results appeared
+The agent restarts its modules when `merged.mg` changes and scans on start. Results appeared
 within ~20 s.
 
 ## 4. Read the results correctly — [BOX]
@@ -112,10 +112,10 @@ Two things about those numbers:
 - **`invalid: 200` is misleading.** The per-check API reports **192 explicitly
   `not applicable`**; the policy summary lumps not-applicable in with invalid. Query
   `/sca/002/checks/cis_ubuntu26-04` for the real distribution.
-- **`score 29` is against applicable checks only** — 23/(23+56), not 23/279.
+- **`score 29` is against applicable checks only**: 23/(23+56), not 23/279.
 
 A large not-applicable count is normal for a minimal server: absent services, and no separate
-`/tmp` partition (this box uses plain partitions). Some of it is *probably* not genuine — the
+`/tmp` partition (this box uses plain partitions). Some of it is *probably* not genuine: the
 kernel-module block's first rule is `c:modprobe -n -v cramfs`, which is consistent with `modprobe`
 not resolving on the scanner's PATH. That has not been characterised; don't claim it either way.
 
@@ -135,8 +135,8 @@ This host sets `PermitRootLogin no` in `/etc/ssh/sshd_config.d/99-hardening.conf
 resolves the `Include` and would pass; the raw-file grep does not read drop-ins and fails; `all`
 requires both, so the check fails.
 
-**This is an upstream CIS-policy limitation, not an artifact of the 24.04→26.04 adaptation** —
-the identical false positive occurs on a real 24.04 host hardened through drop-ins, which is
+**This is an upstream CIS-policy limitation, not an artifact of the 24.04→26.04 adaptation.**
+The identical false positive occurs on a real 24.04 host hardened through drop-ins, which is
 modern Ubuntu's default layout. Worth stating precisely: the wrong lesson to draw is "the adapted
 policy is unreliable."
 
@@ -156,10 +156,10 @@ Two things that matter, both verified 2026-08-09:
 Ubuntu Linux 24.04 LTS" and its description says "for Ubuntu Linux 26.04 LTS based on ... Ubuntu
 Linux 24.04 LTS Benchmark v1.0.0". Mechanical comparison: 279 checks in each, and **all 279 check
 labels match exactly, zero differences either way.** The caveat in § 5 therefore applies to the
-official policy too — do not read "official 26.04 benchmark" as "audited against 26.04".
+official policy too. Do not read "official 26.04 benchmark" as "audited against 26.04".
 
-**It cannot simply be dropped into a 4.x agent.** It exists on `main` (5.x) only — absent from
-`v4.14.6` and `v4.14.7`, no backport in flight — and it is written to the 5.x SCA schema, using
+**It cannot simply be dropped into a 4.x agent.** It exists on `main` (5.x) only (absent from
+`v4.14.6` and `v4.14.7`, no backport in flight) and it is written to the 5.x SCA schema, using
 `name:` for the per-check label (1028 occurrences) and `title:` **zero** times where a 4.x agent
 expects `title:`.
 
@@ -179,5 +179,5 @@ expects `title:`.
 - [x] Compared against Wazuh's official `cis_ubuntu26-04.yml`: 279/279 check labels identical,
       so this adaptation matches upstream's content; kept only because upstream's is 5.x-schema
       and absent from every 4.x tag
-- [ ] The 25 audit-rule failures (35725–35749) worked into the auditd ruleset — **Phase B**
+- [ ] The 25 audit-rule failures (35725–35749) worked into the auditd ruleset: **Phase B**
 - [ ] Swap to the upstream policy once a 4.x release (or the 5.x upgrade) ships it
