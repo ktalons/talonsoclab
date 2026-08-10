@@ -1,0 +1,47 @@
+<!--
+  Suricata noise-floor tuning. Loaded via <rule_dir>etc/rules/custom</rule_dir>
+  in config/wazuh_cluster/wazuh_manager.conf — rule_dir is not recursive, so
+  that explicit entry is what makes this file load at all.
+
+  Custom rule IDs live in the 100000+ range, which Wazuh reserves for local use.
+
+  DESIGN NOTE — why suppress at the MANAGER and not at the sensor:
+  suricata-update ships a disable.conf that would drop these signatures inside
+  Suricata itself. That is cheaper, and it is the wrong trade here. eve.json on
+  disk is the lab's full-fidelity network archive (ISC-23.5's deferred Phase B
+  decision); silencing the sensor would erase the record as well as the alert.
+  Scoring to level 0 at the manager keeps every frame in eve.json, keeps the
+  count queryable with `grep` on the box, and stops only the indexer write.
+-->
+<group name="ids,suricata,local,">
+
+  <!--
+    "SURICATA Ethertype unknown" (sid 2200121) is a DECODER event, not a threat
+    signature: it fires whenever an L2 frame carries an ethertype Suricata does
+    not parse. On this LAN that is continuous background chatter, measured
+    2026-08-09 at ~66 frames/min, ~95k alerts/day:
+
+      58:04:4F:53:51:3C  ethertype 0x8899  Realtek RRCP — the TL-SG108E smart
+                                           switch's own management broadcast
+      3C:6A:D2:32:55:5C  ethertype 0x893A  IEEE 1905.1 (home networking), and
+                                           0x88CC LLDP — the BE550 router
+
+    Level 0 = analysisd drops it before the alert log, so it never reaches
+    filebeat or the indexer. In the first 11 minutes of ISC-26 the indexer took
+    214 of these against 1 real signature hit; unsuppressed they would bury
+    every genuine alert and burn the 45-day ISM retention on switch chatter.
+
+    TRADE-OFF, deliberately accepted: a NEW unknown ethertype from an unexpected
+    MAC is now also silent. The frames are still in eve.json on the box, so the
+    evidence survives; recovering the alert means either narrowing this rule to
+    the two known-noisy source MACs or re-scoring it in Phase B alongside the
+    Sigma work. Delete this rule and force-recreate the manager to restore it.
+  -->
+  <rule id="100200" level="0">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature">^SURICATA Ethertype unknown$</field>
+    <description>Suricata: unknown ethertype — local L2 chatter, suppressed.</description>
+    <options>no_full_log</options>
+  </rule>
+
+</group>

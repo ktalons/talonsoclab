@@ -1,10 +1,11 @@
 # SOC + recon stack — single Docker host. Tuned for the HP EliteDesk 800 G4 Mini
-# (i5-8500T, 16 GB RAM, 256 GB NVMe). Always-on hard ceiling ≈ 6.5 GB
-# (indexer 4 + manager 1.5 + dashboard 1) + ~1.5 GB OS, leaving headroom for the
-# 2 GB ephemeral recon burst. Comfortable on 16 GB.
+# (i5-8500T, 16 GB RAM, 256 GB NVMe). Always-on hard ceiling ≈ 8 GB
+# (indexer 4 + manager 1.5 + dashboard 1 + suricata 1.5) + ~1.5 GB OS, leaving
+# headroom for the 2 GB ephemeral recon burst. Comfortable on 16 GB.
 #
-# Wazuh  = always-on. Memory *reservation* + OOM protection.
-# Recon  = ephemeral, cron-launched. Hard memory *cap* + OOM-preferred. Yields to Wazuh.
+# Wazuh    = always-on. Memory *reservation* + OOM protection.
+# Suricata = always-on sensor. Protected, but killed BEFORE Wazuh under pressure.
+# Recon    = ephemeral, cron-launched. Hard memory *cap* + OOM-preferred. Yields to Wazuh.
 #
 # DISK is the other constraint: 256 GB NVMe fills via the indexer volume. Set a
 # Wazuh ISM retention policy (e.g. delete wazuh-alerts-* older than 45 days) and watch
@@ -106,7 +107,21 @@ services:
       # installing the FULL etc payload (shared/, decoders, lists…) if the fresh
       # volume is non-empty, and a nested mountpoint makes it non-empty. Route
       # custom content through /wazuh-config-mount instead; the entrypoint syncs
-      # it into /var/ossec AFTER the payload install, on every boot.
+      # it into /var/ossec AFTER the payload install.
+      #
+      # GOTCHA 2 (corrected 2026-08-09 — this block previously claimed the sync
+      # happens "on every boot", which is FALSE and had been false since
+      # 2026-07-27). The sync only happens on a NEW container:
+      #   docker compose up -d --force-recreate wazuh.manager
+      # `restart` and `stop`+`start` reuse the container filesystem, where
+      # /var/ossec/data_tmp was already deleted by the first successful init.
+      # cont-init.d/0-wazuh-init then fails restoring the (permanently empty)
+      # var/multigroups volume from that missing source and error_and_exit's
+      # BEFORE the mount_files step ever runs. s6 logs `0-wazuh-init: exited 1`
+      # and starts the daemons anyway: container Up, 10 daemons, agents Active,
+      # config silently stale. Acceptance is the boot log showing
+      # `Identified Wazuh configuration files to mount...` + `exited 0`, then
+      # merged.mg md5 == the agent-reported Shared file hash. See runbook 06 § 3.
       - ./wazuh/custom-rules:/wazuh-config-mount/etc/rules/custom:ro
       # Shared agent-group configs. Same reasoning as custom-rules above: routed
       # through /wazuh-config-mount so the entrypoint syncs it into /var/ossec on
@@ -151,6 +166,77 @@ services:
         condition: service_healthy
     networks: [soc]
 
+  # ──────────────────── Suricata IDS (always-on, host NIC) ────────────────────
+  # Sits on the physical NIC and writes eve.json to a HOST path. The native
+  # Wazuh agent (agent 002, running on the host — not in this container) tails
+  # that file via the phase-a-linux group config. That host path IS the
+  # integration seam; there is no container-to-container link here on purpose.
+  suricata:
+    image: jasonish/suricata:${SURICATA_VERSION:-8.0.6}
+    hostname: suricata
+    restart: unless-stopped
+    # HOST networking, not the `soc` bridge. An IDS on a bridge network sees
+    # only that bridge — it would come up green and observe nothing real.
+    # Consequence: a `networks:` key is INVALID on this service, and Suricata
+    # shares the host's netns (it publishes no ports of its own).
+    network_mode: host
+    cap_add:
+      - NET_ADMIN   # AF_PACKET capture + promiscuous mode on the NIC
+      - NET_RAW     # raw socket
+      - SYS_NICE    # thread priority. Without it the image's entrypoint silently
+                    # drops its --user/--group args and runs Suricata as ROOT
+                    # instead of failing — check the startup log, not the config.
+    environment:
+      # Starts crond in the entrypoint. Without it the mounted cron file below
+      # is inert and the logs never rotate. See suricata/logrotate.cron.
+      - ENABLE_CRON=yes
+    mem_reservation: 512m
+    mem_limit: 1500m        # ET Open is ~50k signatures; this is the working set
+    oom_score_adj: -400     # protected, but ABOVE Wazuh's -700: under memory
+                            # pressure the sensor dies before the SIEM that
+                            # stores what the sensor already produced.
+    # `-i <iface>` overrides the af-packet interface from the image's stock
+    # suricata.yaml (which ships `eth0`).
+    #
+    # The --set drops `stats` records from eve.json ONLY. Wazuh's JSON decoder
+    # has a hard field-count ceiling, and a Suricata stats record carries several
+    # hundred counters — every one logged `wazuh-analysisd: ERROR: Too many
+    # fields for JSON decoder` and was discarded, ~10k error lines/day burying
+    # any real decoder error. Global `stats.enabled` stays yes, so stats.log is
+    # untouched and `capture.kernel_drops` (is the sensor silently dropping
+    # packets?) is still readable on the box.
+    #
+    # GOTCHA: `types.32` is a LIST INDEX into the stock suricata.yaml, not a
+    # name — it is coupled to the pinned image tag. Re-derive it after any
+    # SURICATA_VERSION bump and confirm with
+    #   suricata --set <...> --dump-config | grep types.32
+    # A wrong index silently sets an option on a DIFFERENT output type and the
+    # errors just keep coming. Verified against 8.0.6 on 2026-08-09.
+    command:
+      - "-i"
+      - "${SURICATA_IFACE:-eno1}"
+      - "--set"
+      - "outputs.1.eve-log.types.32.stats.enabled=no"
+    volumes:
+      # Host-visible so the native Wazuh agent can read it. Docker creates this
+      # directory root-owned on first start; the agent runs as root and can read it.
+      - /var/log/suricata:/var/log/suricata
+      # ET Open signatures, fetched by `suricata-update` (see runbook 06). MUST
+      # persist: the image ships NO rules, and Suricata with zero signatures
+      # starts cleanly, logs flow/dns/tls all day, and never alerts. Green and
+      # blind — precisely the failure mode ISC-26's acceptance test exists to catch.
+      - suricata_rules:/var/lib/suricata
+      # Drives the image's own (otherwise never-executed) logrotate policy.
+      - ./suricata/logrotate.cron:/etc/cron.d/suricata-logrotate:ro
+    healthcheck:
+      # `suricatasc -c uptime` talks to the engine's own unix socket, so it is a
+      # liveness check on the ENGINE, not on the container process.
+      test: ["CMD-SHELL", "suricatasc -c uptime >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   # ───────────────── Recon pipeline (cron-launched, ephemeral) ─────────────────
   recon-runner:
     build:
@@ -190,6 +276,7 @@ volumes:
   filebeat_var:
   dashboard_config:
   dashboard_custom:
+  suricata_rules:
   recon_config:
 
 networks:
