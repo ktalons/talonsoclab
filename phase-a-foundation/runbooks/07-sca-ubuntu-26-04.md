@@ -140,6 +140,34 @@ the identical false positive occurs on a real 24.04 host hardened through drop-i
 modern Ubuntu's default layout. Worth stating precisely: the wrong lesson to draw is "the adapted
 policy is unreliable."
 
+## 6. Upstream status — and when to throw this away
+
+Wazuh **has** published an official `cis_ubuntu26-04.yml` (issue #35336, PR #36708 merged
+2026-06-01). Check its state before assuming anything about it:
+
+```bash
+gh api repos/wazuh/wazuh/contents/ruleset/sca/ubuntu?ref=main   --jq '[.[].name]|join(", ")'
+gh api repos/wazuh/wazuh/contents/ruleset/sca/ubuntu?ref=v4.14.7 --jq '[.[].name]|join(", ")'
+```
+
+Two things that matter, both verified 2026-08-09:
+
+**It is the same adaptation, not a real 26.04 benchmark.** Its header still reads "CIS Checks for
+Ubuntu Linux 24.04 LTS" and its description says "for Ubuntu Linux 26.04 LTS based on ... Ubuntu
+Linux 24.04 LTS Benchmark v1.0.0". Mechanical comparison: 279 checks in each, and **all 279 check
+labels match exactly, zero differences either way.** The caveat in § 5 therefore applies to the
+official policy too — do not read "official 26.04 benchmark" as "audited against 26.04".
+
+**It cannot simply be dropped into a 4.x agent.** It exists on `main` (5.x) only — absent from
+`v4.14.6` and `v4.14.7`, no backport in flight — and it is written to the 5.x SCA schema, using
+`name:` for the per-check label (1028 occurrences) and `title:` **zero** times where a 4.x agent
+expects `title:`.
+
+**Swap trigger:** once this lab runs a release that ships the policy, delete
+`wazuh/shared/phase-a-linux/cis_ubuntu26-04.yml` and the `<sca><policies>` block from
+`agent.conf`, then force-recreate the manager. Check IDs shift `35500-35778` → `41500-41778`
+(a flat +6000), so historical findings will not correlate across the swap.
+
 ## Acceptance
 
 - [x] Baseline `"No SCA information was returned"` captured from the manager before any change
@@ -148,4 +176,8 @@ policy is unreliable."
 - [x] `merged.mg` md5 matches agent 002's reported *Shared file hash* (590 KB delivered)
 - [x] Scan runs: `policy_id: cis_ubuntu26-04`, 23 pass / 56 fail / 192 not applicable
 - [x] One failure hand-verified and correctly classified as an upstream false positive (35659)
+- [x] Compared against Wazuh's official `cis_ubuntu26-04.yml`: 279/279 check labels identical,
+      so this adaptation matches upstream's content; kept only because upstream's is 5.x-schema
+      and absent from every 4.x tag
 - [ ] The 25 audit-rule failures (35725–35749) worked into the auditd ruleset — **Phase B**
+- [ ] Swap to the upstream policy once a 4.x release (or the 5.x upgrade) ships it
