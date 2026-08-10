@@ -1,6 +1,6 @@
 ![TalonSocLab: personal SOC home lab](assets/talon-waveform.png)
 
-[![Phase](https://img.shields.io/badge/phase-A%20%C2%B7%20Foundation-89b4fa)](https://ktalons.github.io/projects/talonsoclab/)
+[![Phase](https://img.shields.io/badge/phase-B%20%C2%B7%20Detection-89b4fa)](https://ktalons.github.io/projects/talonsoclab/)
 [![Last commit](https://img.shields.io/github/last-commit/ktalons/talonsoclab)](https://github.com/ktalons/talonsoclab/commits/main)
 [![Wazuh](https://img.shields.io/badge/Wazuh-4.14-blue)](https://wazuh.com/)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE-ATT%26CK-red)](https://attack.mitre.org/)
@@ -9,8 +9,8 @@
 
 | Phase<img src="assets/spacer.png" width="260" height="1" alt=""> | Deliverable<img src="assets/spacer.png" width="700" height="1" alt=""> | |
 |---|---|:---:|
-| **A — Foundation SOC Stack** | Wazuh + Sysmon + Suricata, real-device agents, custom dashboards | 🚧 |
-| **B — Detection Engineering** | Sigma rule pack validated against MITRE ATT&CK | 🔴 |
+| **A — Foundation SOC Stack** | Wazuh + Sysmon + Suricata, real-device agents, custom dashboards | <img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> |
+| **B — Detection Engineering** | Sigma rule pack validated against MITRE ATT&CK | 🚧 |
 | **C — AD Attack & Defense** | Mini-AD, top-5 detection chain, purple-team report | 🔴 |
 | **D — Honeynet + Threat Intel** | T-Pot into OpenCTI with threat-intel enrichment | 🔴 |
 
