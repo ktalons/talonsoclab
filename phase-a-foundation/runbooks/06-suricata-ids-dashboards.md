@@ -198,18 +198,59 @@ docker compose logs --since 2m wazuh.manager | grep -c "Too many fields"   # mus
 
 ## 6. Log rotation — [BOX]
 
-The image ships `/etc/logrotate.d/suricata` (daily, 3 rotations) and **nothing ever runs it**:
-AlmaLinux drives logrotate from a systemd timer, there is no systemd in a container, and
-`/etc/cron.daily` is empty in the image. The policy is present, correct, and dead on arrival —
-while the logs grow ~240 MB/day against a 256 GB NVMe.
+The image ships `/etc/logrotate.d/suricata` (daily, 3 rotations) and **nothing ever runs it**,
+while the logs grow ~240 MB/day against a 256 GB NVMe. This is not a mistake by anyone — it is
+the standard container seam, and it is worth understanding rather than pattern-matching to
+"misconfigured". Verified against a pristine container 2026-08-09:
 
-Compose fixes this without touching the host: `ENABLE_CRON=yes` starts the image's `crond`, and
-`suricata/logrotate.cron` is mounted to `/etc/cron.d/suricata-logrotate`. Verify:
+| Link in the chain | State in the image |
+|---|---|
+| `/etc/logrotate.d/suricata` | present — and **owned by no RPM**, so the image author added it, not the distro |
+| what normally executes it on AlmaLinux 9 | `logrotate.timer` + `logrotate.service` — the logrotate RPM ships **only** systemd units, no `/etc/cron.daily/logrotate` |
+| systemd in the container | binary present (`/sbin/init -> systemd`) but **never PID 1** — the entrypoint execs suricata, so the timer is never loaded |
+| `/etc/cron.d/0hourly` | present → `run-parts /etc/cron.hourly` |
+| `/etc/cron.hourly/0anacron` | present, `cronie-anacron` installed |
+| `/etc/cron.daily/` | **EMPTY** ← the chain dead-ends here |
+
+So the policy and its executor were packaged by different parties for different runtimes: RHEL
+family moved logrotate to a systemd timer, and containers don't run systemd. Debian-based images
+would not show this, because there logrotate still ships `/etc/cron.daily/logrotate`.
+
+Note the consequence for the obvious shortcut: **`ENABLE_CRON=yes` on its own rotates nothing.**
+crond would start, `0hourly` would fire, anacron would run `run-parts /etc/cron.daily` — over an
+empty directory. The flag supplies the scheduler; a cron entry still has to supply the job.
+
+Compose fixes both halves without touching the host: `ENABLE_CRON=yes` starts `crond`, and
+`suricata/logrotate.cron` is mounted to `/etc/cron.d/suricata-logrotate` (an explicit 04:00 entry,
+chosen over dropping a script in `/etc/cron.daily/` so the schedule is deterministic rather than
+dependent on anacron's catch-up semantics in a container that restarts).
 
 ```bash
 docker compose exec -T suricata ps ax | grep crond           # must be running
 docker compose exec -T suricata /usr/sbin/logrotate -d /etc/logrotate.d/suricata
 ```
+
+### Prove rotation end to end, not just that the config parses
+
+A parsed config is not a working rotation. Force one and watch the whole chain:
+
+```bash
+docker compose exec -T suricata /usr/sbin/logrotate -f -v /etc/logrotate.d/suricata
+```
+
+Verified 2026-08-09: `eve.json` → `eve.json.1`, the `postrotate suricatasc -c reopen-log-files`
+fired, and Suricata recreated `eve.json` on a **new inode** and resumed writing within ~25 s.
+
+> **The trap in verifying this.** After rotation the indexer's Suricata doc count sat unchanged,
+> which looks exactly like "the agent lost the file". It is not evidence either way — the L2 noise
+> is suppressed at level 0 by rule 100200, so only a genuine signature can move that counter. The
+> discriminating test is to trigger a real one *after* the rotation:
+> `curl http://testmynids.org/uid/index.html` → sid 2100498 count went **3 → 4**, proving the
+> Wazuh agent re-followed the new inode. This is the same "no alerts is not evidence of no
+> ingestion" trap as ISC-23.5; a static counter on a deliberately-silenced channel proves nothing.
+
+Minor, benign: `suricata.log` is rotated but not immediately recreated — Suricata only writes it
+on engine events, so it reappears at the next one.
 
 ## 7. The SOC Overview dashboard — [API]
 
