@@ -1,8 +1,22 @@
 # Runtime + secrets for the soc-recon bundle — never commit these.
+#
+# INLINE `#` COMMENTS DO NOT WORK IN .gitignore. A trailing comment becomes part
+# of the pattern, so the line matches a filename that does not exist and ignores
+# nothing — silently. This file had three such lines from 2026-06-20 until
+# 2026-08-09; `data/`, `scope/domains.txt` and the cert dir were all live in a
+# public repo the whole time. (The same trap was already logged once, on
+# 2026-07-11, against the ROOT .gitignore — it just was not checked here.)
+# No key material was ever exposed: the root .gitignore's `*.pem` / `*.key`
+# extension rules caught every cert and private key independently. The real gap
+# was the recon scope + run outputs.
+# Verify changes here with `git check-ignore -v <path>`, never by eye.
 .env
-data/                 # recon run outputs + triage working dir (host-visible volume)
-scope/domains.txt     # live scope; only domains.txt.example is tracked
-config/wazuh_indexer_ssl_certs/   # generated TLS certs + private keys — never commit
+# recon run outputs + triage working dir (host-visible volume)
+data/
+# live scope; only domains.txt.example is tracked
+scope/domains.txt
+# generated TLS certs + private keys — never commit
+config/wazuh_indexer_ssl_certs/
 # Holds real bcrypt password hashes once rotated off the Wazuh demo defaults.
 # Publishing password hashes to a public portfolio repo is exactly what ISA
 # "no real secrets committed" exists to prevent. Only the .example is tracked.
