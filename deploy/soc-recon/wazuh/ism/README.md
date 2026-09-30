@@ -9,38 +9,34 @@ is a disk-full incident on a schedule, and a full disk takes the indexer down ha
 
 ## Apply
 
-> Run every indexer API call **from inside a container**. `9200` is deliberately not
-> host-published, so `curl https://localhost:9200` from the host connects to nothing — and with
-> `-s` that failure is silent, so it looks identical to an empty result.
+> Run every indexer API call **through `bin/idx`**, from `deploy/soc-recon/`. `9200` is
+> deliberately not host-published, so `curl https://localhost:9200` from the host connects to
+> nothing, and with `-s` that failure is silent: it looks identical to an empty result. `bin/idx`
+> runs curl inside the indexer container and authenticates with the admin client certificate,
+> so no password ever appears on a command line (see `wazuh/SECURITY.md`).
 
 ```bash
-PASS=$(grep ^WAZUH_INDEXER_PASS .env | cut -d= -f2 | awk '{print $1}')
-
-docker compose exec -T wazuh.indexer \
-  curl -sk -u admin:"$PASS" -H 'Content-Type: application/json' \
-  -X PUT "https://localhost:9200/_plugins/_ism/policies/wazuh-alerts-retention" \
-  -d @- < wazuh/ism/wazuh-alerts-retention.json
+bin/idx /_plugins/_ism/policies/wazuh-alerts-retention -X PUT --data-binary @- \
+  < wazuh/ism/wazuh-alerts-retention.json
 ```
 
-> **Always give `exec -T` an stdin source.** Without one the session waits for an EOF that never
-> arrives and looks like a hung request. Use `< file` or `< /dev/null`.
+> **A request body goes on stdin, with `--data-binary @-`.** `-d @-` strips newlines, which
+> breaks NDJSON bodies such as `_bulk`. At a terminal, `bin/idx` detaches stdin by itself. Anywhere
+> else (a pipe, a `while read` loop, cron, `ssh host 'cmd'`) stdin is forwarded into the
+> container. There, any call that does not read its body from stdin needs `< /dev/null`, and
+> that includes an inline `-d`. Without it the call waits for an EOF or eats the caller's input.
 
 `ism_template` auto-attaches the policy to **newly created** indices. Indices that already exist
 need attaching by hand:
 
 ```bash
-docker compose exec -T wazuh.indexer \
-  curl -sk -u admin:"$PASS" -H 'Content-Type: application/json' \
-  -X POST "https://localhost:9200/_plugins/_ism/add/wazuh-alerts-*" \
-  -d '{"policy_id":"wazuh-alerts-retention"}' < /dev/null
+bin/idx '/_plugins/_ism/add/wazuh-alerts-*' -X POST -d '{"policy_id":"wazuh-alerts-retention"}'
 ```
 
 ## Verify
 
 ```bash
-docker compose exec -T wazuh.indexer \
-  curl -sk -u admin:"$PASS" \
-  "https://localhost:9200/_plugins/_ism/explain/wazuh-alerts-*" < /dev/null
+bin/idx '/_plugins/_ism/explain/wazuh-alerts-*'
 ```
 
 Want a non-null `policy_id` and `total_managed_indices` matching your index count.

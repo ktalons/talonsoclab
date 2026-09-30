@@ -19,9 +19,12 @@
 ```bash
 cd ~/talonsoclab/deploy/soc-recon
 APASS=$(grep -E '^WAZUH_API_PASS=' .env | cut -d= -f2-)
-docker compose exec -T -e A="$APASS" wazuh.manager sh -c \
-  'TOKEN=$(curl -sk -u "wazuh-wui:$A" -X POST "https://localhost:55000/security/user/authenticate?raw=true");
-   curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/sca/002?pretty=true"'
+# the password and the token reach curl on stdin, never as arguments (see wazuh/SECURITY.md)
+TOKEN=$(printf 'user = "wazuh-wui:%s"\n' "$APASS" | docker compose exec -T wazuh.manager \
+  curl -sk -K - -X POST "https://localhost:55000/security/user/authenticate?raw=true")
+printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" | docker compose exec -T wazuh.manager \
+  curl -sk -K - "https://localhost:55000/sca/002?pretty=true"
+unset APASS TOKEN
 ```
 
 Before this runbook that returned `"No SCA information was returned"`. Read it server-side: the

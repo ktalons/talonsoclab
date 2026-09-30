@@ -38,8 +38,23 @@ services:
     mem_limit: 4g           # ceiling so a runaway query can't eat the host
     oom_score_adj: -700     # near-last thing the kernel kills
     healthcheck:
-      # gate dependents on the indexer actually answering, not just "started"
-      test: ["CMD-SHELL", "curl -sk -u admin:${WAZUH_INDEXER_PASS:-SecretPassword} https://localhost:9200/_cluster/health | grep -q '\"status\"'"]
+      # gate dependents on the indexer actually answering, not just "started".
+      # SECURITY: exec form + client-cert auth, so no secret ever sits in argv.
+      # Host auditd logs every execve and Wazuh indexes it; the old
+      # `curl -u admin:<pass>` CMD-SHELL form put the admin password into
+      # two audit alerts per run (the sh -c and curl execs), ~5,700 a day.
+      # The admin cert already lives in this container for securityadmin.
+      # -f turns HTTP 408 (status not reached) into a non-zero exit, so a
+      # red cluster fails the check.
+      # NOTE: the admin cert bypasses the security plugin's init check, so
+      # healthy means "OpenSearch answers", not "kibanaserver can log in".
+      # allow_default_init_securityindex covers that on a fresh stack.
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "-m", "8",
+             "--cacert", "/usr/share/wazuh-indexer/config/certs/root-ca.pem",
+             "--cert", "/usr/share/wazuh-indexer/config/certs/admin.pem",
+             "--key", "/usr/share/wazuh-indexer/config/certs/admin-key.pem",
+             "--resolve", "wazuh.indexer:9200:127.0.0.1",
+             "https://wazuh.indexer:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -124,9 +139,10 @@ services:
       # merged.mg md5 == the agent-reported Shared file hash. See runbook 06 § 3.
       - ./wazuh/custom-rules:/wazuh-config-mount/etc/rules/custom:ro
       # Shared agent-group configs. Same reasoning as custom-rules above: routed
-      # through /wazuh-config-mount so the entrypoint syncs it into /var/ossec on
-      # every boot. In git because /var/ossec/etc/shared/ is inside the wazuh_etc
-      # volume and does NOT survive `down -v`.
+      # through /wazuh-config-mount so the entrypoint syncs it into /var/ossec
+      # when the container is created (GOTCHA 2 above). In git because
+      # /var/ossec/etc/shared/ is inside the wazuh_etc volume and does NOT
+      # survive `down -v`.
       - ./wazuh/shared:/wazuh-config-mount/etc/shared:ro
       # Agent enrollment password (authd). Gitignored — only authd.pass.example is
       # tracked. Lives in the wazuh_etc volume otherwise, so it would not survive

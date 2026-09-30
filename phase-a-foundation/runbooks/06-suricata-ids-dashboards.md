@@ -139,11 +139,8 @@ capture, ruleset, eve.json, group config, agent tail, decoder, level floor and f
 simultaneously correct):
 
 ```bash
-PASS=$(grep -E '^WAZUH_INDEXER_PASS=' .env | cut -d= -f2-)
-docker compose exec -T -e P="$PASS" wazuh.indexer sh -c \
-  'curl -sk -u "admin:$P" -H "Content-Type: application/json" \
-   "https://localhost:9200/wazuh-alerts-*/_search?size=1" \
-   -d "{\"query\":{\"term\":{\"data.alert.signature_id\":\"2100498\"}}}"'
+bin/idx '/wazuh-alerts-*/_search?size=1' \
+  -d '{"query":{"term":{"data.alert.signature_id":"2100498"}}}'
 ```
 
 > **Field-name note:** Wazuh decodes eve.json with its generic JSON decoder, so the fields are
@@ -258,14 +255,16 @@ on engine events, so it reappears at the next one.
 alerts over time by endpoint, severity distribution, MITRE ATT&CK tactics, top firing rules, and
 Suricata IDS signatures.
 
-Import it (from the box, so the password never leaves it):
+Import it from the box, so the password never leaves it. It reaches curl on stdin as a config
+line, never as an argument (see `deploy/soc-recon/wazuh/SECURITY.md`):
 
 ```bash
-docker cp dashboards/talonsoclab-soc-overview.ndjson soc-recon-wazuh.dashboard-1:/tmp/d.ndjson
-PASS=$(grep -E '^WAZUH_INDEXER_PASS=' deploy/soc-recon/.env | cut -d= -f2-)
-docker compose exec -T -e P="$PASS" wazuh.dashboard sh -c \
-  'curl -sk -u "admin:$P" -H "osd-xsrf: true" -X POST \
-     "https://localhost:5601/api/saved_objects/_import?overwrite=true" --form file=@/tmp/d.ndjson'
+docker cp ../../dashboards/talonsoclab-soc-overview.ndjson soc-recon-wazuh.dashboard-1:/tmp/d.ndjson
+PASS=$(grep -E '^WAZUH_INDEXER_PASS=' .env | cut -d= -f2-)
+printf 'user = "admin:%s"\n' "$PASS" | docker compose exec -T wazuh.dashboard \
+  curl -sk -K - -H "osd-xsrf: true" -X POST \
+  "https://localhost:5601/api/saved_objects/_import?overwrite=true" --form file=@/tmp/d.ndjson
+unset PASS
 ```
 
 > **Refresh the index-pattern field list first, or the Suricata panel will fail.** OpenSearch
