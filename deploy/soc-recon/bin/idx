@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# ******************************************************************************
+# *Title: idx*
+# *Author: Kyle Versluis*
+# *Description: Query the Wazuh indexer as admin by client certificate.*
+# ******************************************************************************
+
+# *--- Configuration ---*
+
+# SECURITY: client-cert auth keeps every secret out of argv. Host auditd logs each
+# execve and Wazuh indexes it, so a `curl -u admin:<pass>` lands in the alert index.
+set -euo pipefail
+CERTS=/usr/share/wazuh-indexer/config/certs
+
+# *--- Entry Point ---*
+
+if [[ $# -lt 1 || $1 != /* ]]; then
+  echo "usage: bin/idx <path> [curl args...]   (request body on stdin with --data-binary @-)" >&2
+  exit 2
+fi
+path=$1
+shift
+# NOTE: an exported CDPATH makes cd print the directory, which would corrupt the JSON on stdout.
+unset CDPATH
+cd -P -- "$(dirname -- "$0")/.."
+# NOTE: exec -T forwards stdin and waits for EOF; detach a terminal so a bare query returns.
+[[ -t 0 ]] && exec </dev/null
+# NOTE: -g keeps [] and {} literal, so a Lucene range in ?q= is not read as a curl glob.
+exec docker compose exec -T wazuh.indexer curl -sS -g \
+  --cacert "$CERTS/root-ca.pem" --cert "$CERTS/admin.pem" --key "$CERTS/admin-key.pem" \
+  --resolve wazuh.indexer:9200:127.0.0.1 -H 'Content-Type: application/json' \
+  "$@" "https://wazuh.indexer:9200$path"

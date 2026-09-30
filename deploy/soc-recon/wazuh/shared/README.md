@@ -1,7 +1,9 @@
 # Shared agent-group configs
 
 Config the manager pushes to agents by group. Mounted at `/wazuh-config-mount/etc/shared` so
-the entrypoint syncs it into `/var/ossec/etc/shared` on every boot.
+the entrypoint syncs it into `/var/ossec/etc/shared` when the container is created
+(`docker compose up -d --force-recreate wazuh.manager`). A plain restart does not sync; see
+GOTCHA 2 in `../../docker-compose.yml` and runbook 06 § 3.
 
 Kept in git because `/var/ossec/etc/shared/` lives inside the `wazuh_etc` volume and does not
 survive `docker compose down -v` — same failure class as the ISM policy

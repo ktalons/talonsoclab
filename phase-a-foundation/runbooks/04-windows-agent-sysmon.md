@@ -20,11 +20,15 @@
 
 Each check fails before the one it would otherwise mask.
 
-**Manager side — [MAC]:**
+**Manager side — [MAC], over SSH on the SOC host:**
 
 ```bash
+cd ~/talonsoclab/deploy/soc-recon
 ls -l wazuh/authd.pass                                              # a FILE, not a directory
-docker compose exec -T wazuh.manager od -c /var/ossec/etc/authd.pass | tail -3
+sha256sum < wazuh/authd.pass                                        # these two must match
+docker compose exec -T wazuh.manager sha256sum /var/ossec/etc/authd.pass < /dev/null
+docker compose exec -T wazuh.manager sh -c \
+  'wc -c < /var/ossec/etc/authd.pass; LC_ALL=C tr -d "[:graph:]" < /var/ossec/etc/authd.pass | od -c' < /dev/null
 docker compose exec -T wazuh.manager ls -la /var/ossec/etc/shared/phase-a-windows/
 docker compose exec -T wazuh.manager /var/ossec/bin/agent_groups -l
 ```
@@ -32,7 +36,8 @@ docker compose exec -T wazuh.manager /var/ossec/bin/agent_groups -l
 | Check | The silent failure it catches |
 |---|---|
 | `authd.pass` is a file | Compose bind-mounts `./wazuh/authd.pass`. **If that path doesn't exist on the host, Docker creates a _directory_.** authd then generates a random password and carries on. Manager reads healthy; every agent gets `Invalid password`. |
-| `od -c` byte dump | A CRLF, trailing space, or BOM produces `Invalid password` against a password that looks correct on screen. |
+| sha256 host = container | authd loaded the host file. Two hashes that differ mean the container holds an older copy: the host file changed after the manager was created, and a `restart` never re-copies it ([06](06-suricata-ids-dashboards.md) § 3). Run `docker compose up -d --force-recreate wazuh.manager` and re-check. An error in place of a hash (`Is a directory`, `No such file or directory`) is the row above. authd generated its own password there, and it never writes that password to the file. |
+| `wc -c` + `tr -d [:graph:] \| od -c` | Expect `33` (the generator's 32 characters plus a newline) and a single `\n`. Any `\r`, space, `357 273 277` (a BOM) or second `\n` produces `Invalid password` against a password that looks correct on screen. The `tr` deletes every printable character first, so no password character reaches the terminal. |
 | `merged.mg` present, `wazuh:wazuh` | The entrypoint creates group dirs `root:root`, but `wazuh-remoted` runs as `wazuh` — it can read the config and cannot write the merged file. Agents enroll happily and receive **nothing**, with no error anywhere. |
 | `agent_groups -l` | A typo in `WAZUH_AGENT_GROUP` is **not rejected**. The agent silently lands in `default`. |
 
@@ -103,7 +108,7 @@ control**: it proves authd is genuinely enforcing.
 
 ```powershell
 Start-Process msiexec.exe -Wait -ArgumentList '/i', $msi, '/qn', '/norestart', `
-  'WAZUH_MANAGER=<MANAGER-IP>', 'WAZUH_AGENT_NAME=talondellbox', `
+  'WAZUH_MANAGER=<MANAGER-IP>', 'WAZUH_AGENT_NAME=<DELL-HOSTNAME>', `
   'WAZUH_AGENT_GROUP=phase-a-windows', 'WAZUH_PROTOCOL=tcp', `
   '/l*v', 'C:\lab\install\wazuh-install.log'
 
@@ -129,12 +134,13 @@ If enrollment **succeeds** here, stop: anything on the LAN can register into the
 ## 4. Move the password as a file — [MAC]
 
 ```bash
-scp -3 talonsoc:'~/.../wazuh/authd.pass' talondell:'C:/lab/install/authd.pass'
+scp -3 talonsoc:'~/talonsoclab/deploy/soc-recon/wazuh/authd.pass' talondell:'C:/lab/install/authd.pass'
 ```
 
 Streams host-to-host, so it never touches the workstation's disk, renders as text, or enters a
 command line. Verify **bytes** without printing content, and compare the sha256 against both
-the git-tracked source and the copy authd actually loaded in-container. All three matching
+the host copy (`deploy/soc-recon/wazuh/authd.pass`, gitignored) and the copy authd actually
+loaded in-container. All three matching
 eliminates the whole "Invalid password against a correct-looking password" class.
 
 Then place it, restart, and watch `client.keys`:
@@ -155,11 +161,11 @@ correct the parameters are.
 The endpoint reporting itself healthy is precisely what must not be trusted.
 
 ```bash
+cd ~/talonsoclab/deploy/soc-recon                                       # on the SOC host, over SSH
 docker compose exec -T wazuh.manager /var/ossec/bin/agent_control -l    # want 001 ... Active
 docker compose exec -T wazuh.manager /var/ossec/bin/agent_groups -l     # want phase-a-windows (1)
 
-docker compose exec -T -e P="$WAZUH_INDEXER_PASS" wazuh.indexer sh -c \
-  'curl -sk -u admin:$P "https://localhost:9200/wazuh-alerts-*/_count?q=agent.name:talondellbox+AND+data.win.system.providerName:*Sysmon*"'
+bin/idx '/wazuh-alerts-*/_count?q=agent.name:<DELL-HOSTNAME>+AND+data.win.system.providerName:*Sysmon*'
 ```
 
 A non-zero count is the **collapsing probe** — it cannot be true unless enrollment, group
@@ -172,7 +178,7 @@ leave it readable by local users on a host destined to be the Phase C victim net
 
 ## Acceptance
 
-- [x] Agent `001 talondellbox` **Active** from `agent_control -l`
+- [x] Agent `001 <DELL-HOSTNAME>` **Active** from `agent_control -l`
 - [x] Data path confirmed: `(4102): Connected to the server ([<MANAGER-IP>]:1514/tcp)`
 - [x] Group `phase-a-windows (1)` read **server-side**
 - [x] Sysmon 15.21 + sysmon-modular — 9 event IDs the stock config cannot emit

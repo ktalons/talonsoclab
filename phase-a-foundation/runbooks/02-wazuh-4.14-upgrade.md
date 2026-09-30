@@ -39,8 +39,14 @@ Confirm the assumption the plan rests on. If anything other than agent `000` com
 and re-plan.
 
 ```bash
-curl -sk -H "Authorization: Bearer $TOKEN" \
+cd ~/talonsoclab/deploy/soc-recon
+# the password and the token reach curl on stdin, never as arguments (see wazuh/SECURITY.md)
+APASS=$(grep -E '^WAZUH_API_PASS=' .env | cut -d= -f2-)
+TOKEN=$(printf 'user = "wazuh-wui:%s"\n' "$APASS" | curl -sk -K - \
+  -X POST "https://localhost:55000/security/user/authenticate?raw=true")
+printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" | curl -sk -K - \
   "https://localhost:55000/agents?select=id,name,version,status" | jq '.data.affected_items'
+unset APASS TOKEN
 ```
 
 Then take a volume snapshot. `down -v` qualifies as a risky change. It isn't protecting the
@@ -87,13 +93,14 @@ from scratch. Healthcheck `start_period` is 120s; give it that.
 
 ## 4. Verify — [BOX]
 
-> **Indexer API calls must run inside a container.** `9200` is not host-published by design, so
+> **Indexer API calls go through `bin/idx`.** `9200` is not host-published by design, so
 > `curl https://localhost:9200` from the host reaches nothing — and with `-s` it fails
-> *silently*, which reads as an empty result rather than an error.
+> *silently*, which reads as an empty result rather than an error. `bin/idx` runs curl inside the
+> indexer container with the admin client certificate, so no password lands in argv.
 
 ```bash
 docker compose ps
-docker compose exec -T wazuh.indexer curl -sk -u admin:"$PASS" https://localhost:9200/_cluster/health
+bin/idx /_cluster/health
 docker compose exec wazuh.manager /var/ossec/bin/wazuh-control status
 docker compose exec wazuh.manager filebeat test output
 curl -skI https://localhost:443 | head -1

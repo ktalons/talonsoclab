@@ -1,8 +1,9 @@
 # Credential rotation
 
 How to rotate the stack off Wazuh's published default credentials, and how to verify it
-actually happened. Every command here was run against this stack on 2026-07-26 — this is a
-record of what worked, not a draft.
+actually happened. The rotation commands were run against this stack on 2026-07-26, and the
+argv-safe forms (`bin/idx`, `idx_as`, `api_as`, the authd sha256 check) on 2026-09-30. This is
+a record of what worked, not a draft.
 
 ## What you're rotating, and where each password lives
 
@@ -11,10 +12,10 @@ silently.** This table is the whole job — miss one cell and something breaks f
 
 | Password | Account | Server-side copy | Client-side copy | Format |
 |---|---|---|---|---|
-| `WAZUH_INDEXER_PASS` | `admin` | bcrypt in `config/wazuh_indexer/internal_users.yml`, pushed via `securityadmin` | `.env` → filebeat, dashboard, CASA digest, indexer healthcheck | hash / plaintext |
+| `WAZUH_INDEXER_PASS` | `admin` | bcrypt in `config/wazuh_indexer/internal_users.yml`, pushed via `securityadmin` | `.env` → filebeat, dashboard, CASA digest | hash / plaintext |
 | `WAZUH_DASHBOARD_PASS` | `kibanaserver` | bcrypt in `internal_users.yml`, pushed via `securityadmin` | `.env` → dashboard service account | hash / plaintext |
 | `WAZUH_API_PASS` | `wazuh-wui` | `.env` → manager `API_PASSWORD`, applied every start | **`config/wazuh_dashboard/wazuh.yml`** → dashboard's API connection | plaintext / plaintext |
-| enrollment password | authd (`:1515`) | `wazuh/authd.pass` → synced to `/var/ossec/etc/authd.pass` | every agent, at install time (`WAZUH_REGISTRATION_PASSWORD`) | plaintext / plaintext |
+| enrollment password | authd (`:1515`) | `wazuh/authd.pass` → synced to `/var/ossec/etc/authd.pass` | every agent, once at enrollment (`authd.pass` placed by hand, then removed) | plaintext / plaintext |
 
 Plus the password manager (PHOENIX Tier 3), which is the only place any of them can be
 *recovered* from — a Tier 2 snapshot restores hashes, never passwords.
@@ -24,7 +25,7 @@ Plus the password manager (PHOENIX Tier 3), which is the only place any of them 
 
 > **The `wazuh.yml` copy is the one that gets forgotten.** Rotate `.env` without it and the
 > manager API is completely healthy while the dashboard overview reports
-> **"No API available to connect"**. Testing `curl -u wazuh-wui:<new> :55000` returns `200` and
+> **"No API available to connect"**. Testing the new password against `:55000` returns `200` and
 > looks like proof — it isn't. That proves the *server* accepted the new password. It says
 > nothing about whether every *client* was updated. Verified the hard way, 2026-07-26.
 
@@ -41,13 +42,29 @@ care what the current credentials are, or whether they're broken, or whether you
 malformed hash. If a rotation goes wrong, fix the file and re-run the same command. Cert-based
 admin access is independent of password state — iterate freely.
 
+## Keep every secret out of argv
+
+The SOC host runs auditd execve rules and Wazuh indexes each command line it sees (rule 80792).
+A password passed as a command argument, like `curl -u admin:<pass>` or
+`docker exec -e P=<pass>`, ends up in the alert index and in the manager's alert logs. The
+stack's original indexer healthcheck did exactly that on every run, until 2026-09-30.
+
+Every command in this file follows two rules:
+
+- Query the indexer as admin with `bin/idx`. It authenticates with the admin **client
+  certificate**, so there is no password to leak.
+- When a password itself is under test, it reaches curl **on stdin** as a config line
+  (`curl -K -`), written by `printf`. `printf` and `read` are shell builtins. They never exec,
+  so auditd never sees them.
+
 ## Procedure
 
 ### 1. Generate passwords
 
-**Alphanumeric only.** These are interpolated into the indexer healthcheck's `curl -u admin:...`
-inside a `CMD-SHELL`, and `$` triggers compose variable expansion. 32 alphanumeric characters is
-~190 bits; punctuation buys nothing and breaks things subtly.
+**Alphanumeric only.** `$` in `.env` triggers compose variable expansion, and the verify steps
+below pass each password inside a quoted curl config line, where `"` and `\` would need
+escaping. 32 alphanumeric characters is ~190 bits; punctuation buys nothing and breaks things
+subtly.
 
 ```bash
 for n in INDEXER DASHBOARD API; do
@@ -93,8 +110,47 @@ sees your edit immediately, no restart needed.
 
 ### 4. Push to the running indexer
 
-Editing the YAML changes nothing on its own. Live credentials live in the `.opendistro_security`
-index; this is what moves them.
+**Positive control first.** Steps 2 and 3 only changed files, so the indexer and the manager
+still accept the old passwords. Prove that now. A `401` after the push only means the rotation
+worked if the same old password returned `200` before it; otherwise it could just be a typo.
+Keep this shell open until Verify.
+
+```bash
+# idx_as <password> <path> [curl args...]: basic auth as admin, password on stdin only
+idx_as() {
+  local pass=$1 urlpath=$2
+  shift 2
+  case $pass in
+    ''|*[\"\\]*) echo 'idx_as: empty password or unsupported character' >&2; return 1 ;;
+  esac
+  printf 'user = "admin:%s"\n' "$pass" | docker compose exec -T wazuh.indexer \
+    curl -s -K - --cacert /usr/share/wazuh-indexer/config/certs/root-ca.pem \
+    --resolve wazuh.indexer:9200:127.0.0.1 "$@" "https://wazuh.indexer:9200$urlpath"
+}
+
+# api_as <password>: authenticate as wazuh-wui against :55000, password on stdin only
+api_as() {
+  case $1 in
+    ''|*[\"\\]*) echo 'api_as: empty password or unsupported character' >&2; return 1 ;;
+  esac
+  printf 'user = "wazuh-wui:%s"\n' "$1" | curl -sk -K - -o /dev/null \
+    -w 'HTTP %{http_code}\n' -X POST https://localhost:55000/security/user/authenticate
+}
+
+read -rs -p "old admin password: " OLDPASS; echo
+read -rs -p "old API password: " OLDAPI; echo
+idx_as "$OLDPASS" /_cluster/health -o /dev/null -w 'HTTP %{http_code}\n'    # want HTTP 200
+api_as "$OLDAPI"                                                             # want HTTP 200
+```
+
+The old passwords are the ones you are rotating off: `SecretPassword` and `MyS3cr37P450r.*-` on
+a fresh stack, the previous values on every rotation after that. Both lines must print
+`HTTP 200` before you go on. The helpers are bash (`read -s -p`), and they call
+`docker compose` without `sudo` because the SOC host user is in the `docker` group, which is
+the form that was tested.
+
+Now push. Editing the YAML changes nothing on its own. Live credentials live in the
+`.opendistro_security` index; this is what moves them.
 
 ```bash
 sudo docker compose exec -T wazuh.indexer \
@@ -136,55 +192,54 @@ ls -la config/wazuh_dashboard/    # confirm it's a FILE, not a directory
 sudo docker compose up -d --force-recreate
 ```
 
-Containers bake env at creation, so the manager and dashboard keep old credentials until they're
-recreated. Between step 4 and here the indexer will read **unhealthy** and the dashboard won't
-start at all — `depends_on: condition: service_healthy` gates it. Both are expected.
+Containers bake env at creation, so the manager's filebeat and the dashboard keep presenting the
+old credentials until they're recreated. Between step 4 and here, expect filebeat publish errors
+and a dashboard that can't reach the indexer. Both are expected.
 
-**Three containers in `docker compose ps` is the signal.** The dashboard cannot start unless the
-indexer went healthy, and the indexer cannot go healthy unless `.env` matches the pushed hash.
+The indexer itself stays `(healthy)` the whole time. Its healthcheck authenticates with the admin
+certificate, not a password, so a healthy indexer says nothing about whether `.env` matches the
+pushed hash. **`filebeat test output` is the signal** (see Verify). Filebeat logs in as `admin`
+with the `.env` password, so it passes only when `.env` and the pushed hash agree.
 
 ## Verify
+
+In the same shell as step 4, so `idx_as`, `api_as`, `OLDPASS` and `OLDAPI` are still set:
 
 ```bash
 read -rs -p "new admin password: " NEWPASS; echo
 
-sudo docker compose exec -T wazuh.indexer \
-  curl -sk -u admin:"$NEWPASS" https://localhost:9200/_cluster/health < /dev/null | jq -c
+idx_as "$NEWPASS" /_cluster/health | jq -c
 
-# the negative test — this is the one that matters
-sudo docker compose exec -T wazuh.indexer \
-  curl -sk -o /dev/null -w 'HTTP %{http_code}\n' \
-  -u admin:SecretPassword https://localhost:9200/_cluster/health < /dev/null
+# the negative test: the same old password that returned 200 in step 4
+idx_as "$OLDPASS" /_cluster/health -o /dev/null -w 'HTTP %{http_code}\n'
 
-sudo docker compose exec -T wazuh.indexer \
-  curl -sk -u admin:"$NEWPASS" \
-  https://localhost:9200/_plugins/_security/api/internalusers < /dev/null | jq 'keys'
+idx_as "$NEWPASS" /_plugins/_security/api/internalusers | jq 'keys'
 
 sudo docker compose exec wazuh.manager filebeat test output
-unset NEWPASS
 ```
 
 | Check | Expected |
 |---|---|
 | New password | `status: yellow`, cluster responds |
-| **Old password `SecretPassword`** | **`HTTP 401`** |
+| **Old password** | **`HTTP 401`** |
 | Internal users | exactly `["admin","kibanaserver"]` |
 | filebeat | handshake OK, talk to server OK, TLSv1.2 |
 
 The negative test is not optional. A healthy stack and a working new password are both
 consistent with the old credential *also* still working — which is what a failed hash update
-looks like. Only the old password being rejected distinguishes rotation from addition.
+looks like. Only the old password being rejected distinguishes rotation from addition, and the
+`401` only counts because the step 4 positive control got `200` from the same value.
 
-Same for the API:
+Same for the API, then clear the shell:
 
 ```bash
-curl -sk -o /dev/null -w 'HTTP %{http_code}\n' \
-  -u wazuh-wui:'MyS3cr37P450r.*-' \
-  -X POST https://localhost:55000/security/user/authenticate
+api_as "$OLDAPI"          # want HTTP 401; it returned 200 in step 4
+unset NEWPASS OLDPASS OLDAPI
+unset -f idx_as api_as
 ```
 
-Want `401`. Verified 2026-07-26: `API_PASSWORD` is applied on every manager start, so the
-*manager side* rotates from `.env` alone, despite the RBAC database persisting in the
+Verified 2026-07-26: `API_PASSWORD` is applied on every manager start, so the *manager side*
+rotates from `.env` alone, despite the RBAC database persisting in the
 `wazuh_api_configuration` volume.
 
 ### Client-side check — do not skip this
@@ -194,8 +249,8 @@ confirming the dashboard itself:
 
 - Log into the dashboard and check the **API card on the overview page reads `Online v4.14.6`**.
   "No API available to connect" means `wazuh.yml` still holds the old password.
-- `docker compose ps` shows all three containers, with the indexer `(healthy)` — the dashboard
-  cannot start at all unless the indexer's healthcheck authenticated with the `.env` password.
+- `filebeat test output` passes. The indexer's own `(healthy)` status is not evidence here: its
+  healthcheck uses the admin certificate, so it never presents the `.env` password at all.
 
 A rotation is only complete when both the old credential is rejected **and** every client
 presents the new one.
@@ -218,12 +273,17 @@ The password itself goes in `wazuh/authd.pass` — one line, no trailing content
 ```bash
 LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > wazuh/authd.pass
 echo >> wazuh/authd.pass
-sudo docker compose restart wazuh.manager
+sudo docker compose up -d --force-recreate wazuh.manager
 ```
 
-Store it in the password manager — every future agent install needs it, and it is not
-recoverable from the manager once set (see verification below for how to read it back if you
-lose it *before* rotating).
+**Recreate, never `restart`.** The file is mounted at `/wazuh-config-mount/etc/authd.pass` and
+only reaches `/var/ossec/etc/` when the manager's init copies it across. On a plain `restart`
+that init step fails early and skips the copy, so authd keeps the previous password. Runbook 06
+§ 3 has the full mechanism
+([`06-suricata-ids-dashboards.md`](../../../phase-a-foundation/runbooks/06-suricata-ids-dashboards.md)).
+
+Store it in the password manager — every future agent install needs it. If the host copy is
+lost before the next rotation, Verify below shows how to copy the manager's value back.
 
 > **The failure mode is generous, not loud.** If `use_password` is `yes` and `authd.pass` is
 > missing or unreadable, authd does not refuse to start — it **generates a random password**
@@ -233,33 +293,48 @@ lose it *before* rotating).
 ### Verify
 
 ```bash
-# what authd actually has — not what you think you wrote
-sudo docker compose exec -T wazuh.manager cat /var/ossec/etc/authd.pass < /dev/null
+# what authd actually has, not what you think you wrote. The two hashes must match.
+sha256sum < wazuh/authd.pass
+sudo docker compose exec -T wazuh.manager sha256sum /var/ossec/etc/authd.pass < /dev/null
 
 sudo docker compose exec -T wazuh.manager \
   stat -c '%U:%G %a %n' /var/ossec/etc/authd.pass < /dev/null
 
-sudo docker compose logs wazuh.manager --tail 40 | grep -i authd
+# count only: this log line carries the generated password in clear
+sudo docker compose logs wazuh.manager | grep -c 'Random password chosen'    # want 0
 ```
 
-If the file contents don't match what you generated, the bind mount didn't land and authd
-invented its own. Enrolling agents then use `WAZUH_REGISTRATION_PASSWORD` matching whatever
-that `cat` returned.
+Two hashes that differ mean the container holds an older copy. The host file changed after the
+manager was created, and nothing copied it across. Recreate. An error in place of a hash
+(`Is a directory`, `No such file or directory`), or a non-zero count on the last line, means
+authd generated its own password. It logs that value and never writes it to the file, so fix
+`wazuh/authd.pass` and recreate.
+
+If you lose the host copy while the container still holds the value your agents use, write it
+straight back without displaying it, then re-run the hash pair:
+
+```bash
+(umask 077; sudo docker compose exec -T wazuh.manager cat /var/ossec/etc/authd.pass \
+  < /dev/null > wazuh/authd.pass)
+```
 
 ### Agent side
 
-```
-msiexec.exe /i wazuh-agent-4.14.6-1.msi /q ^
-  WAZUH_MANAGER="<manager-ip>" ^
-  WAZUH_REGISTRATION_SERVER="<manager-ip>" ^
-  WAZUH_REGISTRATION_PASSWORD="<the authd password>" ^
-  WAZUH_AGENT_NAME="<hostname>" ^
-  WAZUH_AGENT_GROUP="phase-a-windows" ^
-  WAZUH_PROTOCOL="tcp"
+Install without the password, then place it as a file. Sysmon records every command line as
+Event ID 1, so a `WAZUH_REGISTRATION_PASSWORD` on the msiexec line lands in the alert index,
+the same way the indexer healthcheck did on Linux.
+
+```powershell
+Start-Process msiexec.exe -Wait -ArgumentList '/i', 'wazuh-agent-4.14.6-1.msi', '/qn', '/norestart', `
+  'WAZUH_MANAGER=<manager-ip>', 'WAZUH_AGENT_NAME=<hostname>', `
+  'WAZUH_AGENT_GROUP=phase-a-windows', 'WAZUH_PROTOCOL=tcp'
 ```
 
-The password is written to `authd.pass` on the agent too, under
-`C:\Program Files (x86)\ossec-agent\`. It's only used at enrollment, not per-message.
+Copy `wazuh/authd.pass` to the agent without it entering a command line, move it to
+`C:\Program Files (x86)\ossec-agent\authd.pass`, start `WazuhSvc`, and wait for `client.keys`
+to go non-zero. Then delete `authd.pass`. It's only used at enrollment, not per-message.
+[`04-windows-agent-sysmon.md`](../../../phase-a-foundation/runbooks/04-windows-agent-sysmon.md)
+§3 to §5 has the full sequence, including the negative control.
 
 ## Accounts deliberately removed
 
