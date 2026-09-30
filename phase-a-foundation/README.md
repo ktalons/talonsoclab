@@ -39,9 +39,10 @@ pivot), HA and SOAR (out of scope).
 
 ## Feeding CASA
 
-The digest collector emits a deterministic `{date}-intake.json`. That artifact is the seam for
-**[CASA](https://github.com/ktalons/casa-ai-agent)**, the multi-agent reasoning layer and my
-capstone. TalonSocLab is the data plane; CASA does the analysis.
+The digest collector is written to emit a deterministic `{date}-intake.json` on CASA's
+`soc-intake/v1` contract. It is not deployed yet, so no intake has come from live telemetry. That
+artifact is the seam for **[CASA](https://github.com/ktalons/casa-ai-agent)**, my separate
+multi-agent reasoning layer. TalonSocLab is the data plane; CASA does the analysis.
 
 ## History
 
