@@ -12,7 +12,7 @@ Division of labor (this is the architecture — don't blur it):
     PAI-based multi-agent system (Overseer / LogAnalyst / NetworkAnalyst /
     PurpleTeamMapper / Pentester) that consumes the {date}-intake.json written here
     and produces explainable, NIST-aligned, human-in-the-loop analysis. THAT is the
-    capstone — not an LLM call buried in this file.
+    reasoning layer — not an LLM call buried in this file.
 
 Outputs per run:
   * {date}-digest.md   — deterministic human-readable digest (no LLM).
