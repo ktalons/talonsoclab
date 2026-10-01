@@ -1,9 +1,12 @@
 # soc-recon
 
-The compose stack. Two workloads on one 16 GB box, unequal priority:
+The compose stack. Three workloads on one 16 GB box, unequal priority:
 
-- **Wazuh SOC stack** — always-on, memory reservation + OOM protection.
-- **Recon pipeline** — cron-launched, ephemeral, hard memory cap. Yields to Wazuh.
+- **Wazuh SOC stack:** always-on, memory reservation + OOM protection.
+- **Suricata sensor:** always-on on the host network, protected, but killed before Wazuh
+  under memory pressure.
+- **Recon pipeline:** cron-launched, ephemeral, hard memory cap. Yields to Wazuh. Not
+  deployed yet; the compose service and cron entry are the plan.
 
 Endpoints are Wazuh agents on real devices, so no endpoint VMs run here and the RAM budget
 stays clear. Recon points at my own assets only.
@@ -13,13 +16,15 @@ stays clear. Recon points at my own assets only.
 ```
 docker-compose.yml       resource limits, recon profile, indexer healthcheck
 .env.example             WAZUH_VERSION, INDEXER_HEAP, passwords, digest config
-recon/                   subfinder + httpx + nuclei + diff, one slim image
+bin/idx                  indexer API helper: admin client certificate (--cacert/--cert/--key), never a password in argv
+suricata/                logrotate cron for the sensor's eve.json (Phase A.3)
+recon/                   subfinder + httpx + nuclei + diff, one slim image (not deployed)
 scope/                   in-scope targets (domains.txt is gitignored)
-triage/                  human-review queue
-digest/                  daily digest + CASA intake builder
+triage/                  human-review queue (not deployed)
+digest/                  daily digest + CASA intake builder (not deployed)
 wazuh/ism/               retention policy (version-controlled on purpose)
 wazuh/shared/            per-group agent config pushed to endpoints
-wazuh/custom-rules/      Sigma-converted rule XML (Phase B)
+wazuh/custom-rules/      local Suricata tuning rules (live); Sigma-converted XML lands here in Phase B
 ```
 
 ## Resource budget
@@ -29,9 +34,10 @@ wazuh/custom-rules/      Sigma-converted rule XML (Phase B)
 | wazuh.indexer | 2g | 2g | 4g |
 | wazuh.manager | — | 1g | 1.5g |
 | wazuh.dashboard | — | 512m | 1g |
+| suricata | — | 512m | 1.5g |
 | recon-runner | — | — | 2g |
 
-Always-on ≈ 6.5 GB + ~1.5 GB OS, leaving ~8 GB headroom. Raise `INDEXER_HEAP` only after a RAM
+Always-on hard ceiling ≈ 8 GB + ~1.5 GB OS, leaving headroom for the 2 GB recon burst. Raise `INDEXER_HEAP` only after a RAM
 upgrade. **Disk is the tighter limit** — see [`wazuh/ism/`](wazuh/ism/).
 
 ## Run
@@ -46,14 +52,16 @@ docker compose -f generate-indexer-certs.yml run --rm generator
 sudo chmod 755 config/wazuh_indexer_ssl_certs && sudo chmod 644 config/wazuh_indexer_ssl_certs/*
 
 docker compose up -d                              # dashboard at https://<host>
-docker compose run --rm recon-runner              # recon, one-shot; this is what cron runs
+
+# Planned, not deployed: the recon run and the digest. crontab.example has the schedule.
+docker compose run --rm recon-runner              # recon, one-shot
 python3 digest/generate_digest.py                 # daily digest + CASA intake
 ```
 
 Host prerequisite: `vm.max_map_count=262144`.
 
-Nothing auto-submits anywhere. Recon writes deltas to `triage/`; the digest collects and cites.
-You review and decide.
+Nothing auto-submits anywhere. Once deployed, recon writes deltas to `triage/` and the digest
+collects and cites. You review and decide.
 
 ## Credentials
 

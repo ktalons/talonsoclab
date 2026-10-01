@@ -1,0 +1,70 @@
+# leakcheck negative fixture: the cert-auth healthcheck and a compose environment list.
+services:
+  wazuh.indexer:
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s --cacert /c/root-ca.pem --cert /c/admin.pem --key /c/admin-key.pem https://localhost:9200/_cluster/health | grep -q status"]
+  wazuh.manager:
+    environment:
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD}
+      - API_PASSWORD=${WAZUH_API_PASS}
+      - DB_URL=https://fixture-user:${DB_PASS}@db.example.test
+  wazuh.dashboard:
+    environment:
+    - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+    ports:
+      - "443:5601"
+      - "9200:9200"
+  # Exec form with the secret read from stdin, an option that takes no value, and
+  # a prompt form that looks like a value.
+  helper:
+    command: ["docker", "login", "-u", "fixture-user", "--password-stdin", "registry.example.test"]
+    entrypoint:
+      - /usr/share/wazuh-indexer/bin/wazuh-keystore
+      - -f
+      - indexer
+      - -k
+      - password
+    backup: ["mysql", "-u", "root", "--password", "wazuh"]
+    script: >
+      curl -sk -H 'Accept: application/json'
+      --cacert /c/root-ca.pem
+      https://localhost:9200
+# SCA mapping lines carry dotted IDs that look like addresses.
+checks:
+  - id: 1
+    compliance:
+      - pci_dss_v4.0: ["10.2.1.1", "10.2.1.2", "10.3.4"]
+# Exec-form items joined back together: the quote that closes "-p" is not its value.
+ci:
+  script:
+    - mysql -u root -p
+    - echo done
+  other: ["docker login -u me -p", "echo x"]
+# Requirement IDs in every list form a policy uses.
+pci-forms:
+  - pci_dss_v4.0: ["10.2.1.1",
+                   "10.2.1.2"]
+  - "pci_dss_v4.0": ["10.2.1.1"]
+  - 'pci_dss_v4.0': ["10.4.1.1"]
+  - pci_dss_v4.0:
+      - "10.2.1.1"
+      - "10.2.1.7"
+  - pci_dss_v4.0:
+      ["10.2.1.1",
+       "10.2.1.2"]
+# An environment value in every form compose takes: anchored, aliased, quoted, flow.
+env-forms:
+  anchored:
+    environment: &db_env
+      DB_URL: https://fixture-user:fixture-pass@db.example.test
+  aliased:
+    environment: *db_env
+  quoted:
+    "environment":
+      - DB_URL=https://fixture-user:fixture-pass@db.example.test
+  flow:
+    environment: { DB_URL: "https://fixture-user:fixture-pass@db.example.test" }
+  flow-wrapped:
+    environment: [
+      "DB_URL=https://fixture-user:fixture-pass@db.example.test"
+    ]

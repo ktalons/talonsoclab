@@ -1,0 +1,53 @@
+# leakcheck positive fixture: the original indexer healthcheck shape, and friends.
+services:
+  wazuh.indexer:
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sk -u admin:fixture https://localhost:9200/_cluster/health | grep -q status"]  # expect: argv-user
+  helper:
+    command: ["sh", "-c", "docker run --rm -e API_TOKEN=fixture busybox true"]  # expect: argv-env
+    environment:
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD}
+      - FIXTURE_URL=https://fixture-user:fixture-pass@db.example.test
+    labels:
+      backup: "mysql --password=fixture wazuh"  # expect: argv-password-opt
+  # Exec form: one argument per item, on one line, wrapped, as a block sequence, or folded.
+  agent:
+    healthcheck:
+      test: ["CMD", "curl", "-sk", "-u", "admin:fixture", "https://localhost:9200"]  # expect: argv-user
+    command: [
+      "curl", "-sk",
+      "-H", "Authorization: Bearer fixture-token",  # expect: argv-header
+      "https://localhost:55000/agents"
+    ]
+    entrypoint:
+      - CMD
+      - curl
+      - -sk
+      - -u  # expect: argv-user
+      - admin:fixture
+      - https://localhost:9200
+    script: >
+      curl -sk
+      --oauth2-bearer fixture-token  # expect: argv-header
+      https://localhost:55000/agents
+# A blank line inside a block sequence does not end it.
+blank-in-block:
+  entrypoint:
+    - curl
+    - -u   # expect: argv-user
+
+    - admin:fixture
+# A requirement-ID list carries no real address.
+pci-fail-open:
+  - pci_dss_v4.0: ["10.20.30.40"]   # expect: private-ipv4
+  - pci_dss_v4.0: ["10.0.0.5"]   # expect: private-ipv4
+  - pci_dss_v4.0: ["10.2.1.1"] # lab box 172.18.4.20   expect: private-ipv4
+# Indentation and chomping indicators fold in either order.
+folded-forms:
+  command: >2-
+    some-tool -w 'expect: argv-password-opt' --password
+    fixture
+# A flow value left open ends at the next key, and that key is scanned again.
+env-unclosed:
+  environment: { DB_URL: "https://fixture-user:${DB_PASS}@db.example.test"
+  command: ["curl", "-u", "admin:fixture", "https://localhost:9200"]  # expect: argv-user

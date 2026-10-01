@@ -62,7 +62,7 @@ in one line.
 ```
 Host win-endpoint
   HostName <DELL-IP>
-  User <WIN-USER>
+  User <DELL-USER>
   IdentityFile ~/.ssh/id_ed25519_talonlab
   IdentitiesOnly yes
 ```

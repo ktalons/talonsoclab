@@ -41,7 +41,7 @@ services:
       # gate dependents on the indexer actually answering, not just "started".
       # SECURITY: exec form + client-cert auth, so no secret ever sits in argv.
       # Host auditd logs every execve and Wazuh indexes it; the old
-      # `curl -u admin:<pass>` CMD-SHELL form put the admin password into
+      # `curl -u` basic-auth CMD-SHELL form put the admin password into
       # two audit alerts per run (the sh -c and curl execs), ~5,700 a day.
       # The admin cert already lives in this container for securityadmin.
       # -f turns HTTP 408 (status not reached) into a non-zero exit, so a
