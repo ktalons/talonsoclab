@@ -2,23 +2,23 @@ flowchart TB
 %% TalonSocLab — Physical / L2 network topology (home-lab edition)
 %% Companion to architecture.mmd (which is the *container* topology).
 %% This diagram is the WIRING: what plugs into what, and at which layer.
-%% Legend: solid = wired now · dashed = planned (Dell AD lab, Pi sensor, SPAN, VLANs) or wireless
+%% Legend: solid = wired now · dashed = planned (Pi sensor, SPAN) or wireless
 %% Gateway/DHCP/DNS all live on the BE550 (L3). The SG108E is L2 fan-out.
 
     Internet((Internet / ISP))
 
-    subgraph LAN["Home LAN — 192.168.x.0/24 · single broadcast domain (flat, VLANs = Phase C)"]
+    subgraph LAN["Home LAN — 192.168.x.0/24 · single broadcast domain (flat, no VLANs)"]
         direction TB
 
         Router["TP-Link Archer BE550 (WiFi 7)<br/>Role: L3 gateway · DHCP server · DNS · WiFi AP<br/>LAN gateway .1"]
 
-        Switch["TP-Link TL-SG108E — 8-port Easy Smart switch<br/>Role: L2 fan-out for the rack<br/>Mgmt UI (default 192.168.0.1) · 802.1Q VLAN + SPAN capable"]
+        Switch["TP-Link TL-SG108E — 8-port Easy Smart switch<br/>Role: L2 fan-out for the rack<br/>web mgmt UI · 802.1Q VLAN + SPAN capable"]
 
         subgraph Rack["VEVOR 12U rack — all on the CyberPower UPS"]
             direction TB
-            Elite["HP EliteDesk 800 G4 Mini<br/>eno1 (wired) · Ubuntu 26.04<br/>SOC stack: Wazuh + recon (Docker)"]
-            Dell["Dell OptiPlex 7070 Micro<br/>AD lab / victim net"]
-            Pi["Raspberry Pi 5<br/>Zeek/Suricata sensor · honeypot"]
+            Elite["HP EliteDesk 800 G4 Mini<br/>eno1 (wired) · Ubuntu 26.04<br/>SOC stack (Docker): Wazuh + Suricata IDS"]
+            Dell["Dell OptiPlex 7070 Micro<br/>Windows 11 · Sysmon + Wazuh agent 001<br/>future AD lab / victim net"]
+            Pi["Raspberry Pi 5<br/>planned: Zeek sensor · honeypot"]
         end
 
         Mac(["MacBook — analyst workstation + Wazuh agent<br/>USB-C dock ethernet to SG108E (primary) · WiFi to BE550 (fallback)"])
@@ -28,12 +28,12 @@ flowchart TB
     Router ==>|"LAN port → switch (single uplink, no loops)"| Switch
     Switch ==>|"port · gigabit"| Elite
     Switch ==>|"port · gigabit → USB-C dock"| Mac
-    Switch -. "planned port" .-> Dell
+    Switch ==>|"port · gigabit"| Dell
     Switch -. "planned port" .-> Pi
     Router -. "WiFi 7 (fallback)" .-> Mac
     Mac ==>|"HTTPS 443 → dashboard"| Elite
 
-    Switch -. "SPAN / port-mirror → sensor (Phase A.3 / B)" .-> Pi
+    Switch -. "SPAN of the BE550 uplink (deferred)" .-> Elite
 
     classDef net fill:#0f172a,stroke:#f59e0b,color:#fff
     classDef sw  fill:#1f2937,stroke:#38bdf8,color:#fff
@@ -43,6 +43,6 @@ flowchart TB
 
     class Router net
     class Switch sw
-    class Elite host
-    class Dell,Pi planned
+    class Elite,Dell host
+    class Pi planned
     class Internet,Mac ext

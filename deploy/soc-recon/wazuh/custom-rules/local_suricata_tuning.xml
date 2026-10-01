@@ -21,9 +21,9 @@
     not parse. On this LAN that is continuous background chatter, measured
     2026-08-09 at ~66 frames/min, ~95k alerts/day:
 
-      58:04:4F:53:51:3C  ethertype 0x8899  Realtek RRCP — the TL-SG108E smart
+      <SWITCH-MAC>       ethertype 0x8899  Realtek RRCP — the TL-SG108E smart
                                            switch's own management broadcast
-      3C:6A:D2:32:55:5C  ethertype 0x893A  IEEE 1905.1 (home networking), and
+      <ROUTER-MAC>       ethertype 0x893A  IEEE 1905.1 (home networking), and
                                            0x88CC LLDP — the BE550 router
 
     Level 0 = analysisd drops it before the alert log, so it never reaches

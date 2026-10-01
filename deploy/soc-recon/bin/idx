@@ -8,7 +8,7 @@
 # *--- Configuration ---*
 
 # SECURITY: client-cert auth keeps every secret out of argv. Host auditd logs each
-# execve and Wazuh indexes it, so a `curl -u admin:<pass>` lands in the alert index.
+# execve and Wazuh indexes it, so any password passed to `curl -u` gets indexed.
 set -euo pipefail
 CERTS=/usr/share/wazuh-indexer/config/certs
 

@@ -19,6 +19,8 @@
 !.env.example
 secrets/
 credentials/
+# Real lab identifiers for tools/leakcheck.ts. Committing it would leak its own contents.
+/tools/leak-denylist.txt
 
 # Lab artifacts that should stay local
 *.qcow2

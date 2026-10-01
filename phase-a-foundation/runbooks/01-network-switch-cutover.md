@@ -95,5 +95,7 @@ hard-coded on the box.
 - [ ] Switch mgmt IP moved onto the LAN + admin password changed *(deferred to Phase C, with VLANs)*
 
 Left unconfigured on purpose: **802.1Q VLANs** (segmenting management / victim / sensor —
-Phase C) and **SPAN** (Phase A.3, once there's a sensor to mirror to). Flat L2 is the correct
+Phase C) and **SPAN**. The sensor now exists (Suricata on the EliteDesk, runbook 06) and sees
+only the box's own traffic plus broadcast. Mirroring the router uplink to it is the enrichment
+step and waits until that baseline is trusted (A.3 stretch / Phase B). Flat L2 is the correct
 Phase 0 state.

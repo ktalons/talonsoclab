@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# ******************************************************************************
+# *Title: pre-push*
+# *Author: Kyle Versluis*
+# *Description: Block a push whose commits fail leakcheck.*
+# ******************************************************************************
+
+# *--- Configuration ---*
+
+# NOTE: installed by tools/hooks/install.sh. Git writes one "<local ref> <local sha>
+# <remote ref> <remote sha>" line per ref to stdin, which exec passes through. $2 is
+# the URL being pushed to ($1 names the remote, or repeats the URL). The scanner asks
+# that URL what it already holds, so a ref new to it is bounded by what it lists.
+set -euo pipefail
+
+# *--- Entry Point ---*
+
+root=$(git rev-parse --show-toplevel)
+# SECURITY: fail closed. A missing scanner must stop the push, not wave it through.
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-push: bun not found, so leakcheck cannot run. Push blocked." >&2
+  exit 1
+fi
+dest=${2:-${1:-}}
+exec bun "$root/tools/leakcheck.ts" --pushed ${dest:+--remote "$dest"}

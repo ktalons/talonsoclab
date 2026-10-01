@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# ******************************************************************************
+# *Title: commit-msg*
+# *Author: Kyle Versluis*
+# *Description: Block a commit whose message names a lab identifier.*
+# ******************************************************************************
+
+# *--- Configuration ---*
+
+# NOTE: installed by tools/hooks/install.sh. Git passes the message file as $1.
+set -euo pipefail
+
+# *--- Entry Point ---*
+
+root=$(git rev-parse --show-toplevel)
+# SECURITY: fail closed. A missing scanner must stop the commit, not wave it through.
+if ! command -v bun >/dev/null 2>&1; then
+  echo "commit-msg: bun not found, so leakcheck cannot run. Commit blocked." >&2
+  exit 1
+fi
+exec bun "$root/tools/leakcheck.ts" --message "$1"

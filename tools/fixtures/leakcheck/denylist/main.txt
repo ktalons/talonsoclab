@@ -1,0 +1,3 @@
+# Fixture denylist for --self-test. Every value here is synthetic.
+@include included.txt
+@exclude fixture-excluded-name

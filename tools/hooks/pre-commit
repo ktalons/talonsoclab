@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# ******************************************************************************
+# *Title: pre-commit*
+# *Author: Kyle Versluis*
+# *Description: Block a commit whose staged content fails leakcheck.*
+# ******************************************************************************
+
+# *--- Configuration ---*
+
+# NOTE: installed by tools/hooks/install.sh, which writes a stub into .git/hooks
+# that fails closed when this file is missing. A repo-level core.hooksPath would
+# bypass the global dispatcher that calls the stub, so install.sh never sets one.
+set -euo pipefail
+
+# *--- Entry Point ---*
+
+root=$(git rev-parse --show-toplevel)
+# SECURITY: fail closed. A missing scanner must stop the commit, not wave it through.
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-commit: bun not found, so leakcheck cannot run. Commit blocked." >&2
+  exit 1
+fi
+exec bun "$root/tools/leakcheck.ts" --staged
