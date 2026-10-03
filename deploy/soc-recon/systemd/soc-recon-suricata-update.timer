@@ -1,0 +1,18 @@
+# ******************************************************************************
+# *Title: Suricata Rule Update Timer*
+# *Author: Kyle Versluis*
+# *Description: Runs the Suricata rule update daily at 04:30 UTC.*
+# ******************************************************************************
+
+[Unit]
+Description=Daily ET Open update for the soc-recon Suricata sensor
+
+[Timer]
+# Half an hour after the log rotation, so the two never share the engine socket.
+OnCalendar=*-*-* 04:30:00 UTC
+# NOTE: no Persistent=, so a night missed while the box was down is skipped. A
+# catch-up run at boot would fire before the container is up and fail, and a
+# skipped night only means one more day on the current rules.
+
+[Install]
+WantedBy=timers.target

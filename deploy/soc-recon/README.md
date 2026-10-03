@@ -17,7 +17,7 @@ stays clear. Recon points at my own assets only.
 docker-compose.yml       resource limits, recon profile, indexer healthcheck
 .env.example             WAZUH_VERSION, INDEXER_HEAP, passwords, digest config
 bin/idx                  indexer API helper: admin client certificate (--cacert/--cert/--key), never a password in argv
-suricata/                logrotate cron for the sensor's eve.json (Phase A.3)
+systemd/                 Suricata log rotation and daily ET Open updates: host timers plus the scripts they run, installed root-owned
 recon/                   subfinder + httpx + nuclei + diff, one slim image (not deployed)
 scope/                   in-scope targets (domains.txt is gitignored)
 triage/                  human-review queue (not deployed)
@@ -34,10 +34,11 @@ wazuh/custom-rules/      local Suricata tuning rules (live); Sigma-converted XML
 | wazuh.indexer | 2g | 2g | 4g |
 | wazuh.manager | — | 1g | 1.5g |
 | wazuh.dashboard | — | 512m | 1g |
-| suricata | — | 512m | 1.5g |
+| suricata | — | 512m | 2g |
 | recon-runner | — | — | 2g |
 
-Always-on hard ceiling ≈ 8 GB + ~1.5 GB OS, leaving headroom for the 2 GB recon burst. Raise `INDEXER_HEAP` only after a RAM
+Always-on hard ceiling ≈ 8.5 GB + ~1.5 GB OS, leaving headroom for the 2 GB recon burst. Suricata's cap is sized for the
+nightly rule update, not the idle engine: see the `mem_limit` comment in `docker-compose.yml`. Raise `INDEXER_HEAP` only after a RAM
 upgrade. **Disk is the tighter limit** — see [`wazuh/ism/`](wazuh/ism/).
 
 ## Run

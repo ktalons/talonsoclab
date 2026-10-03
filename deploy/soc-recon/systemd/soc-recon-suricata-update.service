@@ -1,0 +1,28 @@
+# ******************************************************************************
+# *Title: Suricata Rule Update*
+# *Author: Kyle Versluis*
+# *Description: Runs the Suricata rule update script once.*
+# ******************************************************************************
+# The update and its checks live in soc-recon-suricata-update.sh, installed
+# root-owned to /usr/local/sbin (runbook 06, section 6). Needs jq on the host,
+# and GNU options from timeout (-k) and date (%N); uutils 0.10 has both.
+
+[Unit]
+Description=Update the soc-recon Suricata ruleset (ET Open) and reload the engine
+Documentation=https://github.com/ktalons/talonsoclab/blob/main/phase-a-foundation/runbooks/06-suricata-ids-dashboards.md
+# Ordering only. The script itself fails when docker.service is not active, so
+# that case still logs the status=1/FAILURE line Wazuh rule 40704 alerts on.
+After=docker.service
+
+[Service]
+Type=oneshot
+# Above the script's own limits, about 23 min in the worst case. A hung docker
+# daemon reaches this limit instead, and the script still exits 1.
+TimeoutStartSec=30min
+# systemd follows a start timeout's SIGTERM with SIGKILL after this long. The
+# exit trap needs up to 35 s, and a killed script ends in status=9/KILL, which
+# rule 40704 does not match. Pinned, so a lower system default cannot cut it.
+TimeoutStopSec=2min
+# Keeps `systemctl set-environment` from lowering the rule floor.
+UnsetEnvironment=MIN_RULES
+ExecStart=/usr/local/sbin/soc-recon-suricata-update.sh
