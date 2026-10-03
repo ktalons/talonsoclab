@@ -687,11 +687,15 @@ takes id `2`, and each terms agg's `orderBy` points at `2` to match.
       unit, run by hand: exit at 22:50:28 UTC, `engine swapped`, 53,098 loaded and 0 failed, no
       stage left, the host lock `root:root 600`, no rule 40704, and the positive control indexed
       10 s later
-- [ ] The rotation ends `ExecMainStatus=0` with a fresh `ExecMainExitTimestamp` at its first
-      scheduled run (a hand run would cost one more generation of retention)
+- [x] The rotation ends `ExecMainStatus=0` with a fresh `ExecMainExitTimestamp` at its first
+      scheduled run (a hand run would cost one more generation of retention): exit at 04:00:02
+      UTC on 2026-10-03, no rule 40704, and the positive control indexed 15 s after a probe at
+      05:17 UTC
 - [x] Anti-test (2026-10-02, on the previous revision of the scripts): with the container
       stopped, the rotation unit ended `Result=exit-code` and Wazuh raised rule 40704 at 11:13:15
       UTC. The final scripts take the same path (R6)
-- [ ] First scheduled runs confirmed from the journal with no manual action: the rotation's
+- [x] First scheduled runs confirmed from the journal with no manual action: the rotation's
       `rotated:` line with `eve.json.1` under 26 h old, and the update's `engine swapped` line
-      with a `last_reload` after 04:30 UTC
+      with a `last_reload` after 04:30 UTC. On 2026-10-03 the rotation moved the old inode to
+      `eve.json.1` at 04:00:01, and the update swapped the engine at 04:30:38 with 53,098 loaded
+      and 0 failed
