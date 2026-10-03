@@ -1,0 +1,17 @@
+# ******************************************************************************
+# *Title: Suricata Log Rotation Timer*
+# *Author: Kyle Versluis*
+# *Description: Runs the Suricata log rotation daily at 04:00 UTC.*
+# ******************************************************************************
+
+[Unit]
+Description=Daily rotation of the soc-recon Suricata logs
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+# NOTE: no Persistent=, so a night missed while the box was down is skipped. A
+# catch-up run at boot would fire before the container is up and fail, and a
+# skipped night only means the next rotation carries two days.
+
+[Install]
+WantedBy=timers.target

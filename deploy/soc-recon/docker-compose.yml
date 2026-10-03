@@ -1,6 +1,6 @@
 # SOC + recon stack — single Docker host. Tuned for the HP EliteDesk 800 G4 Mini
-# (i5-8500T, 16 GB RAM, 256 GB NVMe). Always-on hard ceiling ≈ 8 GB
-# (indexer 4 + manager 1.5 + dashboard 1 + suricata 1.5) + ~1.5 GB OS, leaving
+# (i5-8500T, 16 GB RAM, 256 GB NVMe). Always-on hard ceiling ≈ 8.5 GB
+# (indexer 4 + manager 1.5 + dashboard 1 + suricata 2) + ~1.5 GB OS, leaving
 # headroom for the 2 GB ephemeral recon burst. Comfortable on 16 GB.
 #
 # Wazuh    = always-on. Memory *reservation* + OOM protection.
@@ -188,7 +188,7 @@ services:
   # that file via the phase-a-linux group config. That host path IS the
   # integration seam; there is no container-to-container link here on purpose.
   suricata:
-    image: jasonish/suricata:${SURICATA_VERSION:-8.0.6}
+    image: jasonish/suricata:${SURICATA_VERSION:-8.0.7}
     hostname: suricata
     restart: unless-stopped
     # HOST networking, not the `soc` bridge. An IDS on a bridge network sees
@@ -202,12 +202,20 @@ services:
       - SYS_NICE    # thread priority. Without it the image's entrypoint silently
                     # drops its --user/--group args and runs Suricata as ROOT
                     # instead of failing — check the startup log, not the config.
-    environment:
-      # Starts crond in the entrypoint. Without it the mounted cron file below
-      # is inert and the logs never rotate. See suricata/logrotate.cron.
-      - ENABLE_CRON=yes
+    # No ENABLE_CRON. A cron file bind-mounted from the checkout is owned by
+    # uid 1000 and group-writable, and cronie silently skips any /etc/cron.d
+    # file like that, so the old in-container job never ran once. Host systemd
+    # timers in systemd/ now rotate the logs and update the rules (runbook 06,
+    # section 6).
     mem_reservation: 512m
-    mem_limit: 1500m        # ET Open is ~50k signatures; this is the working set
+    # The cap covers the engine AND the daily rule update, which runs in this
+    # cgroup: its `suricata -T` loads a second full ruleset beside the live one.
+    # Measured 2026-10-01 (ET Open, 53k signatures): a fresh engine sits under
+    # 0.5 GB, but after one reload it holds ~0.8 GB, and an update on top of
+    # that peaked at 1.62 GB (memory.peak), past the old 1500m cap (1.57 GB),
+    # which would push the live sensor into swap during each nightly update.
+    # Under 2g (2.15 GB) it used no swap and left ~0.5 GB of headroom.
+    mem_limit: 2g
     oom_score_adj: -400     # protected, but ABOVE Wazuh's -700: under memory
                             # pressure the sensor dies before the SIEM that
                             # stores what the sensor already produced.
@@ -227,7 +235,8 @@ services:
     # SURICATA_VERSION bump and confirm with
     #   suricata --set <...> --dump-config | grep types.32
     # A wrong index silently sets an option on a DIFFERENT output type and the
-    # errors just keep coming. Verified against 8.0.6 on 2026-08-09.
+    # errors just keep coming. Verified against 8.0.6 on 2026-08-09 and 8.0.7 on
+    # 2026-10-01.
     command:
       - "-i"
       - "${SURICATA_IFACE:-eno1}"
@@ -235,15 +244,14 @@ services:
       - "outputs.1.eve-log.types.32.stats.enabled=no"
     volumes:
       # Host-visible so the native Wazuh agent can read it. Docker creates this
-      # directory root-owned on first start; the agent runs as root and can read it.
+      # directory root-owned, then the entrypoint chowns it to the engine's uid
+      # (998, systemd-network on the host); the agent runs as root and reads it.
       - /var/log/suricata:/var/log/suricata
       # ET Open signatures, fetched by `suricata-update` (see runbook 06). MUST
       # persist: the image ships NO rules, and Suricata with zero signatures
       # starts cleanly, logs flow/dns/tls all day, and never alerts. Green and
       # blind — precisely the failure mode ISC-26's acceptance test exists to catch.
       - suricata_rules:/var/lib/suricata
-      # Drives the image's own (otherwise never-executed) logrotate policy.
-      - ./suricata/logrotate.cron:/etc/cron.d/suricata-logrotate:ro
     healthcheck:
       # `suricatasc -c uptime` talks to the engine's own unix socket, so it is a
       # liveness check on the ENGINE, not on the container process.

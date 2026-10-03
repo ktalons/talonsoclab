@@ -1,0 +1,26 @@
+# ******************************************************************************
+# *Title: Suricata Log Rotation*
+# *Author: Kyle Versluis*
+# *Description: Runs the Suricata log rotation script once.*
+# ******************************************************************************
+# The rotation and its checks live in soc-recon-suricata-logrotate.sh, installed
+# root-owned to /usr/local/sbin (runbook 06, section 6). Needs jq on the host,
+# and GNU options from timeout (-k) and stat (-c); uutils 0.10 has both.
+
+[Unit]
+Description=Rotate the soc-recon Suricata logs
+Documentation=https://github.com/ktalons/talonsoclab/blob/main/phase-a-foundation/runbooks/06-suricata-ids-dashboards.md
+# Ordering only. The script itself fails when docker.service is not active, so
+# that case still logs the status=1/FAILURE line Wazuh rule 40704 alerts on.
+After=docker.service
+
+[Service]
+Type=oneshot
+# Above the script's own limits, about 5.5 min in the worst case. A hung docker
+# daemon reaches this limit instead, and the script still exits 1.
+TimeoutStartSec=8min
+# systemd follows a start timeout's SIGTERM with SIGKILL after this long. The
+# exit trap needs up to 35 s, and a killed script ends in status=9/KILL, which
+# rule 40704 does not match. Pinned, so a lower system default cannot cut it.
+TimeoutStopSec=2min
+ExecStart=/usr/local/sbin/soc-recon-suricata-logrotate.sh
