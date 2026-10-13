@@ -1,0 +1,37 @@
+# ******************************************************************************
+# *Title: Wazuh Manager Log Retention*
+# *Author: Kyle Versluis*
+# *Description: Runs the Wazuh manager log retention script once.*
+# ******************************************************************************
+# The delete and its checks live in soc-recon-wazuh-retention.sh, installed
+# root-owned to /usr/local/sbin (runbook 08). find and timeout run inside the
+# manager image, which ships GNU versions; date, flock, timedatectl and awk run
+# on the host.
+
+[Unit]
+Description=Delete the soc-recon Wazuh manager's dated logs past 14 days
+Documentation=https://github.com/ktalons/talonsoclab/blob/main/phase-a-foundation/runbooks/08-wazuh-log-retention.md
+# Ordering only. The script itself fails when docker.service is not active, so
+# that case still logs the status=1/FAILURE line Wazuh rule 40704 alerts on.
+After=docker.service
+# A kill at the stop timeout (9/KILL), an exec error (203/EXEC) or any other
+# failure the script never sees logs no status=1/FAILURE line of its own. The
+# handler logs one for it.
+OnFailure=soc-recon-unit-failed@%n.service
+
+[Service]
+Type=oneshot
+# Above the script's own limits: a delete run makes six finds, each capped at
+# about 2 min, about 12.5 min in all. A hung docker daemon reaches this limit
+# instead, and the script still exits 1.
+TimeoutStartSec=15min
+# systemd follows a start timeout's SIGTERM with SIGKILL after this long, and a
+# killed script ends in status=9/KILL, which only the OnFailure= report turns
+# into an alert. Pinned, so a lower system default cannot cut the exit trap
+# short.
+TimeoutStopSec=2min
+# The overrides exist for the scratch-stack tests. Unset here, so
+# `systemctl set-environment` cannot set them for the timer. A root drop-in
+# still can, as it can replace ExecStart.
+UnsetEnvironment=RETENTION_PROJECT RETENTION_DOCKER_UNIT RETENTION_LOCK
+ExecStart=/usr/local/sbin/soc-recon-wazuh-retention.sh

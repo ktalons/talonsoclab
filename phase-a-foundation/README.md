@@ -18,6 +18,7 @@ Docker. **Stack:** [`deploy/soc-recon/`](../deploy/soc-recon/).
 | [05](runbooks/05-wazuh-agent-update.md) | Native agent version management (Wazuh remote upgrade) | ✅ |
 | [06](runbooks/06-suricata-ids-dashboards.md) | Suricata IDS on the host NIC + SOC Overview dashboard | ✅ |
 | [07](runbooks/07-sca-ubuntu-26-04.md) | SCA coverage on Ubuntu 26.04 (adapted CIS policy) | ✅ |
+| [08](runbooks/08-wazuh-log-retention.md) | Wazuh manager log retention (14-day host timer) | ⏳ |
 
 ## Acceptance
 

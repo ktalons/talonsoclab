@@ -1,0 +1,19 @@
+# ******************************************************************************
+# *Title: Wazuh Manager Log Retention Timer*
+# *Author: Kyle Versluis*
+# *Description: Runs the Wazuh manager log retention daily at 05:00 UTC.*
+# ******************************************************************************
+
+[Unit]
+Description=Daily retention of the soc-recon Wazuh manager's dated logs
+
+[Timer]
+# Clear of the manager's own midnight rotation and of the Suricata timers at
+# 04:00 and 04:30.
+OnCalendar=*-*-* 05:00:00 UTC
+# NOTE: no Persistent=, so a day missed while the box was down is skipped. A
+# catch-up run at boot would fire before the manager is up and fail, and a
+# skipped day only means the next run deletes two days' files.
+
+[Install]
+WantedBy=timers.target
