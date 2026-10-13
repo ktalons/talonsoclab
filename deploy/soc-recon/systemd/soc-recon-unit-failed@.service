@@ -1,0 +1,16 @@
+# ******************************************************************************
+# *Title: soc-recon Unit Failure Report*
+# *Author: Kyle Versluis*
+# *Description: Logs a status=1/FAILURE line for a failed soc-recon unit.*
+# ******************************************************************************
+# Started by OnFailure= with the failed unit's name as the instance. Wazuh rule
+# 40704 alerts on status=1/FAILURE only, so a unit killed at its stop timeout,
+# or one whose ExecStart could not run, would otherwise fail in silence. This
+# unit fails on purpose, with exit 1, naming the unit that failed first.
+
+[Unit]
+Description=Report that %i failed
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo "%i failed; see journalctl -u %i" >&2; exit 1'
