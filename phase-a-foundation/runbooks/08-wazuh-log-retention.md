@@ -70,8 +70,10 @@ The drill unit fails on purpose, and its `status=1/FAILURE` line must reach the 
 t=$(date -u +%FT%TZ)
 sudo systemctl start soc-recon-unit-failed@drill.service    # fails, by design
 systemctl show -p LoadState 'soc-recon-unit-failed@soc-recon-wazuh-retention.service.service'
-sleep 15
-printf '{"query":{"bool":{"filter":[{"term":{"rule.id":"40704"}},{"match_phrase":{"full_log":"soc-recon-unit-failed@drill"}},{"range":{"timestamp":{"gte":"%s"}}}]}}}' "$t" |
+sleep 15    # the alert takes a few seconds to reach the indexer
+# NOTE: the full unit name. The indexer reads `drill.service` as one word, so a
+# phrase ending in `@drill` never matches.
+printf '{"query":{"bool":{"filter":[{"term":{"rule.id":"40704"}},{"match_phrase":{"full_log":"soc-recon-unit-failed@drill.service"}},{"range":{"timestamp":{"gte":"%s"}}}]}}}' "$t" |
   bin/idx '/wazuh-alerts-*/_count' --data-binary @- | jq -r .count    # want 1
 sudo systemctl reset-failed 'soc-recon-unit-failed@drill.service'
 ```
@@ -110,9 +112,11 @@ systemctl show -p Result,ExecMainStatus,ExecMainExitTimestamp soc-recon-wazuh-re
 journalctl -u soc-recon-wazuh-retention.service -n 20 --no-pager
 ```
 
-As in runbook 06, `Result=success` alone proves nothing. The evidence is `ExecMainStatus=0` with
-an `ExecMainExitTimestamp` from just now, and the journal's `deleted dated files ...` summary
-followed by `kept <n> newer dated files; alerts.json in place`. Re-run the step 0 count and the
+`Result=success` and `ExecMainStatus=0` alone prove nothing: systemd prints both for a unit
+that never ran, and `ExecMainExitTimestamp` comes back empty once this oneshot has finished
+(observed 2026-10-13). The evidence is the journal: `Starting` and `Finished` lines from just
+now, with the script's `deleted dated files ...` summary between them, ending in
+`kept <n> newer dated files; alerts.json in place`. Re-run the step 0 count and the
 indexing count; the indexing rate should match the baseline.
 
 ## 4. Enable the timer — [BOX]
@@ -121,6 +125,10 @@ indexing count; the indexing rate should match the baseline.
 sudo systemctl enable --now soc-recon-wazuh-retention.timer
 systemctl list-timers 'soc-recon-*'      # three timers, each with a NEXT time
 ```
+
+`LAST` shows `-` after a reboot. Without `Persistent=`, systemd keeps the last trigger in memory
+only, so the column is no evidence either way; the journal is:
+`journalctl -u soc-recon-wazuh-retention.service --since yesterday`.
 
 ### Why the script looks the way it does
 
@@ -183,12 +191,16 @@ systemctl list-timers 'soc-recon-*'      # three timers, each with a NEXT time
 
 ## Acceptance
 
-- [ ] Script, service and timer installed root-owned; timer enabled at 05:00 UTC
-- [ ] Dry run read before the first delete
-- [ ] First run: `ExecMainStatus=0`, no dated file past 14 days left, the young-file count
-      unchanged, indexing at the baseline rate
-- [ ] `systemd-analyze verify` silent on all three units; `UnsetEnvironment` lists the three
+- [x] Script, service, timer and handler installed root-owned; timer enabled at 05:00 UTC
+      *(2026-10-13)*
+- [x] Dry run read before the first delete *(0 files: the backlog was already gone, see the
+      2026-10-13 note above)*
+- [x] First run: the journal shows the run, no dated file past 14 days left, the young-file
+      count unchanged (87), indexing at the baseline rate *(2026-10-13 22:52Z, deleted 0)*
+- [ ] First scheduled run that deletes: the 05:00 UTC journal shows a nonzero total
+- [x] `systemd-analyze verify` silent on all three units; `UnsetEnvironment` lists the three
       overrides; the handler shows `LoadState=loaded`; the drill raised one 40704
+      *(2026-10-13 22:48Z)*
 - [ ] 46 days after the first run, `_count` on `wazuh-alerts-*` with `timestamp` older than
       `now-46d` is 0, and a `min` aggregation on `timestamp` puts the oldest alert 45 to 46 days
       back. The second check is the positive control: a count of 0 also comes from an unmapped
