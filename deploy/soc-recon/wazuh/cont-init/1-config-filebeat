@@ -1,0 +1,67 @@
+#!/usr/bin/with-contenv bash
+# ******************************************************************************
+# *Title: 1-config-filebeat (override)*
+# *Author: Kyle Versluis*
+# *Description: Stock filebeat init with the indexer password kept out of argv.*
+# ******************************************************************************
+# Wazuh App Copyright (C) 2017, Wazuh Inc. (License GPLv2)
+#
+# Copied from wazuh/wazuh-manager:4.14.6 /etc/cont-init.d/1-config-filebeat, stock
+# sha256 86616ca762209db38aac8c64eb47263709b1ef3f4c5574c2136628e9bddf2793. One
+# executable line differs, the second password sed; this header and the comments are
+# new. Re-diff against the stock file on every image upgrade, because this copy shadows it.
+#
+# SECURITY: the stock line ran sed with the password in its argv. Host auditd records
+# every execve argv and Wazuh indexes it. This copy writes the literal reference
+# ${INDEXER_PASSWORD} instead, and filebeat expands it from its own environment at
+# startup, so the value never reaches argv or the filebeat_etc volume.
+
+set -e
+
+if [ "$INDEXER_URL" != "" ]; then
+  >&2 echo "Customize Elasticsearch output IP"
+  sed -i "s|hosts:.*|hosts: [$INDEXER_URL]|g" /etc/filebeat/filebeat.yml
+fi
+
+# Configure filebeat.yml security settings
+
+if [ "$INDEXER_USERNAME" != "" ]; then
+  >&2 echo "Configuring username."
+  sed -i "s|#username:.*|username:|g" /etc/filebeat/filebeat.yml
+  sed -i "s|username:.*|username: '$INDEXER_USERNAME'|g" /etc/filebeat/filebeat.yml
+fi
+
+if [ "$INDEXER_PASSWORD" != "" ]; then
+  >&2 echo "Configuring password."
+  sed -i "s|#password:.*|password:|g" /etc/filebeat/filebeat.yml
+  # The escaped \$ keeps the reference literal; only the variable name reaches argv.
+  sed -i "s|password:.*|password: '\${INDEXER_PASSWORD}'|g" /etc/filebeat/filebeat.yml
+fi
+
+if [ "$FILEBEAT_SSL_VERIFICATION_MODE" != "" ]; then
+  >&2 echo "Configuring SSL verification mode."
+  sed -i "s|#ssl.verification_mode:.*|ssl.verification_mode:|g" /etc/filebeat/filebeat.yml
+  sed -i "s|ssl.verification_mode:.*|ssl.verification_mode: '$FILEBEAT_SSL_VERIFICATION_MODE'|g" /etc/filebeat/filebeat.yml
+fi
+
+if [ "$SSL_CERTIFICATE_AUTHORITIES" != "" ]; then
+  >&2 echo "Configuring Certificate Authorities."
+  sed -i "s|#ssl.certificate_authorities:.*|ssl.certificate_authorities:|g" /etc/filebeat/filebeat.yml
+  sed -i "s|ssl.certificate_authorities:.*|ssl.certificate_authorities: ['$SSL_CERTIFICATE_AUTHORITIES']|g" /etc/filebeat/filebeat.yml
+fi
+
+if [ "$SSL_CERTIFICATE" != "" ]; then
+  >&2 echo "Configuring SSL Certificate."
+  sed -i "s|#ssl.certificate:.*|ssl.certificate:|g" /etc/filebeat/filebeat.yml
+  sed -i "s|ssl.certificate:.*|ssl.certificate: '$SSL_CERTIFICATE'|g" /etc/filebeat/filebeat.yml
+fi
+
+if [ "$SSL_KEY" != "" ]; then
+  >&2 echo "Configuring SSL Key."
+  sed -i "s|#ssl.key:.*|ssl.key:|g" /etc/filebeat/filebeat.yml
+  sed -i "s|ssl.key:.*|ssl.key: '$SSL_KEY'|g" /etc/filebeat/filebeat.yml
+fi
+
+
+chmod go-w /etc/filebeat/filebeat.yml || true
+chown root: /etc/filebeat/filebeat.yml || true
