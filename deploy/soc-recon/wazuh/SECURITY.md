@@ -57,6 +57,15 @@ Every command in this file follows two rules:
   (`curl -K -`), written by `printf`. `printf` and `read` are shell builtins. They never exec,
   so auditd never sees them.
 
+The stack's own init scripts count too. The manager image's stock
+`/etc/cont-init.d/1-config-filebeat` wrote the indexer password into `filebeat.yml` with `sed`,
+so the password sat in sed's argv on every manager container start, and in plaintext in the
+`filebeat_etc` volume. `wazuh/cont-init/1-config-filebeat` replaces it, mounted read-only over
+the stock file. It is the stock script with one functional line changed: it writes the literal
+reference `${INDEXER_PASSWORD}`, and filebeat expands it from its own environment at startup.
+**Re-diff it against the stock file on every image upgrade**, because the copy shadows whatever
+the new image ships. Found 2026-10-03.
+
 ## Procedure
 
 ### 1. Generate passwords
@@ -67,11 +76,16 @@ escaping. 32 alphanumeric characters is ~190 bits; punctuation buys nothing and 
 subtly.
 
 ```bash
+umask 077
 for n in INDEXER DASHBOARD API; do
   printf '%s=' "$n"
   LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32; echo
-done
+done > ~/new-passwords.env
 ```
+
+Nothing is printed, so no terminal scrollback or session recording carries the values. Import the
+three lines from `~/new-passwords.env` into the password manager, copy them into `.env` in step 2,
+then remove the file with `shred -u ~/new-passwords.env`.
 
 Store all three in the password manager **now** (PHOENIX Tier 3). A Tier 2 volume snapshot
 restores bcrypt *hashes*, never passwords — lose these and it's a full reset, not a restore.
@@ -90,6 +104,12 @@ awk -F= '/_PASS=/ {print $1" = "length($2)" chars"}' .env
 ```
 
 All three must read `32`. Anything longer means a comment or trailing whitespace came along.
+
+**A missing key stops the stack instead of falling back.** `docker-compose.yml` reads each
+password as `${KEY:?...}`, so compose refuses to start when `.env` lacks one. The stock file used
+`${KEY:-default}` with Wazuh's published passwords as the defaults, and the manager's init sets
+`wazuh-wui` from `API_PASSWORD` on every container start, so one deleted line would have put the
+API back on a public password with no error anywhere. Changed 2026-10-03.
 
 ### 3. Generate bcrypt hashes
 
