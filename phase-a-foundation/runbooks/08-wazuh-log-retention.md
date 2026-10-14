@@ -197,7 +197,9 @@ only, so the column is no evidence either way; the journal is:
       2026-10-13 note above)*
 - [x] First run: the journal shows the run, no dated file past 14 days left, the young-file
       count unchanged (87), indexing at the baseline rate *(2026-10-13 22:52Z, deleted 0)*
-- [ ] First scheduled run that deletes: the 05:00 UTC journal shows a nonzero total
+- [x] First scheduled run that deletes: the 05:00 UTC journal shows a nonzero total
+      *(2026-10-14 05:00:09Z: 6 September files, 7,529,504 bytes; 0 unknown `ossec-*` names;
+      87 kept; `alerts.json` in place; 100, then 189 and 103 alerts per 10 min after it)*
 - [x] `systemd-analyze verify` silent on all three units; `UnsetEnvironment` lists the three
       overrides; the handler shows `LoadState=loaded`; the drill raised one 40704
       *(2026-10-13 22:48Z)*
