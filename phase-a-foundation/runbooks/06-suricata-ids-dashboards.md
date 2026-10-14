@@ -269,12 +269,23 @@ what root is about to run:
 
 ```bash
 cd ~/talonsoclab/deploy/soc-recon
-sudo install -o root -g root -m 0755 systemd/*.sh /usr/local/sbin/
-sudo install -o root -g root -m 0644 systemd/*.service systemd/*.timer /etc/systemd/system/
+sudo install -o root -g root -m 0755 systemd/soc-recon-suricata-*.sh /usr/local/sbin/
+sudo install -o root -g root -m 0644 systemd/soc-recon-suricata-*.service \
+  systemd/soc-recon-suricata-*.timer 'systemd/soc-recon-unit-failed@.service' \
+  /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now soc-recon-suricata-logrotate.timer soc-recon-suricata-update.timer
-systemctl list-timers 'soc-recon-*'      # both timers, each with a NEXT time
+systemctl list-timers 'soc-recon-suricata-*'      # both timers, each with a NEXT time
+systemctl show -p OnFailure,IgnoreSIGPIPE soc-recon-suricata-logrotate.service \
+  soc-recon-suricata-update.service
 ```
+
+Both services name `soc-recon-unit-failed@%n.service` as their `OnFailure=` handler, the one
+runbook 08 installs and drills (its step 1). `show` prints the name even when the file is
+missing, so run that drill once on a box that has never had it.
+
+`LAST` shows `-` after a reboot. Without `Persistent=`, systemd keeps the last trigger in memory
+only, so the column is no evidence either way; the journal is.
 
 `list-timers` proves the schedule, not the job. Run each service once by hand. A hand rotation
 costs one generation of retention (see the note after the anti-tests), so the rotation can wait
@@ -282,16 +293,16 @@ for its first scheduled run instead:
 
 ```bash
 sudo systemctl start soc-recon-suricata-update.service
-systemctl show -p Result,ExecMainStatus,ExecMainExitTimestamp soc-recon-suricata-update.service
 journalctl -u soc-recon-suricata-update.service -n 40 --no-pager
 sudo systemctl start soc-recon-suricata-logrotate.service
-systemctl show -p Result,ExecMainStatus,ExecMainExitTimestamp soc-recon-suricata-logrotate.service
 journalctl -u soc-recon-suricata-logrotate.service -n 5 --no-pager    # the "rotated:" line
 ```
 
-`Result=success` on its own proves nothing. systemd prints it for a unit that has never run, and
-for a unit name that does not exist. The evidence is `ExecMainStatus=0` with an
-`ExecMainExitTimestamp` from just now, and the journal lines below.
+`systemctl show` is no evidence here. `Result=success` and `ExecMainStatus=0` print for a unit
+that has never run, and for a unit name that does not exist, and `ExecMainExitTimestamp` came
+back empty for a oneshot that had just finished (runbook 08, 2026-10-13). The evidence is the
+journal: `Starting` and `Finished` lines from just now, with the script's lines below between
+them.
 
 The update's journal shows `Writing rules to /var/lib/suricata/.stage.<random>/suricata.rules`,
 `Testing with suricata -T`, `promoted <n> rules`, the engine's `{"message":"done","return":"OK"}`
@@ -311,12 +322,23 @@ docker compose stop suricata
 sudo systemctl start soc-recon-suricata-logrotate.service    # must fail
 systemctl show -p Result,ExecMainStatus soc-recon-suricata-logrotate.service    # exit-code, 1
 docker compose start suricata
-sudo systemctl reset-failed soc-recon-suricata-logrotate.service
+sudo systemctl reset-failed soc-recon-suricata-logrotate.service \
+  'soc-recon-unit-failed@soc-recon-suricata-logrotate.service.service'
+# NOTE: full unit names. The indexer reads `logrotate.service` as one word, so a
+# phrase ending in `-logrotate` matches neither line.
+u=soc-recon-suricata-logrotate.service
 q='{"query":{"bool":{"filter":[{"term":{"rule.id":"40704"}},
-  {"match_phrase":{"full_log":"soc-recon-suricata-logrotate"}},
+  {"bool":{"should":[{"match_phrase":{"full_log":"'"$u"'"}},
+    {"match_phrase":{"full_log":"soc-recon-unit-failed@'"$u"'.service"}}],
+   "minimum_should_match":1}},
   {"range":{"timestamp":{"gte":"'"$t"'"}}}]}}}'
-sleep 30; bin/idx '/wazuh-alerts-*/_count' -d "$q" | jq -r .count    # want 1
+sleep 30; bin/idx '/wazuh-alerts-*/_count' -d "$q" | jq -r .count    # want 2
 ```
+
+Two, because the `OnFailure=` handler logs its own `status=1/FAILURE` line under its instance
+name, `soc-recon-unit-failed@soc-recon-suricata-logrotate.service.service`. Both units need the
+`reset-failed`. Until 2026-10-14 this query used the phrase `soc-recon-suricata-logrotate`,
+which returns 0 even for the alert the 2026-10-02 anti-test raised.
 
 And the update's floor must fail closed, before anything goes live. This builds and tests a full
 ruleset, so it costs about 40 s:
@@ -356,16 +378,19 @@ Copy anything worth keeping out of `/var/log/suricata/` before the timers age it
   added (R8).
 - **The recovery trap.** A run that stops between the rename and the reopen, because the
   postrotate failed or hung or the unit was killed, leaves the engine writing into `eve.json.1`
-  while the agent waits for an `eve.json` that never comes. So on any failure after the rename,
-  if `eve.json` is missing, the exit trap sends the engine `SIGHUP`. Suricata reopens its logs on
-  `SIGHUP` through its main loop, a path that needs neither the socket nor the postrotate step,
-  and the new `eve.json` appears on the engine's next write. The trap can look too early, though.
-  `docker exec` does not forward signals, so a unit stopped before logrotate's rename leaves
-  logrotate running in the container, and the rename lands after the trap has found `eve.json`
-  still in place. If the postrotate then fails, nothing reopens the log. So the shell that runs
-  logrotate in the container makes the same check whenever logrotate fails, and that shell
-  outlives the unit (R10). When both checks send `SIGHUP`, the second one is harmless: the engine
-  reopens `eve.json` in append mode, so it just opens the same file again.
+  while the agent waits for an `eve.json` that never comes. The policy also renames the `*.log`
+  files before `eve.json`, so a rename that fails in between leaves `fast.log` and `stats.log`
+  going into their `.1` files with `eve.json` still in place. So on any failure once the
+  rotation has begun, the exit trap sends the engine `SIGHUP`, whether or not `eve.json` is
+  missing. Suricata reopens its logs on `SIGHUP` through its main loop, a path that needs
+  neither the socket nor the postrotate step, and each new file appears on the engine's next
+  write to it. The trap can fire too early, though. `docker exec` does not forward signals, so a
+  unit stopped before logrotate's rename leaves logrotate running in the container, and the
+  rename lands after the trap's `SIGHUP`. So the shell that runs logrotate in the container also
+  sends `SIGHUP` whenever logrotate fails, and that shell outlives the unit (R10). Extra `SIGHUP`s
+  are harmless: the engine reopens each log in append mode, so with nothing renamed it just opens
+  the same files again. Until round 6 both repairs fired only when `eve.json` was missing, and a
+  policy that failed after renaming `stats.log` left it stranded (X1).
 - **`SIGHUP` from inside the container, never `docker kill`.** On an image that sets no
   `STOPSIGNAL`, Docker handles a `docker kill` as a stop, whatever the signal, and cancels the
   restart policy. Measured on 2026-10-02: after `docker compose kill -s HUP` the engine kept
@@ -403,7 +428,9 @@ Copy anything worth keeping out of `/var/log/suricata/` before the timers age it
   whole line also proves the log is still in the default console format, the one where errors
   start with `E: `. If the format ever changes, the run fails on the missing line instead of
   missing the errors. The live engine had never logged an `E:` line as of 2026-10-02, so a false
-  alarm is unlikely.
+  alarm is unlikely. Each read has a 10 s limit, and a read that fails or times out counts as
+  "not yet" inside the wait, so one slow `docker compose logs` call cannot fail a good update on
+  its own (X3). Only a wait that ends on a failed read reports `could not read the engine log`.
 - **No rollback.** Once `suricata.rules` is promoted, a failed reload leaves it in place. It
   passed `suricata -T`, which fails on any rule that does not parse, so a failure past the
   promote lies in the reload or the checks around it, not in the rules. The engine keeps running
@@ -411,38 +438,53 @@ Copy anything worth keeping out of `/var/log/suricata/` before the timers age it
   restarts into it blind.
 - **`--fail`.** Without it, a failed download falls back to the cached archive, rebuilds the same
   rules and exits 0. Every night of a dead feed would look like a good one.
-- **The `suricata` user.** Everything the scripts run in the container runs as `suricata`, above
-  all `suricata-update`, which unpacks an archive fetched from the internet. logrotate and the
-  recovery `SIGHUP` run as container root: the image's policy file is readable only by root, and
-  the `SIGHUP` is a fixed `kill -s HUP 1` with nothing from the container in it. Whether it is
-  sent does depend on the container: both checks test for `eve.json` in a directory the engine's
-  user owns, so that user can trigger the signal or suppress it. Neither gains anything. The same
-  user can signal its own engine directly, and the repair only runs on a run that has already
-  failed and alerted. The policy has no `create`, so root only renames and deletes, and neither
-  follows a link. Its postrotate does run `suricatasc` as container root against the engine's
+- **The `suricata` user.** Everything the update script runs in the container runs as `suricata`,
+  above all `suricata-update`, which unpacks an archive fetched from the internet, and so does the
+  rotation's uptime check. Only logrotate and the recovery `SIGHUP` run as container root: the
+  image's policy file is readable only by root, and the `SIGHUP` is a fixed `kill -s HUP 1` with
+  nothing from the container in it. Since round 6 neither repair reads anything from the
+  container before it fires, so the engine's user cannot suppress the signal. It can still cause
+  one, by making a run fail, and gains nothing: it can signal its own engine directly, and the
+  repair only runs on a run that has already failed, which alerts once the repair returns and the
+  unit exits. The policy has no `create`, so root only renames and deletes, and neither follows a
+  link. Its postrotate does run `suricatasc` as container root against the engine's
   socket, so root parses a reply the engine's user controls (the threat-model line under Known
   gaps).
-- **Every failure exits 1, short of a few signals.** Wazuh rule 40704 (level 5) alerts on a failed
-  unit only when the journal says `status=1/FAILURE`. A timeout's 124 or a signal's 143 lands on
-  level-0 rule 40700 instead, and fails in silence. Both scripts trap `EXIT` and leave with 1.
-  dash dies of an untrapped signal without running that trap, so `HUP`, `INT`, `QUIT` and `TERM`
-  each get a trap of their own: the previous update script, sent `SIGHUP` mid-build, ended
-  `status=1/HUP` and raised nothing in 150 s (G1a). A start timeout sends `SIGTERM`, then
-  `SIGKILL` once `TimeoutStopSec` runs out, and a killed script ends `status=9/KILL`, which rule
-  40704 does not match (T1). The trap needs up to 35 s, so both units pin `TimeoutStopSec` at 2
-  minutes rather than trust the system default, 90 s on this box. On 2026-10-02 a start timeout
-  forced on each script in a scratch stack ran the trap, ended `status=1/FAILURE`, and raised
-  rule 40704 within 10 s. So did `SIGHUP`, `SIGQUIT` (G1a, G1b) and the docker check below.
-  `SIGKILL` cannot be trapped, and `USR1`, `USR2` and `ALRM` have no trap (Known gaps).
+- **Every failure exits 1, and the handler catches the rest.** Wazuh rule 40704 (level 5) alerts
+  on a failed unit only when the journal says `status=1/FAILURE`. A timeout's 124 or a signal's
+  143 lands on level-0 rule 40700 instead, and fails in silence. Both scripts trap `EXIT` and
+  leave with 1, and the trap runs without `set -e`, so a failed write to stderr inside it cannot
+  change that code. dash dies of an untrapped signal without running the `EXIT` trap, so each
+  signal systemd or an operator is likely to send, `HUP`, `INT`, `QUIT`, `TERM`, `USR1`, `USR2`
+  and `ALRM`, gets a trap of its own: the previous update script, sent `SIGHUP` mid-build, ended
+  `status=1/HUP` and raised nothing in 150 s (G1a), and the round 5 rotation script died of
+  `USR1` with 138 (X2). `SIGPIPE` cannot end either script. Both units pin `IgnoreSIGPIPE=yes`,
+  and dash can neither trap nor restore a signal ignored on entry, so one that is sent is dropped
+  and a write to a closed journal stream fails with `EPIPE` instead: a transient unit that
+  trapped `PIPE` and sent itself one ran on and never ran the trap. The rarer ones, `XCPU` or
+  `SYS` for example, need a limit or a filter neither unit sets, and the handler below reports
+  them anyway. A start timeout sends `SIGTERM`, then `SIGKILL` once `TimeoutStopSec` runs out,
+  and a killed script ends `status=9/KILL`, which rule 40704 does not match (T1). The trap
+  needs up to 35 s, so both units pin `TimeoutStopSec` at 2 minutes rather than trust the system
+  default, 90 s on this box. What no trap can catch, `SIGKILL` or an `ExecStart` that cannot run
+  (`203/EXEC`), goes to `OnFailure=soc-recon-unit-failed@%n.service`, which fails on purpose with
+  exit 1 and logs the `status=1/FAILURE` line naming the unit (runbook 08 proved both cases raise
+  40704 within a second). On 2026-10-02 a start timeout forced on each script in a scratch stack
+  ran the trap, ended `status=1/FAILURE`, and raised rule 40704 within 10 s. So did `SIGHUP`,
+  `SIGQUIT` (G1a, G1b) and the docker check below.
 - **Timeouts inside the container.** Killing the docker CLI does not stop what it started in the
   container, so the build, the socket queries and logrotate each run under `timeout -k` in there.
   Their worst case adds up to about 23 minutes for the update and 5.5 for the rotation, under the
   units' `TimeoutStartSec` of 30 and 8. The log read and the docker calls in the exit trap carry
   a limit on the host. The quick calls, `mktemp`, `find`, `grep` and `mv` on the rules volume,
   carry none. A call that hangs anyway, in the daemon or on the volume, is what `TimeoutStartSec`
-  is for: systemd stops the script, and the trap still exits 1. That path is expected, not
-  tested. Every test ran against a healthy daemon, and a docker call stuck on a dead one could
-  outlast `TimeoutStopSec` and end in `SIGKILL`.
+  is for: systemd stops the script, and the trap still exits 1. Round 6 tested it against a
+  daemon that accepts and never answers (X9, X10), each script run as a transient unit with a
+  20 s or 45 s `TimeoutStartSec` rather than through the installed units. Both ended
+  `Result=timeout` with `status=1/FAILURE`, the update's after its trap spent 30 s on a stage
+  cleanup that could not reach the daemon. The trap's docker calls stop within 35 s, well inside
+  the 2-minute `TimeoutStopSec`, and anything that outlasts it anyway ends in `SIGKILL`, which
+  the `OnFailure=` handler reports.
 - **The docker check, not `Requisite=`.** `docker.socket` is enabled on Ubuntu, so any `docker`
   command while the daemon is stopped for maintenance would start it again, and every
   `unless-stopped` container with it. So each script checks `systemctl is-active docker.service`
@@ -481,21 +523,11 @@ Copy anything worth keeping out of `/var/log/suricata/` before the timers age it
 
 - **Nothing pages.** A failed run raises a level 5 alert (rule 40704) on the dashboard and shows
   in `systemctl --failed` and the journal, but nobody is told. Check them at the start of a
-  session. A run killed by `SIGKILL` never reaches its trap and lands on level 0. That happens
-  when an operator sends it, or when a stop outlasts `TimeoutStopSec` (T1), which the 2-minute
-  pin makes unlikely. Two ways would catch it, neither built: an `OnFailure=` unit that itself
-  exits 1, or a local Wazuh rule on `status=9/KILL`.
-- **Signals with no trap.** `USR1`, `USR2` and `ALRM` kill the script without its exit trap, the
-  same as `SIGKILL`. Nothing in the stack sends them, so it takes an operator who picks one. A
-  write to stderr that fails inside the trap would end the run with 2, and a second signal in the
-  instant before the trap disarms them ends it with that signal's code. systemd signals once and
-  ignores `SIGPIPE` for both units. A local Wazuh rule on systemd's `Failed with result` line
-  for these two units would catch every case, `SIGKILL` included.
-- **A partial rotation can strand the other logs.** The policy renames the `*.log` files before
-  `eve.json`. If a rename fails in between, logrotate skips the reopen, and both repairs send
-  `SIGHUP` only when `eve.json` is missing. The run still fails its inode proof and alerts, but
-  `fast.log`, `stats.log` and `suricata.log` go on into their renamed files until the next
-  reopen. Wazuh reads only `eve.json`. The planned fix is a `SIGHUP` on any failed rotation.
+  session. A failure the script sees raises two alerts, its own `status=1/FAILURE` line and the
+  `OnFailure=` handler's; a kill or an exec error raises the handler's alone.
+- **A timer that never fires raises nothing.** `OnFailure=` covers a run that fails, not a run
+  that never starts because a timer was disabled or masked. `systemctl list-timers` shows it. An
+  age probe inside the Wazuh manager, shared with runbook 08's timer, is the planned fix.
 - **A killed update leaves its builder running.** `docker exec` does not forward signals, so
   `suricata-update` runs on inside the container until it finishes or hits its own 900 s limit
   (U4). The exit trap deletes the stage, though a builder that has not yet written its output
@@ -527,6 +559,11 @@ Copy anything worth keeping out of `/var/log/suricata/` before the timers age it
 - **The rotation has no lock.** A hand rotation that overlaps the timer's can rotate twice, or
   fail its proof and alert. The update needs its locks because two builds can exhaust the memory
   cap. Two rotations only shift files.
+- **Never pipe a hand run.** The unit starts each script with `SIGPIPE` ignored, a terminal does
+  not, and neither script traps it. The update writes `promoted <n> rules` to stdout between the
+  promote and the reload, so `sudo ... | head` can kill it there without its exit trap: new rules
+  on disk, the old ones still loaded, the stage left behind, and no alert. The next timer run
+  repairs all three. Redirect to a file instead, as in `> /tmp/upd.log 2>&1`.
 - **A version bump never refreshes `/etc/suricata`.** The image declares `/etc/suricata` a
   volume, and recreating the container keeps the old one. On 2026-10-02 the sensor still ran
   8.0.6's `suricata.yaml` under 8.0.7. Apart from comments, the diff between the two was one
@@ -576,6 +613,29 @@ that pass, and it passed when run again on its own.
 | F7b | the exact completion line never appears | exit 1 after 10 s of polling |
 | K1, K2 | a clean engine exit, before and after `docker compose kill -s HUP` | restarted before, not restarted after |
 | V1 | a marker file in `/etc/suricata`, then a recreate without `-V` and one with it | kept without `-V`; with it, a new `/etc/suricata` volume and no marker, the rules volume and its sha256 unchanged, 53,073 loaded |
+
+Round 6 ran on 2026-10-14 against a rebuilt `s03test`, the same way: the round 6 scripts, and as
+controls the installed round 5 ones, each retargeted with `sed` and refused if a copy still named
+the live project, log path or lock. A control has to fail where the fix passes, so a test that
+cannot tell the two apart shows up as a failed control. The first X1 control did pass for the
+wrong reason: a `SIGHUP` sent to get `stats.log` back before the run left a reopen pending, and
+the engine applied it after the rename. Each X1 run now waits for one write after any `SIGHUP`.
+The hung-daemon rows put a `socat` container between the script and the Docker socket and
+paused it, so the script saw a daemon that accepted and never answered, while the real daemon
+kept serving the live stack.
+
+| Test | Injected | Result |
+|---|---|---|
+| X1 | a policy that renames `stats.log`, then fails before `eve.json` | exit 1, `SIGHUP` sent, a new `stats.log` within 20 s; the round 5 script left it stranded |
+| X2 | `USR1`, `USR2`, `ALRM` to the rotation script before its rename | exit 1 for each; the round 5 script died of `USR1` with 138. The update script's traps are the same lines and were not sent these three |
+| X3 | the first engine-log read fails | exit 0, update complete; the round 5 script exited 1, `could not read the engine log` |
+| X4 | every engine-log read fails | exit 1 after the full wait, `could not read the engine log` |
+| X5 | the build lock held in the container | exit 1 at once, `another build holds the lock, nothing changed` (exit code 200 inside) |
+| X6 | stderr on `/dev/full`, project missing, each script | exit 1; the round 5 scripts also exit 1, so `set +e` in the trap guards a case dash already survives |
+| X7 | a broken `compose.yml` in the working directory | exit 0, rotated |
+| X8 | nothing, round 6 update script | exit 0, 53,154 loaded, no stage left |
+| X9 | the daemon hangs before the rotation's first call, `TimeoutStartSec=20s` | `Result=timeout`, `status=1/FAILURE`, nothing renamed |
+| X10 | the daemon hangs once the build has started, `TimeoutStartSec=45s` | `Result=timeout`; the trap's stage cleanup timed out after 30 s, `could not remove`, then `status=1/FAILURE`; the builder ran on in the container and left its stage, the case S1 covers |
 
 Before the locks existed (a run now needs root), the update also ran by hand on the live sensor
 under `sh` as the docker-group user. It exited 0 in 35 s, `last_reload` moved from 06:15:48 to
@@ -699,3 +759,16 @@ takes id `2`, and each terms agg's `orderBy` points at `2` to match.
       with a `last_reload` after 04:30 UTC. On 2026-10-03 the rotation moved the old inode to
       `eve.json.1` at 04:00:01, and the update swapped the engine at 04:30:38 with 53,098 loaded
       and 0 failed
+
+### Revision 2026-10-14 (round 6)
+
+- [x] Scratch suite on the round 6 scripts: the ten X rows above, 20 cases in all. X1 to X3 have
+      controls that fail where the fix passes; X6's controls pass as well, and the rest have none
+      *(run on sha256 a3518ccf and d156d9d0; the shipped e7d777f5 and d21dfe26 differ from them
+      in comment lines only, and the comment-stripped files are byte-identical)*
+- [ ] Round 6 scripts and units installed root-owned and byte-equal to the repo; `OnFailure`
+      names `soc-recon-unit-failed@%n.service` and `IgnoreSIGPIPE` is `yes` on both services;
+      `systemd-analyze verify` rc 0 and silent about both units (it still warns about stock
+      `xfs_scrub` units)
+- [ ] First scheduled runs after the install confirmed from the journal: the rotation's
+      `rotated:` line and the update's `engine swapped` line, no rule 40704
