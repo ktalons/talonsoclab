@@ -766,9 +766,15 @@ takes id `2`, and each terms agg's `orderBy` points at `2` to match.
       controls that fail where the fix passes; X6's controls pass as well, and the rest have none
       *(run on sha256 a3518ccf and d156d9d0; the shipped e7d777f5 and d21dfe26 differ from them
       in comment lines only, and the comment-stripped files are byte-identical)*
-- [ ] Round 6 scripts and units installed root-owned and byte-equal to the repo; `OnFailure`
+- [x] Round 6 scripts and units installed root-owned and byte-equal to the repo; `OnFailure`
       names `soc-recon-unit-failed@%n.service` and `IgnoreSIGPIPE` is `yes` on both services;
       `systemd-analyze verify` rc 0 and silent about both units (it still warns about stock
-      `xfs_scrub` units)
+      `xfs_scrub` units) *(installed 2026-10-14 about 07:00Z from f679926: scripts e7d777f5
+      and d21dfe26 at 755, units 0cdc82e6 and a829f8dd at 644, all root:root and equal to the
+      repo; both services show their own `soc-recon-unit-failed@<unit>.service`)*
+- [x] Rotation anti-test on the installed units, with the section 6 query: the rotation ended
+      `Result=exit-code` and `ExecMainStatus=1` with `engine not answering, nothing rotated`, the
+      handler logged its own `status=1/FAILURE` line, and the query returned 2 *(2026-10-14
+      07:03:36 UTC; the sensor came back healthy and `eve.json` was growing again within 3 min)*
 - [ ] First scheduled runs after the install confirmed from the journal: the rotation's
       `rotated:` line and the update's `engine swapped` line, no rule 40704
