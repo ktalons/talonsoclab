@@ -15,6 +15,11 @@ set -eu
 PATH=/usr/sbin:/usr/bin
 export PATH
 
+# NOTE: compose 5.6 ignores the working directory's compose file for
+# `-p ... exec` (tested 2026-10-13, runbook 08). `logs` and other versions are
+# untested, so a hand run from the checkout starts in / like the unit does.
+cd /
+
 # The host lock is the only file this script creates, and only root may open it.
 umask 077
 
@@ -47,12 +52,16 @@ engine_log() {
         --no-log-prefix --since "$1" suricata 2>&1
 }
 
-# Runs "$@" under the build lock, or fails at once with 75. A build orphaned by
+# Runs "$@" under the build lock, or fails at once with 200. A build orphaned by
 # an interrupted run holds the lock until it ends.
+# NOTE: 200 sits above every code a timeout (124 to 127) or a signal (129 to
+# 192) can give. Neither wrapped command returns it: find exits 0 or 1, and so
+# does suricata-update (read in the 8.0.7 image). A future one that returned
+# 200 would read as a held lock, and the run would still exit 1.
 locked() {
     lock_rc=0
-    engine flock -n -E 75 "$LOCK" "$@" || lock_rc=$?
-    if [ "$lock_rc" -eq 75 ]; then
+    engine flock -n -E 200 "$LOCK" "$@" || lock_rc=$?
+    if [ "$lock_rc" -eq 200 ]; then
         echo "another build holds the lock, nothing changed" >&2
     fi
     return "$lock_rc"
@@ -64,8 +73,11 @@ locked() {
 stage=
 finish() {
     rc=$?
-    trap '' HUP INT QUIT TERM
+    trap '' HUP INT QUIT TERM USR1 USR2 ALRM
     trap - EXIT
+    # NOTE: no -e in here. A failed write to stderr would otherwise end the run
+    # with its own status instead of 1.
+    set +e
     if [ -n "$stage" ]; then
         # Host-side limit: the stage is scratch, and cleanup must not hang.
         if ! timeout -k 5 30 docker compose -p soc-recon exec -T --user suricata \
@@ -87,10 +99,16 @@ finish() {
 trap finish EXIT
 # NOTE: dash dies of an untrapped signal without running the EXIT trap, so each
 # signal systemd or an operator is likely to send gets its own. SIGKILL cannot.
+# SIGPIPE starts ignored (IgnoreSIGPIPE=yes in the unit), and dash cannot trap a
+# signal ignored on entry, so a write to a closed journal stream fails with
+# EPIPE instead. The unit's OnFailure= report covers the rest.
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 131' QUIT
 trap 'exit 143' TERM
+trap 'exit 138' USR1
+trap 'exit 140' USR2
+trap 'exit 142' ALRM
 
 # *--- Preflight ---*
 
@@ -194,18 +212,25 @@ printf 'engine swapped: last_reload %s -> %s\n' "$before" "$after"
 # the engine still logs "rule reload complete" and moves last_reload. Only the
 # log tells the two apart. Matching the whole completion line also proves the
 # log is in the default console format, the one where errors start "E: ".
+# A read that fails or times out counts as "not yet", so one slow call cannot
+# fail a good update on its own. Only the last read decides the message.
 waited=0
 while :; do
-    if ! log=$(engine_log "$since"); then
-        printf '%s\n' "$log" >&2
-        echo "could not read the engine log" >&2
-        exit 1
-    fi
-    if printf '%s\n' "$log" | grep -qx 'i: detect: rule reload complete'; then
-        break
+    if log=$(engine_log "$since"); then
+        if printf '%s\n' "$log" | grep -qx 'i: detect: rule reload complete'; then
+            break
+        fi
+        unread=
+    else
+        unread=1
     fi
     if [ "$waited" -ge 10 ]; then
-        echo "no 'i: detect: rule reload complete' line in the engine log since $since" >&2
+        if [ -n "$unread" ]; then
+            printf '%s\n' "$log" >&2
+            echo "could not read the engine log" >&2
+        else
+            echo "no 'i: detect: rule reload complete' line in the engine log since $since" >&2
+        fi
         exit 1
     fi
     sleep 1

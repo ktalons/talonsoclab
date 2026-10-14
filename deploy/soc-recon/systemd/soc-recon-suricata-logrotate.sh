@@ -16,6 +16,11 @@ set -eu
 PATH=/usr/sbin:/usr/bin
 export PATH
 
+# NOTE: compose 5.6 ignores the working directory's compose file for
+# `-p ... exec` (tested 2026-10-13, runbook 08). Other versions may not, so a
+# hand run from the checkout starts in / like the unit does.
+cd /
+
 # Host side of the bind mount the Wazuh agent tails.
 EVE=/var/log/suricata/eve.json
 
@@ -36,21 +41,26 @@ inode() {
 rotating=
 finish() {
     rc=$?
-    trap '' HUP INT QUIT TERM
+    trap '' HUP INT QUIT TERM USR1 USR2 ALRM
     trap - EXIT
+    # NOTE: no -e in here. A failed write to stderr would otherwise end the run
+    # with its own status instead of 1.
+    set +e
     if [ "$rc" -ne 0 ]; then
-        # A run stopped between the rename and the reopen leaves the engine
-        # writing to eve.json.1 while the agent waits for an eve.json that
-        # never comes. SIGHUP reopens the logs through the engine's main loop,
-        # a path that does not need the socket the postrotate step uses.
-        if [ -n "$rotating" ] && ! [ -e "$EVE" ]; then
+        # A run stopped anywhere after the rotation began can leave the engine
+        # writing into renamed files: eve.json.1 while the agent waits for an
+        # eve.json that never comes, or fast.log.1 after a rename that failed
+        # before eve.json's turn. SIGHUP reopens every log through the engine's
+        # main loop, a path that does not need the socket the postrotate step
+        # uses. A SIGHUP with nothing renamed reopens the same files.
+        if [ -n "$rotating" ]; then
             # WARN: signal from inside. `docker kill` on a container whose
             # image sets no STOPSIGNAL cancels its restart policy, HUP or not.
             if timeout -k 5 30 docker compose -p soc-recon exec -T suricata \
                 sh -c 'kill -s HUP 1'; then
-                echo "eve.json missing: sent SIGHUP, the engine reopens it on its next write" >&2
+                echo "sent SIGHUP, the engine reopens its logs on its next write" >&2
             else
-                echo "eve.json missing and SIGHUP failed: the agent is reading nothing" >&2
+                echo "SIGHUP failed: the engine may still be writing into renamed logs" >&2
             fi
         fi
         echo "log rotation failed (exit $rc)" >&2
@@ -60,10 +70,16 @@ finish() {
 trap finish EXIT
 # NOTE: dash dies of an untrapped signal without running the EXIT trap, so each
 # signal systemd or an operator is likely to send gets its own. SIGKILL cannot.
+# SIGPIPE starts ignored (IgnoreSIGPIPE=yes in the unit), and dash cannot trap a
+# signal ignored on entry, so a write to a closed journal stream fails with
+# EPIPE instead. The unit's OnFailure= report covers the rest.
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 131' QUIT
 trap 'exit 143' TERM
+trap 'exit 138' USR1
+trap 'exit 140' USR2
+trap 'exit 142' ALRM
 
 # *--- Preflight ---*
 
@@ -96,14 +112,14 @@ old=$(inode "$EVE")
 # deletes, and neither follows a link the engine user could plant.
 # NOTE: the repair runs in here as well as in the trap. docker exec does not
 # forward signals, so a run stopped before the rename leaves logrotate to rename
-# after the trap has looked. This shell outlives the run, and when logrotate
-# fails it sends SIGHUP itself if eve.json is gone.
+# after the trap has sent its SIGHUP. This shell outlives the run, and sends
+# SIGHUP itself whenever logrotate fails.
 rotating=1
 # shellcheck disable=SC2016 # expands in the container's shell, not here
 sensor suricata sh -c '
     timeout -k 10 120 logrotate -f /etc/logrotate.d/suricata && exit 0
     rc=$?
-    [ -e /var/log/suricata/eve.json ] || kill -s HUP 1
+    kill -s HUP 1
     exit "$rc"'
 
 # *--- Proof ---*
