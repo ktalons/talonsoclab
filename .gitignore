@@ -37,7 +37,7 @@ docs/internal/
 # Detailed personal-record versions of the public runbooks. The public tree carries
 # the summarized walkthroughs; these keep the full failure analysis and correction
 # trails. Mirrors the public path layout so provenance is obvious.
-# NOT version-controlled — PHOENIX Tier 2 rsyncs this to the external drive.
+# NOT version-controlled. My offline backup, kept outside this repo, copies it to the external drive.
 /internal/
 # Working plan files from agent sessions — scratch, superseded once the work
 # lands in a runbook + the ISA decision log. Same class as /ISA.md.

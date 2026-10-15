@@ -8,6 +8,10 @@ flowchart TB
 %% Deployment status verified on the box 2026-09-30: indexer, manager, dashboard, suricata and
 %%   all three agents are up. recon-runner, digest and triage exist in the repo but are NOT
 %%   running: no recon image built, no cron installed.
+%% Host timers checked 2026-10-15: three root-owned systemd oneshots (deploy/soc-recon/systemd/)
+%%   rotate Suricata's logs at 04:00Z, update ET Open at 04:30Z and delete the manager's dated
+%%   logs past 14 days at 05:00Z. A failed run starts the OnFailure handler, and the
+%%   status=1/FAILURE line reaches the manager through agent 002 as rule 40704 (level 5).
 %% PIVOT NOTE: this replaced an earlier Proxmox/pfSense/VLAN topology. It trades
 %%   network realism (pfSense, VLANs, Windows endpoint VMs) for portability +
 %%   detection breadth.
@@ -20,11 +24,13 @@ flowchart TB
 
         subgraph SocNet["docker network: soc"]
             Indexer["wazuh.indexer<br/>OpenSearch :9200<br/>heap 2g / cap 4g"]
-            Manager["wazuh.manager<br/>:1514 agent, :1515 enroll, :55000 API<br/>custom-rules mount: Suricata tuning live, Sigma XML in Phase B"]
+            Manager["wazuh.manager<br/>:1514 agent, :1515 enroll, :55000 API<br/>custom-rules mount: Suricata tuning live, Sigma XML in Phase B<br/>cont-init override: filebeat init keeps the indexer password out of argv"]
             Dashboard["wazuh.dashboard<br/>:443 web UI"]
         end
 
         Suricata["suricata · host network<br/>AF_PACKET on eno1 · ET Open<br/>eve.json on the host disk"]
+
+        Timers["host systemd timers<br/>suricata-logrotate 04:00Z · suricata-update 04:30Z<br/>wazuh-retention 05:00Z (14-day manager logs)<br/>OnFailure: soc-recon-unit-failed@"]
 
         subgraph ReconNet["docker network: recon_net (isolated)"]
             Recon["recon-runner — NOT DEPLOYED<br/>subfinder→httpx→nuclei→diff<br/>cron: run --rm, 2g cap"]
@@ -48,6 +54,9 @@ flowchart TB
     Mac  -. "TLS 1514" .-> Manager
     UbuntuHost -. "TLS 1514" .-> Manager
     Suricata -. "eve.json (host file)" .-> UbuntuHost
+    Timers -. "rotate logs, swap in new rules" .-> Suricata
+    Timers -. "delete dated logs past 14 days" .-> Manager
+    Timers -. "failed run: journal line → rule 40704 (level 5)" .-> UbuntuHost
 
     Manager --> Indexer
     Indexer --> Dashboard
@@ -65,7 +74,7 @@ flowchart TB
     classDef casa fill:#3b0764,stroke:#c084fc,color:#fff
     classDef planned fill:#111827,stroke:#6b7280,color:#9ca3af,stroke-dasharray:4 3
 
-    class Indexer,Manager,Dashboard,Suricata soc
+    class Indexer,Manager,Dashboard,Suricata,Timers soc
     class Win,Mac,UbuntuHost ep
     class Internet,Analyst ext
     class Recon,Digest,Triage planned

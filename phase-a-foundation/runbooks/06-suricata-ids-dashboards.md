@@ -11,6 +11,11 @@
 > systemd timers after the in-container cron job turned out never to have run (section 6). The
 > positive control no longer depends on a third-party site (section 4).
 >
+> **Revised 2026-10-14 (round 6).** Both services name an `OnFailure=` handler, so a kill or an
+> exec error still raises rule 40704. Both scripts trap the signals systemd or an operator is
+> likely to send, and a failed rotation sends the engine `SIGHUP` whether or not `eve.json` is
+> missing (section 6).
+>
 > **Why it matters for a SOC:** the three endpoint agents see what happens *on hosts*. Nothing
 > until now saw what happens *on the wire*. Suricata is the network-visibility half, and its
 > alerts land in the same indexer as Sysmon and auditd, so one query surfaces host and network
@@ -256,7 +261,9 @@ nothing about whether it loaded the job. The forced `logrotate -f` that proved t
 The host runs systemd as PID 1, and there a failed run shows up in `systemctl --failed`, in the
 journal, and through the host's own Wazuh agent on the dashboard. `deploy/soc-recon/systemd/`
 holds two oneshot services, their timers, and the two scripts the services run. The scripts do
-the work and the checking; the units only schedule them.
+the work and the checking; the units only schedule them. The same directory also holds the
+manager's log retention unit, timer and script (runbook 08) and the `OnFailure=` handler,
+`soc-recon-unit-failed@.service`.
 
 | Unit | Daily at (UTC) | Script | What it does |
 |---|---|---|---|
@@ -776,5 +783,10 @@ takes id `2`, and each terms agg's `orderBy` points at `2` to match.
       `Result=exit-code` and `ExecMainStatus=1` with `engine not answering, nothing rotated`, the
       handler logged its own `status=1/FAILURE` line, and the query returned 2 *(2026-10-14
       07:03:36 UTC; the sensor came back healthy and `eve.json` was growing again within 3 min)*
-- [ ] First scheduled runs after the install confirmed from the journal: the rotation's
-      `rotated:` line and the update's `engine swapped` line, no rule 40704
+- [x] First scheduled runs after the install confirmed from the journal: the rotation's
+      `rotated:` line and the update's `engine swapped` line, no rule 40704 *(2026-10-15: the
+      rotation moved the old inode to `eve.json.1` at 04:00:23 UTC; the update promoted 53,158
+      rules and swapped the engine at 04:30:56, `last_reload` 2026-10-14T07:04:06 to
+      2026-10-15T04:30:55, 53,158 loaded and 0 failed. No handler instance started, and rule
+      40704 counted 0 since 03:55 UTC for both units and overall, with the 2026-10-14 anti-test
+      window still returning its alert as a control)*

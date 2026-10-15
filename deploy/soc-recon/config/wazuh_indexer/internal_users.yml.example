@@ -21,7 +21,7 @@
 #   see ../../wazuh/SECURITY.md for the securityadmin.sh invocation
 #
 # Passwords must ALSO be set in .env (WAZUH_INDEXER_PASS, WAZUH_DASHBOARD_PASS) and
-# stored in the password manager (PHOENIX Tier 3). Three places, or things break in
+# stored in the password manager. Three places, or things break in
 # confusing ways.
 
 _meta:

@@ -10,15 +10,16 @@
 >
 > **Why it matters for a SOC:** the manager must always be at or above the version of every
 > agent reporting to it. [Wazuh's own upgrade guide states this outright](https://documentation.wazuh.com/current/upgrade-guide/wazuh-agent/index.html),
-> not just a policy this lab invented. `wazuh-agent` is `apt-mark hold`'d specifically because
-> the box also runs `unattended-upgrades` (runbook 00), which would otherwise bump it past the
-> manager with no warning.
+> not just a policy this lab invented. `wazuh-agent` is `apt-mark hold`'d so that no package
+> upgrade bumps it past the manager with no warning. That includes the `unattended-upgrades`
+> policy planned for a later hardening step, which is not set yet.
 >
 > **Use Wazuh's own remote upgrade module, not raw apt.** The manager ships a tool that pushes
 > a signed WPK package to the agent over the existing connection (port 1514): no SSH, no sudo,
 > no dpkg conffile prompts. It validates versions against the manager by default; going
-> backward requires deliberately passing `-F`/`--force`. Internal runbook 02 flagged this exact
-> doc as the next relevant step once agents existed. This is that step.
+> backward requires deliberately passing `-F`/`--force`. My detailed notes from the 4.14
+> rebuild, kept outside this repo, flagged this exact doc as the next relevant step once agents
+> existed. This is that step.
 >
 > Steps are tagged **[BOX]** (SOC host, either directly or via `docker compose exec` into the
 > manager container). Nothing here ever takes a password as an argument or environment
@@ -88,8 +89,8 @@ past the manager, and it hits real friction along the way.
 - [x] `wazuh-control info` agrees: `WAZUH_VERSION="v4.14.6"` (independent of dpkg's package DB)
 - [x] `systemctl is-active wazuh-agent` → `active`; `is-enabled` → `enabled`
 - [x] `apt-mark showhold` still lists `wazuh-agent`. This tool doesn't change that policy, and
-      didn't need to reapply it after the upgrade this time either (see internal runbook: the
-      hold did not survive the *original* override and had to be set fresh, once, by hand)
+      didn't need to reapply it after the upgrade this time either (the hold did not survive
+      the *original* override and had to be set fresh, once, by hand)
 - [x] Verified **from the manager**, not the endpoint's own report:
       `agent_control -l` → `002 talonsoclab ... Active`
 - [x] Manager version unchanged, still ≥ the agent (`.env` untouched, still `4.14.6`)

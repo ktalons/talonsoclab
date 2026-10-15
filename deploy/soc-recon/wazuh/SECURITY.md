@@ -2,8 +2,9 @@
 
 How to rotate the stack off Wazuh's published default credentials, and how to verify it
 actually happened. The rotation commands were run against this stack on 2026-07-26, and the
-argv-safe forms (`bin/idx`, `idx_as`, `api_as`, the authd sha256 check) on 2026-09-30. This is
-a record of what worked, not a draft.
+argv-safe forms (`bin/idx`, `idx_as`, `api_as`, the authd sha256 check) on 2026-09-30.
+`admin` and `wazuh-wui` were rotated again on 2026-10-13: the old values return `401`, the new
+ones `200`. This is a record of what worked, not a draft.
 
 ## What you're rotating, and where each password lives
 
@@ -17,8 +18,8 @@ silently.** This table is the whole job — miss one cell and something breaks f
 | `WAZUH_API_PASS` | `wazuh-wui` | `.env` → manager `API_PASSWORD`, applied every start | **`config/wazuh_dashboard/wazuh.yml`** → dashboard's API connection | plaintext / plaintext |
 | enrollment password | authd (`:1515`) | `wazuh/authd.pass` → synced to `/var/ossec/etc/authd.pass` | every agent, once at enrollment (`authd.pass` placed by hand, then removed) | plaintext / plaintext |
 
-Plus the password manager (PHOENIX Tier 3), which is the only place any of them can be
-*recovered* from — a Tier 2 snapshot restores hashes, never passwords.
+Plus the password manager, which is the only place any of them can be *recovered* from. A
+Docker volume backup restores hashes, never passwords.
 
 `wazuh-wui` is **not** an indexer internal user. It's a manager API account: no bcrypt hash, no
 `securityadmin` run. It needs `.env` **and** `wazuh.yml`.
@@ -66,6 +67,10 @@ reference `${INDEXER_PASSWORD}`, and filebeat expands it from its own environmen
 **Re-diff it against the stock file on every image upgrade**, because the copy shadows whatever
 the new image ships. Found 2026-10-03.
 
+The manager runs this script as root inside the container on every start, so anyone who can
+edit the host copy gets root in the manager on the next start. Keep the file and its directory
+owned by root and not writable by group or others. On the box both are `root:root 755`.
+
 ## Procedure
 
 ### 1. Generate passwords
@@ -87,8 +92,8 @@ Nothing is printed, so no terminal scrollback or session recording carries the v
 three lines from `~/new-passwords.env` into the password manager, copy them into `.env` in step 2,
 then remove the file with `shred -u ~/new-passwords.env`.
 
-Store all three in the password manager **now** (PHOENIX Tier 3). A Tier 2 volume snapshot
-restores bcrypt *hashes*, never passwords — lose these and it's a full reset, not a restore.
+Store all three in the password manager **now**. A Docker volume backup restores bcrypt
+*hashes*, never passwords. Lose these and it's a full reset, not a restore.
 
 ### 2. Update `.env`
 
@@ -109,7 +114,7 @@ All three must read `32`. Anything longer means a comment or trailing whitespace
 password as `${KEY:?...}`, so compose refuses to start when `.env` lacks one. The stock file used
 `${KEY:-default}` with Wazuh's published passwords as the defaults, and the manager's init sets
 `wazuh-wui` from `API_PASSWORD` on every container start, so one deleted line would have put the
-API back on a public password with no error anywhere. Changed 2026-10-03.
+API back on a public password with no error anywhere. Found 2026-10-03, shipped 2026-10-13.
 
 ### 3. Generate bcrypt hashes
 
@@ -364,8 +369,8 @@ unused accounts with published credentials are pure attack surface:
 `kibanaro` · `logstash` · `readall` · `snapshotrestore`
 
 They carry `backend_roles` (`readall`, `kibanauser`, `logstash`) and their hashes are in a public
-GitHub repo. PHOENIX Tier 2 uses volume tarballs rather than OpenSearch snapshots, so
-`snapshotrestore` has no role here either.
+GitHub repo. My offline backup, kept outside this repo, uses Docker volume tarballs rather than
+OpenSearch snapshots, so `snapshotrestore` has no role here either.
 
 ## After a `down -v`
 
@@ -378,4 +383,6 @@ cp config/wazuh_indexer/internal_users.yml.example \
    config/wazuh_indexer/internal_users.yml
 ```
 
-See the recovery runbook, Stage 1.
+On a rebuild from a fresh clone, the other gitignored files come back the same way: `.env`,
+`config/wazuh_dashboard/wazuh.yml` and `wazuh/authd.pass`, each from its template, with the real
+values from the password manager.

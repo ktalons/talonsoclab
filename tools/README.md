@@ -29,8 +29,11 @@ bun tools/leakcheck.ts                    # every tracked file, as it sits in th
 bun tools/leakcheck.ts --staged           # the next commit: index copies plus the author and committer (pre-commit)
 bun tools/leakcheck.ts --message <file>   # a commit message, identifier rules only (commit-msg)
 bun tools/leakcheck.ts --pushed           # the commits and annotated tags named on stdin, pre-push format (pre-push)
+bun tools/leakcheck.ts --pushed --remote <dest>  # a ref <dest> has not seen is bounded by what it lists (git ls-remote)
 bun tools/leakcheck.ts --paths <p>...     # files or directories on disk, ignored ones included
 bun tools/leakcheck.ts --self-test        # the fixtures in tools/fixtures/leakcheck/
+bun tools/leakcheck.ts --only <classes>   # only these rule classes, a comma list of denylist,mac,ipv4,ipv6,fingerprint,argv
+bun tools/leakcheck.ts --no-denylist      # the pattern rules only, for a clone with no denylist
 bun tools/leakcheck.ts --help
 bun test tools/                           # the hooks, end to end, in a scratch repo
 ```

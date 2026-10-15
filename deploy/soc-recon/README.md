@@ -16,12 +16,21 @@ stays clear. Recon points at my own assets only.
 ```
 docker-compose.yml       resource limits, recon profile, indexer healthcheck
 .env.example             WAZUH_VERSION, INDEXER_HEAP, passwords, digest config
+generate-indexer-certs.yml  one-shot TLS cert generator, run once before the first `up`
+crontab.example          planned schedule for the recon run and the digest (not installed)
+recon_pipeline_architecture.png  diagram of the recon pipeline
 bin/idx                  indexer API helper: admin client certificate (--cacert/--cert/--key), never a password in argv
-systemd/                 Suricata log rotation and daily ET Open updates: host timers plus the scripts they run, installed root-owned
+config/                  indexer, dashboard and manager config; *.example templates for the two gitignored secret files
+systemd/                 host timers plus the scripts they run, installed root-owned: Suricata log rotation, daily ET Open
+                         updates, manager log retention (runbook 08), and the OnFailure handler that makes a failed run alert
 recon/                   subfinder + httpx + nuclei + diff, one slim image (not deployed)
 scope/                   in-scope targets (domains.txt is gitignored)
 triage/                  human-review queue (not deployed)
 digest/                  daily digest + CASA intake builder (not deployed)
+wazuh/SECURITY.md        credential rotation and keeping secrets out of argv
+wazuh/authd.pass.example placeholder for the agent enrollment password (wazuh/authd.pass is gitignored)
+wazuh/audit/             auditd execve rules for phase-a-linux endpoints
+wazuh/cont-init/         filebeat init override that keeps the indexer password out of argv
 wazuh/ism/               retention policy (version-controlled on purpose)
 wazuh/shared/            per-group agent config pushed to endpoints
 wazuh/custom-rules/      local Suricata tuning rules (live); Sigma-converted XML lands here in Phase B
@@ -46,6 +55,10 @@ upgrade. **Disk is the tighter limit** — see [`wazuh/ism/`](wazuh/ism/).
 ```bash
 cp .env.example .env                              # set version, heap, passwords
 cp scope/domains.txt.example scope/domains.txt    # your own assets only
+# gitignored files compose bind-mounts, from their tracked templates (see below)
+cp config/wazuh_indexer/internal_users.yml.example config/wazuh_indexer/internal_users.yml
+cp config/wazuh_dashboard/wazuh.yml.example config/wazuh_dashboard/wazuh.yml
+cp wazuh/authd.pass.example wazuh/authd.pass
 mkdir -p data && chown -R 10001 data
 
 # certs, once
@@ -60,6 +73,11 @@ python3 digest/generate_digest.py                 # daily digest + CASA intake
 ```
 
 Host prerequisite: `vm.max_map_count=262144`.
+
+Compose refuses to start unless `.env` sets all three passwords (`WAZUH_INDEXER_PASS`,
+`WAZUH_DASHBOARD_PASS`, `WAZUH_API_PASS`). The three copied files hold the demo hashes, the demo
+API password and a placeholder enrollment password. Replace them before the box is reachable:
+[`wazuh/SECURITY.md`](wazuh/SECURITY.md) has the steps for each.
 
 Nothing auto-submits anywhere. Once deployed, recon writes deltas to `triage/` and the digest
 collects and cites. You review and decide.

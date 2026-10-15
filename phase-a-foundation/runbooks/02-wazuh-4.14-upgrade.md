@@ -71,6 +71,10 @@ rule authoring.
 
 ## 3. Execute — [BOX]
 
+> **`down -v` was safe here only because nothing had enrolled yet.** On the live stack it
+> destroys the data of all three enrolled agents, and no volume-preserving upgrade procedure
+> exists yet. See the warning at the end of [runbook 05](05-wazuh-agent-update.md).
+
 ```bash
 cd ~/talonsoclab/deploy/soc-recon && git pull
 sed -i 's/^WAZUH_VERSION=.*/WAZUH_VERSION=4.14.6/' .env
