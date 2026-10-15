@@ -26,7 +26,8 @@ Docker. **Stack:** [`deploy/soc-recon/`](../deploy/soc-recon/).
 - [x] ISM retention policy active and version-controlled
 - [x] All 3 endpoint agents active — Windows, Linux, macOS
 - [x] Suricata events visible in the dashboard *(Suricata 8.0.6 on `eno1`, ET Open 52,245 rules;
-      proven with a live `GPL ATTACK_RESPONSE id check returned root` hit, not just "sensor up")*
+      proven with a live `GPL ATTACK_RESPONSE id check returned root` hit, not just "sensor up";
+      it runs 8.0.7 with 53,158 rules as of 2026-10-15)*
 - [x] ≥1 custom dashboard with ≥3 visualizations exported —
       [`dashboards/talonsoclab-soc-overview.ndjson`](../dashboards/talonsoclab-soc-overview.ndjson)
       (5 panels: alerts over time by endpoint, severity, MITRE ATT&CK tactics, top rules,

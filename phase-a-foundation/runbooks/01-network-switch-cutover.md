@@ -92,10 +92,16 @@ hard-coded on the box.
 - [x] Stack green on the new wired IP; dashboard reachable
 - [x] DHCP reservation set; IP survives renew and a full reboot
 - [x] BIOS After Power Loss = Power On; deep sleep disabled
-- [ ] Switch mgmt IP moved onto the LAN + admin password changed *(deferred to Phase C, with VLANs)*
+- [x] Switch admin password changed off the default *(2026-10-13; originally deferred to Phase
+      C, with VLANs)*
+- [ ] Switch mgmt IP moved onto the LAN *(originally deferred to Phase C, with VLANs; whether it
+      has moved is not recorded)*
 
 Left unconfigured on purpose: **802.1Q VLANs** (segmenting management / victim / sensor —
 Phase C) and **SPAN**. The sensor now exists (Suricata on the EliteDesk, runbook 06) and sees
 only the box's own traffic plus broadcast. Mirroring the router uplink to it is the enrichment
 step and waits until that baseline is trusted (A.3 stretch / Phase B). Flat L2 is the correct
 Phase 0 state.
+
+**Status 2026-10-15:** VLANs are out of scope. They were dropped in the docker pivot, so the LAN
+stays flat. SPAN is deferred and is not part of the Phase B plan.

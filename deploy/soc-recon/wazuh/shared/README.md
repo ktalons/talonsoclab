@@ -12,7 +12,7 @@ survive `docker compose down -v` — same failure class as the ISM policy
 | Group | Purpose |
 |---|---|
 | `phase-a-windows` | Windows endpoints. Adds the Sysmon eventchannel collector on top of the agent's default Security/System/Application channels. |
-| `phase-a-linux` | Linux endpoints. Adds `/var/log/audit/audit.log`; the default config collects syslog and auth.log but not audit. Rules in [`../audit/`](../audit/). |
+| `phase-a-linux` | Linux endpoints. Adds `/var/log/audit/audit.log`; the default config collects syslog and auth.log but not audit. Rules in [`../audit/`](../audit/). Also tails Suricata's `/var/log/suricata/eve.json` (only the SOC host has it) and ships `cis_ubuntu26-04.yml`, the CIS SCA policy adapted to Ubuntu 26.04. |
 | `phase-a-macos` | macOS endpoints. Adds a filtered unified-log collector. The default `/var/log/system.log` carries almost nothing on modern macOS. |
 
 ## How it reaches an agent
@@ -32,8 +32,10 @@ The entrypoint creates a new group directory as `root:root 755`, but `wazuh-remo
 configured and does nothing.
 
 ```bash
-docker compose exec wazuh.manager chown -R wazuh:wazuh /var/ossec/etc/shared/phase-a-windows
-docker compose exec wazuh.manager chmod 770 /var/ossec/etc/shared/phase-a-windows
+for g in phase-a-linux phase-a-macos phase-a-windows; do
+  docker compose exec wazuh.manager chown -R wazuh:wazuh "/var/ossec/etc/shared/$g"
+  docker compose exec wazuh.manager chmod 770 "/var/ossec/etc/shared/$g"
+done
 ```
 
 One-time per volume lifetime, not per boot — an existing directory's ownership is left alone.
@@ -42,7 +44,8 @@ One-time per volume lifetime, not per boot — an existing directory's ownership
 
 ```bash
 docker compose exec wazuh.manager /var/ossec/bin/agent_groups -l
-docker compose exec wazuh.manager ls -la /var/ossec/etc/shared/phase-a-windows/
+docker compose exec wazuh.manager ls -la /var/ossec/etc/shared/phase-a-{linux,macos,windows}/
 ```
 
-Want the group listed, and both `agent.conf` and `merged.mg` present as `wazuh:wazuh`.
+Want each group listed, and `agent.conf` and `merged.mg` present as `wazuh:wazuh` in each
+directory. `phase-a-linux` also holds `cis_ubuntu26-04.yml`.

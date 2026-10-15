@@ -193,8 +193,8 @@ only, so the column is no evidence either way; the journal is:
 
 - [x] Script, service, timer and handler installed root-owned; timer enabled at 05:00 UTC
       *(2026-10-13)*
-- [x] Dry run read before the first delete *(0 files: the backlog was already gone, see the
-      2026-10-13 note above)*
+- [x] Dry run read before the first delete *(0 files: the 2026-10-13 test suite had already
+      deleted the backlog, see "A delete on the live project needs root" above)*
 - [x] First run: the journal shows the run, no dated file past 14 days left, the young-file
       count unchanged (87), indexing at the baseline rate *(2026-10-13 22:52Z, deleted 0)*
 - [x] First scheduled run that deletes: the 05:00 UTC journal shows a nonzero total
