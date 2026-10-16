@@ -532,9 +532,10 @@ Copy anything worth keeping out of `/var/log/suricata/` before the timers age it
   in `systemctl --failed` and the journal, but nobody is told. Check them at the start of a
   session. A failure the script sees raises two alerts, its own `status=1/FAILURE` line and the
   `OnFailure=` handler's; a kill or an exec error raises the handler's alone.
-- **A timer that never fires raises nothing.** `OnFailure=` covers a run that fails, not a run
-  that never starts because a timer was disabled or masked. `systemctl list-timers` shows it. An
-  age probe inside the Wazuh manager, shared with runbook 08's timer, is the planned fix.
+- **A timer that never fires.** `OnFailure=` covers a run that fails, not a run that never
+  starts because a timer was disabled or masked. The job age probe below raises rule 100311 at
+  level 7 about two hours after a missed daily run. Until it is installed, only
+  `systemctl list-timers` shows it.
 - **A killed update leaves its builder running.** `docker exec` does not forward signals, so
   `suricata-update` runs on inside the container until it finishes or hits its own 900 s limit
   (U4). The exit trap deletes the stage, though a builder that has not yet written its output
@@ -671,6 +672,187 @@ reopened all three, not just the file the script checks.
 Minor, benign: `suricata.log` is rotated but not immediately recreated. Suricata only writes it
 on engine events, so it reappears at the next one.
 
+### Job age probe
+
+The units above alert when a run fails. When no run happens, they say nothing. A timer that is
+disabled, masked or never loaded, a box that was down at 04:00, and an agent that stopped
+forwarding the journal all look like silence. The probe turns that silence into an alert, for
+both Suricata timers and runbook 08's retention timer (ISC-48).
+
+It has two halves. The first is a success alert per job. Each script prints one line when its
+work succeeded (the update prints it just before its exit trap; see the gaps below). That line
+already reaches the manager through agent 002's journald localfile, and three level 3 rules in `deploy/soc-recon/wazuh/custom-rules/local_job_age.xml` now match them:
+
+| Rule | Job | Matches, with the script name as journald tags it |
+|---|---|---|
+| 100300 | rotation | `rotated: eve.json.1 holds inode <n>, the new eve.json is inode <n>` |
+| 100301 | update | `update complete: <n> rules loaded` |
+| 100302 | retention | `kept <n> newer dated files; alerts.json in place` |
+
+Each regex is anchored at both ends, so no failure line can match. The scratch logtest ran every
+line the three scripts can print, plus near misses and the right phrase under the wrong program
+name: the six success lines matched, and none of the other 69 did.
+
+The second half is the probe, `deploy/soc-recon/wazuh/probes/soc-recon-job-age.sh`. The manager's
+logcollector runs it as root every hour (a `full_command` localfile in the manager's `ossec.conf`,
+alias `soc-recon job age`), and once at boot. It reads the manager's own `logs/alerts` for the
+newest success of each job. That means today's `alerts.json` plus any dated
+`ossec-alerts-<dd>.json[.gz]` last written inside the 26 h window. It also reads the age of every
+regular file below the top of `logs/alerts` and `logs/archives`, whatever its name. Then it
+prints one line:
+
+| Line | Rule | Level | Means |
+|---|---|---|---|
+| `OK rotation=<h>h<mm>m update=... retention=... oldest_dated=<d>d<hh>h` | 100310 | 3 | every job succeeded within 26 h and no dated file is past 16 days. This is the hourly heartbeat |
+| `STALE <the same fields> stale=<job>,...` | 100311 | 7 | a job has no success in 26 h (`<job>=none` means none in the files it reads), or a dated file is past 16 days, or there is no dated file at all (`stale=dated`, the last as `oldest_dated=none`). Today's dated name is a hard link to `alerts.json`, so a live manager always has one |
+| `ERROR <reason>` | 100311 | 7 | it could not trust what it read: a missing or unreadable tree, a file that will not decompress, a success alert cut short, with a time that is not a real one, or whose two journal times or program disagree with its rule (all three reported as a timestamp that does not parse), a success or a dated file dated after the clock, an `alerts.json` or a tree replaced by a link. Or the run itself failed: it stopped before reporting, ran past 8 s, or was killed |
+| anything else | 100311 | 7 | 100311 takes every output that is not exactly the OK line, one newline after the header and at most one after it, no blank line or space around it |
+| nothing | none | | logcollector sends no event for an empty output. The probe prints `ERROR` on any exit before its report and on a run past its limit, so only a `SIGKILL` of the probe itself leaves it silent |
+
+The limits and levels are Kyle's (2026-10-16). 26 h after a job's last success alerts about two
+hours after one missed daily run. Retention keeps 14 days and the oldest dated file normally
+peaks near 14 d 5 h, so 16 days means about two missed retention runs, or a file under a name the
+retention pattern does not know. Level 7 sits above 40704's 5, because a job that went silent is
+worse than one that failed loudly. Nothing pages, so the level only sets dashboard sort and
+filter weight.
+
+Only the three success alerts count, and every other line is another alert, skipped whatever it
+holds. A success alert has to be whole: one that does not end with its `location` field is
+`cut short`, an `ERROR`. The one exception is the file's last line with no newline yet, which the
+manager may still be writing; the next run reads it whole. It has to come from agent 002's
+`journald` input. The rules fire for any agent, so a success line forged on another endpoint
+still shows as its own 100300 to 100302 alert, but it never makes a job here look fresh.
+
+A job's age runs from the time the job printed its line, the journal's own `predecoder.timestamp`
+(`Oct 16 04:31:17`), not from when the manager received it. A line the agent sends again later
+keeps its old time and reads old, and a line delivered late still reads from when the job ran.
+Both times have to be real ones. gawk's `mktime` would roll 30 February into 2 March and hour 24
+into the next day, so each must print back unchanged, and an alert offset past 14:00 is an
+`ERROR` too. The journal time is written twice, in `predecoder` and at the start of `full_log`,
+and the two must agree, as must `program_name` and the job the rule id names; one damaged field
+cannot move a success or hand it to another job.
+
+The probe only reads. It writes no file, makes no network call and touches neither docker nor a
+secret. Reading does update the access time of the files it reads, as every reader of them does
+(the logs volume is `relatime`); nothing on the manager keys on access time. It finished in 0.5 s on a 69 MB `alerts.json` on the scratch stack. The whole run has an
+8 s limit: the probe starts itself again under `timeout`, which signals the run's whole process
+group, so a hung read ends in `ERROR the probe ran past 8 s` with no reader left behind (one
+stuck inside the kernel is the exception; see the gaps). Run it by its path. Piped into `bash -s`, it cannot find itself and says `ERROR`.
+
+The probe's own record is `rule.id` 100310 or 100311, one document an hour:
+
+```bash
+cd ~/talonsoclab/deploy/soc-recon
+q='{"size":30,"sort":[{"timestamp":"desc"}],"_source":["timestamp","rule.id","full_log"],
+  "query":{"bool":{"filter":[{"terms":{"rule.id":["100310","100311"]}},
+  {"range":{"timestamp":{"gte":"now-1d"}}}]}}}'
+bin/idx '/wazuh-alerts-*/_search' -d "$q" |
+  jq -r '.hits.hits[]._source | "\(.timestamp) \(.rule.id) \(.full_log | split("\n") | last)"'
+```
+
+**Install.** The probe, its rules and the localfile ride `/wazuh-config-mount`, so they apply only
+on a new container (section 3). No sudo. A recreate also copies every other config-mount file,
+so check first what else it would change. The loop is one line in single quotes, so every `$`
+expands inside the container and a paste cannot split it:
+
+```bash
+cd ~/talonsoclab/deploy/soc-recon
+git pull --ff-only
+docker compose exec -T wazuh.manager bash -c 'cd /wazuh-config-mount && find . -type f | sort | while read -r f; do t=/var/ossec/${f#./}; if [ ! -e "$t" ]; then echo "new  $f"; elif [ "$(md5sum <"$f")" != "$(md5sum <"$t")" ]; then echo "diff $f"; fi; done'
+docker compose up -d --force-recreate wazuh.manager
+docker compose logs --since 3m wazuh.manager | grep -E "Identified Wazuh|cont-init.d\] 0-wazuh-init|probes"
+docker compose exec -T wazuh.manager stat -c '%U:%G %a %n' /var/ossec/etc/probes/soc-recon-job-age.sh
+docker compose exec -T wazuh.manager grep 'soc-recon-job-age' /var/ossec/logs/ossec.log
+```
+
+Before the recreate, `new` should list only the probe, the rules file and anything else you meant
+to ship, and `diff` only `etc/ossec.conf` and the same. After it, the boot log needs
+`Identified Wazuh configuration files to mount...`, a
+`'/wazuh-config-mount/etc/probes/soc-recon-job-age.sh' -> '/var/ossec/etc/probes/soc-recon-job-age.sh'`
+line and `0-wazuh-init: exited 0`. The probe should be `root:root 755`: the init copies it as
+root under umask 022, so the checkout's 775 lands as 755. `ossec.log` should show
+`Monitoring full output of command(3600): /var/ossec/etc/probes/soc-recon-job-age.sh`.
+
+The first line after an install is `STALE rotation=none update=none retention=none`, as a level 7
+100311 within a minute of the boot. That is correct, not a fault. The day's runs printed their
+success lines before these rules existed, so no success alert exists yet, and that first alert is
+the live proof of the STALE path. The first 100310 comes at the first hourly run after all three
+jobs have run under the new rules: after the next 05:00 UTC retention run, or after a hand run of
+all three units.
+
+**How it was proven.** A scratch manager on the box (`Plans/isc48-tests/`, project `isc48test`,
+its own network and volumes, the live image) booted with the same mounts. Its boot log copied the
+probe in (`root:root 755` from a 775 source), and its logcollector ran the probe 15 s after boot,
+raising a real 100311. Three success alerts and a logcollector restart then gave a real 100310,
+and a success with a broken timestamp gave a real `ERROR`. Each output shape went through the
+manager's logtest: 23 shapes reached 100310 or 100311 as they should, and two other localfiles
+reached neither. 58 planted trees ran the probe, among them all fresh, one job 27 h old, one job
+with no success, the successes only in yesterday's `.json.gz`, a 17-day file under an unknown
+name, no dated file at all, a tree that is unreadable, missing or corrupted, a success cut short,
+impossible times and offsets, a success sent again or delayed, one from another agent or input,
+one whose two journal times or whose program disagree, an `alerts.json` or a tree replaced by a
+link, an `alerts.json` that is a FIFO, a dated file ahead of the clock, and both limits
+approached from either side. Each compared the tree before and after the run. A probe made to
+hang ended at 8 s, and one that also ignored `SIGTERM` at 9 s, both with `ERROR` and nothing left
+running. A targeted mutation set on the STALE and ERROR branches checked that the cases catch
+what they claim (see `Plans/isc48-tests/RESULTS.md`).
+
+**The probe's own gaps.**
+
+- **A probe that never runs, or prints nothing, raises nothing.** Only the missing hourly
+  100310 or 100311 document shows it. A manager that is down shows in every other panel first.
+- **The journal time has no year and no zone.** The probe takes the alert's year, or the year
+  before when that would land more than 5 minutes after the alert arrived, and reads the time
+  as UTC, the box's zone. A box set to another zone shifts every age: west of UTC every job
+  reads older and goes STALE early; east of it every journal time lands after its alert, so it
+  falls back a year and reads STALE too. The same 5 minutes is the clock skew allowed between
+  the agent and the manager, which share the box's clock today. A line replayed from the same
+  month and day of an earlier year would read fresh. That needs the agent to re-read a journal
+  more than a year old; the box's journal starts 2026-07-11, so not before 2027-07-11, and
+  `MaxRetentionSec=` under a year in `journald.conf` would rule it out for good.
+- **A success line can be forged on the box.** Anything that can write the host's journal under
+  a script's name raises the success alert, for example `logger -t soc-recon-suricata-update.sh
+  'update complete: 1 rules loaded'`, and keeps the probe quiet for 26 h. The journal records
+  the real unit in `_SYSTEMD_UNIT`, but the agent's journald reader does not forward it. It
+  takes a login on the box, which today means talon, whose docker group is root already. The
+  same line on another endpoint changes nothing here.
+- **A success alert is checked at its edges, not in full.** The probe has no JSON parser. It
+  checks the start of the line, its agent, its journal time and its end. A line garbled in
+  between could still count, but an appended write does not garble a middle; only something
+  that can write `alerts.json` can, and it could write a valid line as easily.
+- **The agent id is fixed.** A box enrolled again gets a new id, and every job reads `none`,
+  STALE every hour, until `AGENT` in the probe follows it.
+- **The update's line prints before its exit trap.** A run whose stage cleanup then fails exits 1
+  and raises 40704, and still counts as a success here. The rules did update.
+- **A run that races the midnight rotation can say ERROR once.** The manager compresses
+  yesterday's file at 00:00 UTC, and a file listed before that can be gone by the time it is read.
+  The next hour's run passes.
+- **Root ignores file modes.** On the live manager, "unreadable" means an I/O error, a missing
+  file or the wrong file type, never a mode. The suite drops root's read override in one
+  container to test the mode case anyway.
+- **The clock is trusted.** A success dated more than 5 minutes ahead of the clock is an `ERROR`,
+  but a clock that runs slow is not detected. A clock stepped back more than 5 minutes, say by
+  a large NTP correction at boot, leaves the newest success, and any dated file written inside
+  the step, ahead of it: an hourly `ERROR` until the clock catches up, at most the size of the
+  step.
+- **A read stuck inside the kernel outlives the limit.** A process in uninterruptible I/O ignores
+  even `SIGKILL`, and `timeout` waits for it. The hourly document then goes missing, as in the
+  first gap.
+- **The probe knows the manager's alert line and file names.** It reads a success only from a
+  line that starts with `timestamp`, then `rule` with `level`, `description` and `id` in that
+  order, carries `predecoder` with `program_name` then `timestamp`, and ends with `location`. A
+  manager upgrade that moves those keys turns every job to `none` and STALE, or, if the line
+  stops ending with `location`, every hour to `ERROR ... cut short`. It reads only the dated
+  names `ossec-alerts-<dd>.json[.gz]`; size rotation (`ossec-alerts-<dd>-001.json.gz`) is off
+  here. A renamed dated file hides yesterday's successes, so the line is STALE from 00:00 UTC
+  until each job runs again. It also needs `full_log` to open with the journal time, and its
+  three script names to match the rules' `program_name`s; a manager that changes the first, or a
+  script renamed in the rules but not in the probe, gives `ERROR ... does not parse` every hour.
+  Each case is loud, not silent.
+- **The success rules must stay at level 3 or above.** The manager writes `alerts.json` from
+  `log_alert_level` 3, and the probe reads its successes from there. Renumber a rule, or lower it
+  below 3, and its job reads `none`, then STALE.
+
 ## 7. The SOC Overview dashboard — [API]
 
 `dashboards/talonsoclab-soc-overview.ndjson` holds the dashboard plus five visualizations:
@@ -790,3 +972,20 @@ takes id `2`, and each terms agg's `orderBy` points at `2` to match.
       2026-10-15T04:30:55, 53,158 loaded and 0 failed. No handler instance started, and rule
       40704 counted 0 since 03:55 UTC for both units and overall, with the 2026-10-14 anti-test
       window still returning its alert as a control)*
+
+### Revision 2026-10-16 (ISC-48 job age probe)
+
+- [x] Scratch proof on `isc48test`: `mount_files` copies the new `etc/probes` folder, the probe
+      lands `root:root 755` from a 775 source, and the logcollector runs it at boot; logtest on
+      every line the three scripts print (75 lines) and on 25 probe output shapes; 58 planted
+      trees, a timed day-sized tree, two hung runs cut at the 8 s limit and 3 real-pipeline runs;
+      targeted mutants of the STALE and ERROR branches, all caught *(Plans/isc48-tests/RESULTS.md)*
+- [x] Two-leg delta audit on the pinned final tree, no unaddressed High or Medium *(2026-10-16:
+      six rounds; on the final pin Max READY, and codex's last High and Medium fall under Kyle's
+      rulings: whole-record JSON validation is a standing dispute, and access-time updates on read
+      are documented above)*
+- [ ] Installed by one force-recreate: the boot log copies the probe and ends
+      `0-wazuh-init: exited 0`, the probe is `root:root 755`, and the first probe alert reaches
+      the indexer within 65 min
+- [ ] First 100310 heartbeat in the indexer after all three jobs have run under the new rules,
+      and one each of 100300, 100301 and 100302 from the scheduled runs

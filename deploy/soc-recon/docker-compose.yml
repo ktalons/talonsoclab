@@ -150,6 +150,11 @@ services:
       # `Identified Wazuh configuration files to mount...` + `exited 0`, then
       # merged.mg md5 == the agent-reported Shared file hash. See runbook 06 § 3.
       - ./wazuh/custom-rules:/wazuh-config-mount/etc/rules/custom:ro
+      # The hourly job age probe (ISC-48, runbook 06 section 6), run as root by the
+      # manager's logcollector. Copied, not run in place: the copy is root-owned,
+      # keeps the checkout's exec bit under the init's umask 022, and changes only
+      # on a NEW container, so a `git pull` alone never changes what root runs.
+      - ./wazuh/probes:/wazuh-config-mount/etc/probes:ro
       # Shared agent-group configs. Same reasoning as custom-rules above: routed
       # through /wazuh-config-mount so the entrypoint syncs it into /var/ossec
       # when the container is created (GOTCHA 2 above). In git because

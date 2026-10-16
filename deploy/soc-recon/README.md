@@ -33,7 +33,8 @@ wazuh/audit/             auditd execve rules for phase-a-linux endpoints
 wazuh/cont-init/         filebeat init override that keeps the indexer password out of argv
 wazuh/ism/               retention policy (version-controlled on purpose)
 wazuh/shared/            per-group agent config pushed to endpoints
-wazuh/custom-rules/      local Suricata tuning rules (live); Sigma-converted XML lands here in Phase B
+wazuh/custom-rules/      local Suricata tuning and job age rules (live); Sigma-converted XML lands here in Phase B
+wazuh/probes/            the hourly job age probe the manager runs (runbook 06, section 6)
 ```
 
 ## Resource budget
