@@ -759,15 +759,22 @@ expands inside the container and a paste cannot split it:
 cd ~/talonsoclab/deploy/soc-recon
 git pull --ff-only
 docker compose exec -T wazuh.manager bash -c 'cd /wazuh-config-mount && find . -type f | sort | while read -r f; do t=/var/ossec/${f#./}; if [ ! -e "$t" ]; then echo "new  $f"; elif [ "$(md5sum <"$f")" != "$(md5sum <"$t")" ]; then echo "diff $f"; fi; done'
+docker compose exec -T wazuh.manager cat /var/ossec/etc/ossec.conf | diff - config/wazuh_cluster/wazuh_manager.conf
 docker compose up -d --force-recreate wazuh.manager
 docker compose logs --since 3m wazuh.manager | grep -E "Identified Wazuh|cont-init.d\] 0-wazuh-init|probes"
 docker compose exec -T wazuh.manager stat -c '%U:%G %a %n' /var/ossec/etc/probes/soc-recon-job-age.sh
 docker compose exec -T wazuh.manager grep 'soc-recon-job-age' /var/ossec/logs/ossec.log
 ```
 
-Before the recreate, `new` should list only the probe, the rules file and anything else you meant
-to ship, and `diff` only `etc/ossec.conf` and the same. After it, the boot log needs
-`Identified Wazuh configuration files to mount...`, a
+The loop runs inside the running container, so it has two blind spots. It sees only the mounts
+that container started with, so a route the compose file adds (here `etc/probes`) is missing
+until the recreate; read the compose diff for those. And a single-file bind keeps the file it
+started with, because git replaces a file rather than rewriting it, so `ossec.conf` shows no
+change after a pull; the host-side `diff` line covers it. On 2026-10-16, before this install,
+the loop listed `new ./etc/rules/custom/local_job_age.xml` and `diff ./etc/shared/README.md`,
+and the host `diff` showed only the new `<localfile>` block.
+
+After the recreate, the boot log needs `Identified Wazuh configuration files to mount...`, a
 `'/wazuh-config-mount/etc/probes/soc-recon-job-age.sh' -> '/var/ossec/etc/probes/soc-recon-job-age.sh'`
 line and `0-wazuh-init: exited 0`. The probe should be `root:root 755`: the init copies it as
 root under umask 022, so the checkout's 775 lands as 755. `ossec.log` should show
