@@ -177,8 +177,13 @@ only, so the column is no evidence either way; the journal is:
   for 14 more days.
 - **No `Persistent=`.** A day missed while the box was down is skipped, and the next run deletes
   two days' files.
-- **A timer that never fires raises nothing.** `OnFailure=` covers a run that fails, not a run
-  that never starts because the timer was disabled or masked. `systemctl list-timers` shows it.
+- **A timer that never fires.** `OnFailure=` covers a run that fails, not a run that never
+  starts because the timer was disabled or masked. The job age probe (runbook 06, section 6,
+  "Job age probe") covers it twice: no `kept <n> newer dated files; alerts.json in place` line
+  in 26 h, or a dated tree with a file past 16 days whatever its name, or with no file at all,
+  raises rule 100311 at level 7. The second also catches a manager upgrade that renames the
+  dated files, which this script would then keep forever. Until the probe is installed, only
+  `systemctl list-timers` shows it.
 - **A killed run can leave its `find` running.** `docker exec` does not forward signals, so the
   in-container `find` can run up to 125 s past a kill. A run started in that window can fail
   loud on a file that vanished. It cannot delete the wrong file.

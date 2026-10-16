@@ -1,0 +1,65 @@
+<!--
+  soc-recon job age (ISC-48): turns each host job's success line into an alert,
+  and grades the hourly probe that checks those alerts are recent. Runbook 06,
+  section 6, "Job age probe".
+
+  The job lines arrive from agent 002's journald localfile as
+    <Mmm dd hh:mm:ss> <host> <script name>[<pid>]: <message>
+  and the pre-decoder takes the script name as program_name, so these are root
+  rules with no decoder, as stock 40700 is for systemd.
+
+  WARN: levels stay at 3 or above. The manager writes alerts.json only from
+  log_alert_level 3, and the probe reads its successes from alerts.json.
+  WARN: soc-recon-job-age.sh matches these rule ids and the start of each alert
+  line. Renumber a rule and the probe reports that job as none, then STALE.
+  NOTE: these rules fire for any agent, so a forged line elsewhere still shows.
+  The probe counts only agent 002's journald lines, aged by their journal time.
+-->
+<group name="local,soc_recon,job_age,">
+
+  <!--
+    Each regex is the script's last line on a run that exits 0, anchored at both
+    ends, so no failure line can match. "inode none" is a fresh sensor with no
+    eve.json before the run. update.sh prints its line before the exit trap
+    removes the stage; a cleanup that fails then exits 1 and raises 40704, and
+    the rules are still updated, so the success still counts here.
+  -->
+  <rule id="100300" level="3">
+    <program_name>^soc-recon-suricata-logrotate.sh$</program_name>
+    <regex type="pcre2">^rotated: eve\.json\.1 holds inode (?:\d+|none), the new eve\.json is inode (?:\d+|none)$</regex>
+    <description>soc-recon: Suricata log rotation succeeded.</description>
+  </rule>
+
+  <rule id="100301" level="3">
+    <program_name>^soc-recon-suricata-update.sh$</program_name>
+    <regex type="pcre2">^update complete: \d+ rules loaded$</regex>
+    <description>soc-recon: Suricata rule update succeeded.</description>
+  </rule>
+
+  <rule id="100302" level="3">
+    <program_name>^soc-recon-wazuh-retention.sh$</program_name>
+    <regex type="pcre2">^kept \d+ newer dated files; alerts\.json in place$</regex>
+    <description>soc-recon: Wazuh log retention succeeded.</description>
+  </rule>
+
+  <!--
+    The probe's output, from the manager's own logcollector (full_command with
+    alias "soc-recon job age"). 100310 takes every run and is the hourly
+    heartbeat; 100311 takes any line that is not exactly the OK shape, so
+    STALE, ERROR, an empty run and anything unexpected all alert at level 7.
+    Level 7 sits above 40704's 5: a job that went silent is worse than one that
+    failed loudly.
+  -->
+  <rule id="100310" level="3">
+    <if_sid>530</if_sid>
+    <match>^ossec: output: 'soc-recon job age':</match>
+    <description>soc-recon: job age probe ran, every job is current.</description>
+  </rule>
+
+  <rule id="100311" level="7">
+    <if_sid>100310</if_sid>
+    <regex type="pcre2" negate="yes">^ossec: output: 'soc-recon job age':\nOK rotation=\d+h\d{2}m update=\d+h\d{2}m retention=\d+h\d{2}m oldest_dated=\d+d\d{2}h\n?\z</regex>
+    <description>soc-recon: job age probe says a job is stale, or it failed.</description>
+  </rule>
+
+</group>
