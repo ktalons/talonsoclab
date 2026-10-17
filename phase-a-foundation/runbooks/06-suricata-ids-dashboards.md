@@ -991,8 +991,17 @@ takes id `2`, and each terms agg's `orderBy` points at `2` to match.
       six rounds; on the final pin Max READY, and codex's last High and Medium fall under Kyle's
       rulings: whole-record JSON validation is a standing dispute, and access-time updates on read
       are documented above)*
-- [ ] Installed by one force-recreate: the boot log copies the probe and ends
+- [x] Installed by one force-recreate: the boot log copies the probe and ends
       `0-wazuh-init: exited 0`, the probe is `root:root 755`, and the first probe alert reaches
-      the indexer within 65 min
-- [ ] First 100310 heartbeat in the indexer after all three jobs have run under the new rules,
-      and one each of 100300, 100301 and 100302 from the scheduled runs
+      the indexer within 65 min *(2026-10-16: recreated 17:41:22Z at `5c9f306`; boot log copied
+      `etc/probes` and the probe, `0-wazuh-init: exited 0`; `root:root 755`; probe, rules and
+      `ossec.conf` byte-equal to the checkout; `Monitoring full output of command(3600)` at
+      17:41:37; first alert 100311 level 7 at 17:41:41.940Z, `STALE rotation=none update=none
+      retention=none oldest_dated=13d17h`, in the indexer within a minute; restarts 0, agents
+      001 to 003 Active)*
+- [x] First 100310 heartbeat in the indexer after all three jobs have run under the new rules,
+      and one each of 100300, 100301 and 100302 from the scheduled runs *(2026-10-17: 100300
+      `rotated:` at 04:00:23Z, 100301 `update complete: 53211 rules loaded` at 04:31:06Z, 100302
+      `kept 87 newer dated files` at 05:00:04Z; the 04:41Z probe went STALE on `retention` alone;
+      first 100310 `OK rotation=1h41m update=1h10m retention=0h41m` at 05:41:46Z, OK every hour
+      since)*
