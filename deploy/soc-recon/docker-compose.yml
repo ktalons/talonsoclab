@@ -155,6 +155,16 @@ services:
       # keeps the checkout's exec bit under the init's umask 022, and changes only
       # on a NEW container, so a `git pull` alone never changes what root runs.
       - ./wazuh/probes:/wazuh-config-mount/etc/probes:ro
+      # The Tier 2 backup marker (S0.5, runbook 09), read daily by the tier2 age
+      # probe. A directory bind, because tools/tier2-backup.sh replaces the marker
+      # by rename and a single-file bind would keep the old inode. Outside
+      # /var/ossec (GOTCHA above). The directory ships in git; the marker does not.
+      - type: bind
+        source: ./state/tier2
+        target: /srv/tier2
+        read_only: true
+        bind:
+          create_host_path: false
       # Shared agent-group configs. Same reasoning as custom-rules above: routed
       # through /wazuh-config-mount so the entrypoint syncs it into /var/ossec
       # when the container is created (GOTCHA 2 above). In git because

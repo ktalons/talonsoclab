@@ -1,0 +1,29 @@
+<!--
+  soc-recon Tier 2 backup age (S0.5, D2): grades the daily probe that reads the
+  marker tools/tier2-backup.sh writes after a backup verifies. Runbook 09.
+
+  The probe's output arrives from the manager's own logcollector (full_command
+  with alias "soc-recon tier2 age"). 100320 takes every run and is the daily
+  heartbeat; 100321 takes any line that is not exactly the OK shape, so STALE,
+  ERROR, an empty run and anything unexpected all alert at level 10 (D2).
+
+  NOTE: 100310 and 100311 match the job age probe's alias, and these match only
+  this one, so neither probe's output reaches the other's rules.
+-->
+<group name="local,soc_recon,tier2_age,">
+
+  <rule id="100320" level="3">
+    <if_sid>530</if_sid>
+    <match>^ossec: output: 'soc-recon tier2 age':</match>
+    <description>soc-recon: Tier 2 backup age probe ran, the last backup is current.</description>
+  </rule>
+
+  <rule id="100321" level="10">
+    <if_sid>100320</if_sid>
+    <!-- Only ages the probe can print as OK pass: 0d00h to 6d23h, and 7d00h
+         itself (the probe goes STALE only past 7 days). Any other OK alerts. -->
+    <regex type="pcre2" negate="yes">^ossec: output: 'soc-recon tier2 age':\nOK tier2=(?:[0-6]d(?:[01]\d|2[0-3])h|7d00h)\n?\z</regex>
+    <description>soc-recon: Tier 2 backup is over 7 days old or missing, or its probe failed.</description>
+  </rule>
+
+</group>

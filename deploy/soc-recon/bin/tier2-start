@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# ******************************************************************************
+# *Title: tier2-start*
+# *Author: Kyle Versluis*
+# *Description: Starts the stack on volumes a finished Tier 2 restore made.*
+# ******************************************************************************
+# Run as talon on the box, after tools/tier2-restore.sh (runbook 09 section 4,
+# PHOENIX Stage 2 Path A):
+#   bin/tier2-start
+# The restore labels each volume it creates with its run's token, and writes
+# state/tier2-restored only after all four are filled. This starts the stack
+# only when all four volumes exist, carry one token, and that token is the
+# record's. A restore cut off from the box leaves volumes with no record, and
+# docker compose up would adopt them silently; this refuses and names them.
+# Each volume is pinned by a holder container from its check until compose has
+# created the stack's containers, so none can be swapped in between. Nothing is
+# pulled. A start that is not from a restore is plain docker compose.
+
+# *--- Configuration ---*
+
+set -euo pipefail
+PATH=/usr/local/bin:/usr/bin:/bin
+export PATH
+export LC_ALL=C
+# NOTE: an exported CDPATH makes cd print the directory.
+unset CDPATH
+
+VOLUMES=(indexer_data wazuh_etc wazuh_queue wazuh_api_configuration)
+RECORD=state/tier2-restored
+
+die() {
+    printf 'tier2-start: %s\n' "$*" >&2
+    exit 1
+}
+
+# refuse <reason>: for a restore that did not finish. The reason, then every
+# volume of this project a restore made, so one pass names all of them.
+refuse() {
+    local v list=
+    printf 'tier2-start: %s\n' "$*" >&2
+    for v in $(docker volume ls -q --filter label=tier2.restore --filter "label=com.docker.compose.project=$project"); do
+        list+="  $v tier2.restore=$(docker volume inspect -f '{{index .Labels "tier2.restore"}}' "$v")"$'\n'
+    done
+    if [ -n "$list" ]; then
+        printf 'tier2-start: volumes a restore made (remove with docker volume rm, then restore again):\n%s' "$list" >&2
+    fi
+    # A restore cut off from the box leaves its holder containers too, and a
+    # volume a container references cannot be removed.
+    list=$(docker ps -aq --filter label=tier2.holder | tr '\n' ' ')
+    if [ -n "$list" ]; then
+        printf 'tier2-start: remove the holder containers a restore left first: docker rm -f %s\n' "$list" >&2
+    fi
+    # And those a killed tier2-start left, other than this run's own.
+    list=$(docker ps -a --filter label=tier2.startholder --format '{{.ID}} {{.Label "tier2.startholder"}}' |
+        awk -v h="${hold-}" '$2 != h { printf "%s ", $1 }')
+    if [ -n "$list" ]; then
+        printf 'tier2-start: and the holder containers an earlier tier2-start left: docker rm -f %s\n' "$list" >&2
+    fi
+    exit 1
+}
+
+# *--- Checks ---*
+
+cd -P -- "$(dirname -- "$0")/.." || die "cannot find the deploy dir"
+docker compose config -q || die "the compose file does not validate"
+project=$(docker compose config | awk 'NR == 1 && $1 == "name:" { print $2 }')
+[[ $project =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die "unexpected compose project name: $project"
+
+# The record is exactly "restored <stamp> <token>" and a newline.
+if ! [ -f "$RECORD" ] || [ -L "$RECORD" ]; then
+    refuse "no $RECORD: no restore finished here (runbook 09 section 4)"
+fi
+rec=$(<"$RECORD")
+[[ $rec =~ ^restored\ ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z)\ ([0-9a-f]{16})$ ]] || refuse "$RECORD is not one restored line"
+stamp=${BASH_REMATCH[1]}
+token=${BASH_REMATCH[2]}
+
+# SECURITY: each volume is pinned by a stopped holder container before its
+# label is read, and stays pinned until compose has created the stack's own
+# containers. Docker refuses to remove a volume any container references, so a
+# volume swapped in after the check can never be the one the stack starts on.
+img=$(docker compose config --images wazuh.manager) || die "cannot read the manager's configured image"
+[ -n "$img" ] && [ "$(wc -l <<<"$img")" -eq 1 ] || die "unexpected configured image: $img"
+hold=$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
+[[ $hold =~ ^[0-9a-f]{16}$ ]] || die "cannot make a holder token"
+unpin() {
+    # shellcheck disable=SC2016 # a command for the operator, printed as it is
+    docker ps -aq --filter "label=tier2.startholder=$hold" | xargs -r docker rm -f >/dev/null 2>&1 ||
+        printf 'tier2-start: WARN: remove the holder containers: docker rm -f $(docker ps -aq --filter label=tier2.startholder=%s)\n' "$hold" >&2
+}
+trap unpin EXIT
+
+for v in "${VOLUMES[@]}"; do
+    vol=${project}_$v
+    made=$(docker volume inspect -f '{{.CreatedAt}}' "$vol" 2>/dev/null) || refuse "volume $vol does not exist; the restore of $stamp did not finish here (runbook 09 section 4)"
+    # NOTE: a volume removed between that check and this create is made anew,
+    # empty and unlabelled, and refused below.
+    docker create --pull never --name "t2start-$hold-$vol" --label "tier2.startholder=$hold" --network none \
+        -v "$vol:/held" --entrypoint true "$img" >/dev/null || die "cannot pin $vol"
+    t=$(docker volume inspect -f '{{index .Labels "tier2.restore"}}' "$vol")
+    if [ -z "$t" ]; then
+        # NOTE: a volume the pin above made, because the one checked vanished,
+        # has a new creation time; plain compose would start on it empty. One
+        # removed and made again inside the same second keeps the time and
+        # gets the refusal below, which still starts nothing.
+        if [ "$(docker volume inspect -f '{{.CreatedAt}}' "$vol")" != "$made" ]; then
+            die "volume $vol was made during this check, not by compose or a restore; remove it (docker volume rm $vol, after this exits) and restore again"
+        fi
+        # NOTE: die, not refuse: this stack was not restored, so there is
+        # nothing to remove.
+        die "volume $vol was not made by a restore; start a stack that was not restored with docker compose"
+    elif [ "$t" != "$token" ]; then
+        refuse "volume $vol is from a restore that did not finish (tier2.restore=$t, the finished one is $token) (runbook 09 section 4)"
+    fi
+done
+
+# *--- Start ---*
+
+printf 'tier2-start: the four %s volumes are the finished restore of %s; starting\n' "$project" "$stamp" >&2
+docker compose up -d --force-recreate --pull never
+printf 'tier2-start: then want 0-wazuh-init: exited 0 in docker compose logs wazuh.manager\n' >&2

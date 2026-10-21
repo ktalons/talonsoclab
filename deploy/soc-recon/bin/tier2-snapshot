@@ -1,0 +1,682 @@
+#!/usr/bin/env bash
+# ******************************************************************************
+# *Title: tier2-snapshot*
+# *Author: Kyle Versluis*
+# *Description: Archives the stack's four state volumes, encrypted with age.*
+# ******************************************************************************
+# Run as talon on the box, normally by tools/tier2-backup.sh on the Mac
+# (runbook 09). It stops the stack for about 3 to 4 minutes, streams each volume
+# through tar and age into ~/tier2/<project>/<stamp>/, and brings the stack back
+# with the manager recreated. No plaintext archive is ever written: tar's output
+# goes straight into age. Progress goes to stderr; the last stdout line is
+#   snapshot <stamp> <dir>
+# and nothing else is printed to stdout. Before it stops anything it starts a
+# detached copy of itself (--watchdog) that restarts the stack if this run dies
+# in a way its own EXIT trap cannot catch: SIGKILL, or the OOM killer.
+
+# *--- Configuration ---*
+
+set -u -o pipefail
+PATH=/usr/local/bin:/usr/bin:/bin
+export PATH
+export LC_ALL=C
+# NOTE: an exported CDPATH makes cd print the directory.
+unset CDPATH
+umask 077
+
+# The four volumes that hold state. Everything else is image payload, in git,
+# generated, refetched, or already in the indexer (ISA S0.5).
+VOLUMES=(indexer_data wazuh_etc wazuh_queue wazuh_api_configuration)
+
+# The queue's CVE database and transient spools: 12 GB that rebuild themselves,
+# and a stale copy is worse than a refetch (PHOENIX, What NOT to snapshot).
+QUEUE_EXCLUDES=(--exclude=./vd --exclude=./vd_updater --exclude=./indexer --exclude=./harvester)
+
+# 2026-10-16: the four archives come to about 1.1 GB.
+MIN_FREE_KB=$((4 * 1024 * 1024))
+
+# Seconds to wait for the stack to come back.
+INIT_WAIT=240
+HEALTH_WAIT=300
+
+STAMP_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z$'
+# Bech32 data characters: lowercase, no 1, b, i or o.
+RECIPIENT_RE='^age1[02-9ac-hj-np-z]{58}$'
+
+say() {
+    printf '%s\n' "$*" >&2
+}
+
+die() {
+    say "tier2-snapshot: $*"
+    exit 1
+}
+
+# Runs one docker step up to three times. Its output goes to LOG, and fd 9 (the
+# run's lock) is closed for it, so a docker client the run leaves behind never
+# holds the lock the watchdog waits on.
+retry() {
+    local i
+    for i in 1 2 3; do
+        "$@" >>"$LOG" 2>&1 9>&- && return 0
+        say "WARN: try $i of 3 failed: $*"
+        [ "$i" -lt 3 ] && sleep 5
+    done
+    return 1
+}
+
+# Everything a recreate of the manager reads from the box: its compose
+# definition, the image its tag names, and every bind source's content. The
+# state/tier2 bind is data the probe reads, not something a recreate installs.
+# Every other service's single-file binds count too: a start re-reads each bind
+# source, so the plain start of the indexer or dashboard would put a changed one
+# live. Their dir binds (Suricata's logs) are data, not config.
+inputs() {
+    local id src dst s
+    docker compose config --hash wazuh.manager 9>&- || return 1
+    docker image inspect -f '{{.Id}}' "$(docker compose config --images wazuh.manager 9>&-)" 2>/dev/null 9>&- || return 1
+    # NOTE: sorted, so the hash never depends on compose's walk order.
+    for s in $(docker compose config --services 9>&- | sort); do
+        id=$(docker compose ps -a -q "$s" 9>&-) && [ -n "$id" ] || return 1
+        echo "service $s"
+        docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}|{{.Destination}}{{"\n"}}{{end}}{{end}}' "$id" 9>&- |
+            sort | while IFS='|' read -r src dst; do
+                [ -n "$src" ] && [ "$dst" != /srv/tier2 ] || continue
+                [ "$s" = wazuh.manager ] || [ -L "$src" ] || ! [ -d "$src" ] || continue
+                if [ -L "$src" ] || ! [ -e "$src" ]; then
+                    echo "odd $src"
+                elif [ -d "$src" ]; then
+                    # NOTE: dirs too, empty ones included: cp -r installs a new dir.
+                    # SECURITY: names are hashed as NUL-delimited streams, never one
+                    # per line: a name holding a newline could otherwise make a
+                    # rearranged tree list the same lines. sha256sum escapes such a
+                    # name in its own output, so the file lines stay one per file.
+                    (cd -- "$src" &&
+                        printf 'dirs ' && find . -type d -print0 | sort -z | sha256sum &&
+                        printf 'odd ' && find . ! -type d ! -type f -print0 | sort -z | sha256sum &&
+                        find . -type f -print0 | sort -z | xargs -0 -r sha256sum --) || exit 1
+                elif [ -f "$src" ]; then
+                    sha256sum <"$src" || exit 1
+                else
+                    # WARN: never read it: a FIFO with no writer blocks the open.
+                    # The guard below refuses it as neither file nor dir.
+                    echo "odd $src"
+                fi
+            done || return 1
+    done
+}
+
+# touched <epoch.ns>: every path inputs() reads, plus the compose file and .env,
+# whose inode changed after that moment. A change put back leaves the same bytes
+# and the same inode, which no hash or guard sees, but every write, rename, mode
+# change, and entry added to or removed from a dir moves the ctime.
+# NOTE: measured on the live box 2026-10-20: no service changes its own bind
+# sources at start, so a normal run lists nothing.
+touched() {
+    local t=$1 id src dst s svcs
+    # NOTE: a failed listing must fail the check, not leave it nothing to walk.
+    svcs=$(docker compose config --services 9>&-) && [ -n "$svcs" ] || return 1
+    for s in $(sort <<<"$svcs"); do
+        id=$(docker compose ps -a -q "$s" 9>&-) && [ -n "$id" ] || return 1
+        docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}|{{.Destination}}{{"\n"}}{{end}}{{end}}' "$id" 9>&- |
+            while IFS='|' read -r src dst; do
+                [ -n "$src" ] && [ "$dst" != /srv/tier2 ] || continue
+                [ "$s" = wazuh.manager ] || [ -L "$src" ] || ! [ -d "$src" ] || continue
+                find "$src" -newerct "@$t" -print || exit 1
+            done || return 1
+    done
+    for s in docker-compose.yml .env; do
+        [ -e "$s" ] || continue
+        find "$s" -maxdepth 0 -newerct "@$t" -print || return 1
+    done
+}
+
+# Brings the stack back: the indexer first so filebeat finds it, then a new
+# manager container (a plain start fails 0-wazuh-init, compose GOTCHA 2), then
+# everything else. PENDING goes only when every step worked, so a failed restart
+# leaves the watchdog something to retry. --pull never: the install guard
+# checked the image the recreate must use.
+# SECURITY: PENDING carries the inputs' hash from before the stop. If anything a
+# recreate would read changed since, a recreate would install it, so the old
+# manager container is started instead (its init then exits 1 and every daemon
+# runs the old config): bar 1 outranks a clean init.
+# WARN: "installs nothing" is measured on wazuh-manager 4.14.6, whose init exits
+# before its config copy on a second start. Re-prove it on any new image before
+# its first backup (runbook 02, section 5). It covers config-mount files only:
+# docker start re-reads every bind source, so a single-file bind changed during
+# the run (a cert, the cont-init script, an indexer or dashboard config) goes
+# live on the start (runbook 09, section 2).
+restart() {
+    local ok=1 s up svcs want now id
+    [ -e "$PENDING" ] || return 0
+    say "starting the stack"
+    read -r _ want <"$PENDING" || want=
+    now=$(inputs | sha256sum) || now=
+    if [ -n "$want" ] && [ "${now%% *}" = "$want" ]; then
+        retry docker compose start wazuh.indexer || ok=
+        retry docker compose up -d --no-deps --force-recreate --pull never wazuh.manager || ok=
+        retry docker compose start || ok=
+        # NOTE: compose start exits 0 for a service with no container (5.6.0,
+        # 2026-10-19), so success is every service running, not the exit codes.
+        # A list that cannot be read is a failed restart, not an empty check.
+        if ! svcs=$(docker compose config --services 2>>"$LOG" 9>&-) || [ -z "$svcs" ] ||
+            ! up=$(docker compose ps --status running --format '{{.Service}}' 2>>"$LOG" 9>&-); then
+            say "WARN: cannot list the services after the restart"
+            ok=
+            svcs=
+        fi
+        for s in $svcs; do
+            if ! grep -qx -- "$s" <<<"$up"; then
+                say "WARN: $s is not running after the restart"
+                ok=
+            fi
+        done
+    else
+        held=1
+        say "WARN: the checkout, the compose file or the image changed during the run, so the old manager is started, not recreated: no config-mount file was installed (a start re-reads every single-file bind, runbook 09)"
+        # NOTE: by the container IDs saved before the stop, not through compose:
+        # the compose file may be what changed, even into one that no longer parses.
+        if ! [ -s "$IDS" ]; then
+            say "WARN: no saved container IDs to start"
+            ok=
+        fi
+        while read -r s id; do
+            [ -n "$id" ] || continue
+            retry docker start "$id" || ok=
+            if [ "$(docker inspect -f '{{.State.Running}}' "$id" 2>>"$LOG" 9>&-)" != true ]; then
+                say "WARN: $s is not running after the restart"
+                ok=
+            fi
+        done <"$IDS"
+    fi
+    if [ -z "$ok" ]; then
+        say "WARN: the stack is not fully back (runbook 09, Recovery)"
+        return 1
+    fi
+    rm -f -- "$PENDING" "$IDS"
+}
+
+# *--- Watchdog ---*
+
+# tier2-snapshot --watchdog <project> <stamp>, started by a run with setsid, so
+# neither the ssh session's hangup nor a signal to the run's process group
+# reaches it. It blocks on the run's lock, which the kernel releases however the
+# run ends, then restarts the stack if the run left PENDING behind. A box reboot
+# mid-run kills it too: runbook 09, Recovery.
+if [ "${1-}" = --watchdog ]; then
+    project=${2-}
+    stamp=${3-}
+    if ! [[ $project =~ ^[a-z0-9][a-z0-9_-]*$ ]] || ! [[ $stamp =~ $STAMP_RE ]]; then
+        die "watchdog: bad arguments"
+    fi
+    cd -P -- "$(dirname -- "$0")/.." || die "watchdog: cannot find the deploy dir"
+    OUT=$HOME/tier2/$project
+    LOG=$OUT/last-run.log
+    PENDING=$OUT/.pending-restart
+    IDS=$OUT/.restart-ids
+    trap '' HUP INT TERM PIPE
+    say() {
+        printf '%s\n' "$*" >>"$LOG"
+    }
+    exec 9>"$OUT/.lock" || exit 1
+    # The run stops nothing until this file says the watchdog really runs.
+    : >"$OUT/.watchdog-$stamp" || exit 1
+    flock 9 || exit 1
+    rm -f -- "$OUT/.watchdog-$stamp"
+    if [ -e "$PENDING" ]; then
+        say "watchdog: run $stamp ended with the stack stopped; restarting it"
+        # An archive pipeline the run left running would hold its reader open.
+        for c in $(docker ps -q --filter "label=tier2.snapshot=$stamp" 2>>"$LOG"); do
+            docker rm -f "$c" >>"$LOG" 2>&1 || say "WARN: watchdog: cannot remove archive container $c"
+        done
+        restart && say "watchdog: the stack is back"
+    fi
+    p=$OUT/.$stamp.partial
+    if [ -d "$p" ] && ! [ -L "$p" ]; then
+        # A partial with its MANIFEST holds four complete archives: kept, as the
+        # run itself keeps them when its restart fails.
+        if [ -f "$p/MANIFEST" ] && ! [ -L "$p/MANIFEST" ]; then
+            if mv -T -- "$p" "$OUT/.$stamp.failed"; then
+                say "watchdog: complete archives kept in $OUT/.$stamp.failed"
+            else
+                say "WARN: watchdog: cannot keep .$stamp.partial"
+            fi
+        else
+            rm -rf -- "$p" || say "WARN: watchdog: cannot remove .$stamp.partial"
+        fi
+    fi
+    exit 0
+fi
+
+# *--- Preflight ---*
+
+# Nothing below changes anything until the stack is stopped, so every refusal
+# here leaves the stack exactly as it was.
+
+[ "$(id -u)" -ne 0 ] || die "run as talon, not root: the archives must stay talon's"
+cd -P -- "$(dirname -- "$0")/.." || die "cannot find the deploy dir"
+DEPLOY=$PWD
+# NOTE: $0 is relative when the Mac runs this, and the cd above broke it.
+SELF=$DEPLOY/bin/tier2-snapshot
+RECIPIENT=$DEPLOY/tier2.recipient
+
+for c in docker age sha256sum flock; do
+    command -v "$c" >/dev/null || die "$c is not installed"
+done
+
+# The recipient is a public key, but a wrong or doubled one would make archives
+# nobody can open, or that someone else can.
+if ! [ -f "$RECIPIENT" ] || [ -L "$RECIPIENT" ]; then
+    die "$RECIPIENT is missing (copy tier2.recipient.example)"
+fi
+keys=$(grep -v -e '^#' -e '^[[:space:]]*$' -- "$RECIPIENT") || die "$RECIPIENT has no key"
+[ "$(printf '%s\n' "$keys" | wc -l)" -eq 1 ] || die "$RECIPIENT must hold exactly one key"
+[[ $keys =~ $RECIPIENT_RE ]] || die "$RECIPIENT does not hold an age1 public key"
+# NOTE: the pattern cannot check the Bech32 checksum; age can, before anything stops.
+age -R "$RECIPIENT" </dev/null >/dev/null 2>&1 || die "$RECIPIENT holds no key age can encrypt to"
+
+docker compose config -q || die "the compose file does not validate"
+
+mgr=$(docker compose ps -q wazuh.manager) || die "cannot list the containers"
+[ -n "$mgr" ] || die "the manager is not running"
+project=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$mgr") ||
+    die "cannot read the manager's project"
+[[ $project =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die "unexpected project name"
+
+# Every service in the compose file must be running: the restart below brings
+# back what was running, and a backup must not hide a stack that was already down.
+services=$(docker compose config --services) || die "cannot list the services"
+running=$(docker compose ps --status running --format '{{.Service}}') || die "cannot list the containers"
+for s in $services; do
+    grep -qx -- "$s" <<<"$running" || die "service $s is not running"
+done
+
+for v in "${VOLUMES[@]}"; do
+    docker volume inspect "${project}_$v" >/dev/null 2>&1 || die "volume ${project}_$v does not exist"
+done
+
+# *--- Install guard ---*
+
+# What a restart would read, as one hash, taken BEFORE the guard: the restart
+# compares it again (restart(), above), so a change made after this line and
+# before that check is refused by the guard or held. One made after the check
+# goes live with the start; the hash taken once the stack is back (Health,
+# below) fails the run for it, so no marker is written.
+t0=$(date +%s.%N)
+[[ $t0 =~ ^[0-9]+\.[0-9]+$ ]] || die "cannot read the clock: $t0"
+fp=$(inputs | sha256sum) || fp=
+fp=${fp%% *}
+
+# The restart recreates the manager, and a recreate installs whatever the
+# checkout holds. A backup must never double as an install, so refuse unless the
+# running stack already matches the checkout.
+# guard: fills drift with every way the running stack differs from the
+# checkout. It runs before the stop, where a difference refuses the run, and
+# again once the restarted stack is healthy, where it fails the run: a change
+# loaded during the restart and reverted on the host shows there, because the
+# containers keep what they loaded.
+guard() {
+    # NOTE: configured and image stay global: the archive step and INFO use the
+    # values from the first call, which runs before them.
+    local gm want have want_id loop out svc cid who binds src dst kind seen k s h c copy started
+    drift=()
+    gm=$(docker compose ps -q wazuh.manager) && [ -n "$gm" ] || die "cannot find the manager container"
+
+    # The compose definition itself: mounts, environment, image.
+    want=$(docker compose config --hash wazuh.manager) || die "cannot hash the manager's compose config"
+    have=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$gm") ||
+        die "cannot read the manager's config hash"
+    [ "${want#wazuh.manager }" = "$have" ] || drift+=("the compose file changed wazuh.manager")
+
+    # The image by ID, not tag: a pulled or retagged tag would go live on the
+    # recreate under the same compose hash. The archives run the same ID.
+    configured=$(docker compose config --images wazuh.manager) || die "cannot read the manager's configured image"
+    if [ -z "$configured" ] || [ "$(wc -l <<<"$configured")" -ne 1 ]; then
+        die "unexpected configured image: $configured"
+    fi
+    image=$(docker inspect -f '{{.Image}}' "$gm") || die "cannot read the manager's image"
+    if ! want_id=$(docker image inspect -f '{{.Id}}' "$configured" 2>/dev/null); then
+        drift+=("the image $configured is not on the box")
+    elif [ "$want_id" != "$image" ]; then
+        drift+=("$configured is now image ${want_id#sha256:}, the manager runs ${image#sha256:}")
+    fi
+
+    # Config-mount directories are live views of the checkout: compare each file
+    # with the copy the manager's init made under /var/ossec. Runbook 06's loop.
+    # Anything neither a file nor a dir (a link above all) is drift too: the loop
+    # cannot compare it, and the init's cp -r would copy it as it is. The copies are
+    # typed before anything reads them: test -f and -d follow a link, and a FIFO
+    # would block the read. Names travel NUL-delimited: read with the default IFS
+    # drops a trailing space, so "foo " would be checked as "foo" and installed.
+    # shellcheck disable=SC2016 # expands inside the container
+    loop='cd /wazuh-config-mount && { find . ! -type d ! -type f -printf "odd  %p\n"; find . -mindepth 1 -type d -print0 | sort -z | while IFS= read -r -d "" d; do t=/var/ossec/${d#./}; if [ -L "$t" ]; then echo "diff $d/"; elif [ ! -e "$t" ]; then echo "new  $d/"; elif [ ! -d "$t" ]; then echo "diff $d/"; fi; done; find . -type f -print0 | sort -z | while IFS= read -r -d "" f; do t=/var/ossec/${f#./}; if [ -L "$t" ]; then echo "diff $f"; elif [ ! -e "$t" ]; then echo "new  $f"; elif [ ! -f "$t" ]; then echo "diff $f"; elif [ "$(sha256sum <"$f")" != "$(sha256sum <"$t")" ]; then echo "diff $f"; fi; done; }'
+    out=$(timeout 120 docker exec "$gm" bash -c "$loop") || die "cannot compare the config mount"
+    [ -z "$out" ] || drift+=("config mount: ${out//$'\n'/, }")
+
+    # A single-file bind keeps the inode it started with, and git replaces a file
+    # rather than rewriting it, so compare the host file with what the container
+    # sees, and with the init's copy for config-mount files. Every service counts:
+    # the restart starts each one, and a start re-reads every bind source, so an
+    # indexer or dashboard config pulled but never installed would go live. Every
+    # bind source must also exist, be no link, and be the same kind (file or dir)
+    # the container sees: a start cannot mount a dir onto a file, and the service
+    # would stay down.
+    # SECURITY: hashes stay in variables. authd.pass is one of these files.
+    for svc in $services; do
+        cid=$(docker compose ps -q "$svc") && [ -n "$cid" ] || die "cannot find the $svc container"
+        who=$svc
+        [ "$svc" = wazuh.manager ] && who='the manager'
+        binds=$(docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}|{{.Destination}}{{"\n"}}{{end}}{{end}}' "$cid") ||
+            die "cannot list the mounts of $svc"
+        started=$(docker inspect -f '{{.State.StartedAt}}' "$cid") && started=$(date -u -d "$started" +%s.%N) ||
+            die "cannot read when $svc started"
+        while IFS='|' read -r src dst; do
+            [ -n "$src" ] || continue
+            if [ -L "$src" ] || ! [ -e "$src" ]; then
+                drift+=("${src#"$DEPLOY"/} is missing or a link")
+                continue
+            fi
+            kind=other
+            [ -f "$src" ] && kind='file'
+            [ -d "$src" ] && kind='dir'
+            # shellcheck disable=SC2016 # expands inside the container
+            seen=$(timeout 60 docker exec "$cid" sh -c 'if [ -d "$1" ]; then echo dir; elif [ -f "$1" ]; then echo file; else echo other; fi' sh "$dst") ||
+                die "cannot read $dst in $svc"
+            if [ "$kind" != "$seen" ]; then
+                k="a $kind" s="a $seen"
+                [ "$kind" = other ] && k='neither file nor dir'
+                [ "$seen" = other ] && s='neither file nor dir'
+                drift+=("${src#"$DEPLOY"/} is $k, $who has $s at $dst")
+                continue
+            fi
+            [ "$kind" = file ] || continue
+            h=$(sha256sum <"$src") || die "cannot read ${src#"$DEPLOY"/}"
+            # NOTE: the redirect runs inside the container; on this side it would
+            # read the host path.
+            # shellcheck disable=SC2016 # expands inside the container
+            c=$(timeout 60 docker exec "$cid" sh -c 'sha256sum <"$1"' sh "$dst") || die "cannot read $dst in $svc"
+            [ "$h" = "$c" ] || drift+=("${src#"$DEPLOY"/} differs from what $who runs")
+            # An edit in place (cp onto it, an editor, >) keeps the inode, so the
+            # container sees the new bytes and the hashes above agree, but the
+            # service loaded the old ones and the restart would install them. Its
+            # ctime is newer than the service's start. A touch or chmod since the
+            # start is named too; starting it again clears it (the manager by recreate).
+            s=$(find "$src" -maxdepth 0 -newerct "@$started" -print) || die "cannot read the ctime of ${src#"$DEPLOY"/}"
+            [ -z "$s" ] || drift+=("${src#"$DEPLOY"/} changed since $svc started; the running service has not loaded it")
+            case $dst in
+                /wazuh-config-mount/*)
+                    copy=/var/ossec/${dst#/wazuh-config-mount/}
+                    # shellcheck disable=SC2016 # expands inside the container
+                    c=$(timeout 60 docker exec "$cid" sh -c '[ -f "$1" ] && ! [ -L "$1" ] || exit 3; sha256sum <"$1"' sh "$copy") ||
+                        c=
+                    [ "$h" = "$c" ] || drift+=("${src#"$DEPLOY"/} differs from the manager's $copy")
+                    ;;
+            esac
+        done <<<"$binds"
+    done
+}
+
+guard
+[ -n "$fp" ] || drift+=("cannot hash what a recreate would read")
+
+if [ "${#drift[@]}" -gt 0 ]; then
+    say "tier2-snapshot: the running stack does not match the checkout, so its restart would install:"
+    for d in "${drift[@]}"; do
+        say "  $d"
+    done
+    die "install first (the manager: runbook 06, section 3; another service: docker compose up -d --force-recreate <service>), or revert the file, then back up"
+fi
+
+
+# *--- Output dir ---*
+
+OUT=$HOME/tier2/$project
+for d in "$HOME/tier2" "$OUT"; do
+    [ -d "$d" ] || mkdir -m 700 -- "$d" || die "cannot create $d"
+    if ! [ -d "$d" ] || [ -L "$d" ]; then
+        die "$d is not a plain directory"
+    fi
+    # NOTE: after the link check, because chmod follows links. A dir made
+    # before this script ran keeps its own mode otherwise.
+    chmod 700 -- "$d" || die "cannot set $d to mode 700"
+done
+
+exec 9>"$OUT/.lock" || die "cannot open the lock"
+flock -n 9 || die "another tier2-snapshot is running"
+# An earlier run whose three restart rounds all failed left this, and the stack
+# was brought back by hand since. Its cleanup would act on the stale file.
+if [ -e "$OUT/.pending-restart" ]; then
+    die "an earlier run left $OUT/.pending-restart: check the stack (runbook 09, When a run dies), remove it, then back up"
+fi
+
+free=$(df -Pk -- "$OUT" | awk 'NR == 2 { print $4 }')
+[ "${free:-0}" -ge "$MIN_FREE_KB" ] || die "less than 4 GB free under $OUT"
+
+stamp=$(date -u +%Y-%m-%dT%H%M%SZ)
+[[ $stamp =~ $STAMP_RE ]] || die "cannot read the clock"
+part=$OUT/.$stamp.partial
+part_made=
+head=$(git -C "$DEPLOY" rev-parse HEAD 2>/dev/null) || head=unknown
+
+# WARN: from here the stack may be down, and it must come back even if the ssh
+# session that started this run is gone. Docker's CLI exits on a write to a
+# broken stderr whatever this shell ignores, so every docker, tar and age
+# message goes to LOG, never to the session. Bash ignores SIGPIPE, so say()
+# simply fails to write when nobody is listening.
+LOG=$OUT/last-run.log
+: >"$LOG" || die "cannot write $LOG"
+trap '' PIPE
+say() {
+    printf '%s\n' "$*" >>"$LOG"
+    printf '%s\n' "$*" >&2
+}
+
+# *--- Restart ---*
+
+PENDING=$OUT/.pending-restart
+IDS=$OUT/.restart-ids
+held=
+
+cleanup() {
+    local rc=$?
+    # A second signal would cut the restart short.
+    trap '' INT TERM HUP
+    restart
+    # The saved IDs matter only while PENDING stands.
+    [ -e "$PENDING" ] || rm -f -- "$IDS"
+    if [ -n "$part_made" ] && [ -d "$part" ]; then
+        # Complete archives (their MANIFEST is written) are kept, as the
+        # watchdog keeps them; anything less is removed.
+        if [ -f "$part/MANIFEST" ] && ! [ -L "$part/MANIFEST" ]; then
+            if mv -T -- "$part" "$OUT/.$stamp.failed"; then
+                say "complete archives kept in $OUT/.$stamp.failed"
+            else
+                say "WARN: cannot keep .$stamp.partial"
+            fi
+        else
+            rm -rf -- "$part"
+        fi
+    fi
+    exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
+
+# NOTE: made after the traps, so a run that dies here leaves no empty partial.
+mkdir -m 700 -- "$part" || die "cannot create $part"
+part_made=1
+
+# *--- Archive ---*
+
+# The watchdog first, then PENDING: a watchdog that will not start must not
+# leave PENDING for the cleanup to act on, when nothing has stopped yet.
+setsid -f "$SELF" --watchdog "$project" "$stamp" </dev/null >/dev/null 2>&1 9>&- ||
+    die "cannot start the watchdog"
+# NOTE: setsid -f returns once it has forked, before the exec; the watchdog
+# shows it runs by its ready file. Up to 10 s, then refuse with nothing stopped.
+for i in $(seq 1 100); do
+    [ -e "$OUT/.watchdog-$stamp" ] && break
+    sleep 0.1
+done
+[ -e "$OUT/.watchdog-$stamp" ] || die "the watchdog did not start"
+# The containers by ID, indexer first and manager second, for a held restart
+# that cannot trust the compose file. Written before PENDING, which needs it.
+{
+    for s in wazuh.indexer wazuh.manager; do
+        printf '%s %s\n' "$s" "$(docker compose ps -q "$s")"
+    done
+    docker compose ps --format '{{.Service}} {{.ID}}' | awk '$1 != "wazuh.indexer" && $1 != "wazuh.manager"'
+} >"$IDS" || die "cannot record the containers"
+[ "$(awk 'NF == 2' "$IDS" | wc -l)" -eq "$(wc -w <<<"$services")" ] || die "cannot record the containers"
+printf '%s %s\n' "$stamp" "$fp" >"$PENDING" || die "cannot write $PENDING"
+say "stopping the stack ($project) at $stamp; progress in $LOG"
+# NOTE: two minutes for the indexer to flush before SIGKILL, not compose's 10 s.
+# The lock stays open for it, so a watchdog never restarts during a stop.
+docker compose stop -t 120 >>"$LOG" 2>&1 || die "the stack did not stop"
+
+for v in "${VOLUMES[@]}"; do
+    ex=()
+    [ "$v" = wazuh_queue ] && ex=("${QUEUE_EXCLUDES[@]}")
+    f=$part/${project}_${v}_$stamp.tar.gz.age
+    say "archiving ${project}_$v"
+    # NOTE: the volume is mounted read-only, with no network, by the manager's own
+    # image, so nothing is pulled and nothing can change the data.
+    docker run --rm --network none --label "tier2.snapshot=$stamp" -v "${project}_$v":/from:ro \
+        --entrypoint tar "$image" czf - -C /from "${ex[@]}" . 2>>"$LOG" 9>&- |
+        age -R "$RECIPIENT" >"$f" 2>>"$LOG" 9>&-
+    rcs=("${PIPESTATUS[@]}")
+    [ "${rcs[0]}" -eq 0 ] || die "tar failed on ${project}_$v (exit ${rcs[0]})"
+    [ "${rcs[1]}" -eq 0 ] || die "age failed on ${project}_$v (exit ${rcs[1]})"
+    [ -s "$f" ] || die "the archive of ${project}_$v is empty"
+done
+
+# NOTE: before the restart, so archives that are complete carry their MANIFEST
+# whatever happens next, and the watchdog keeps them (a few seconds of downtime).
+# INFO goes first, so whatever holds a MANIFEST also holds its INFO.
+(
+    cd -- "$part" &&
+        printf 'stamp %s\nproject %s\ncommit %s\nimage %s\nvolumes %s\n' \
+            "$stamp" "$project" "$head" "$configured $image" "${VOLUMES[*]}" >INFO &&
+        sha256sum -- *.tar.gz.age >MANIFEST
+) || die "cannot write the manifest"
+
+restarted=1
+restart || restarted=
+
+# A stack that did not come back is the moment these archives matter most, so
+# they are kept as .<stamp>.failed: no prune, watchdog or Mac run touches that
+# name. Runbook 09, When a run dies, says what to do with it.
+if [ -z "$restarted" ]; then
+    if mv -T -- "$part" "$OUT/.$stamp.failed"; then
+        part_made=
+        die "the stack did not come back; the complete archives are kept in $OUT/.$stamp.failed"
+    fi
+    die "the stack did not come back, and the archives could not be kept"
+fi
+
+# NOTE: -T, so an existing target fails the rename instead of taking the
+# partial inside it.
+mv -T -- "$part" "$OUT/$stamp" || die "cannot promote $part"
+
+# *--- Health ---*
+
+# The archives are complete from here on. A stack that does not come back is
+# still a failed run, so the Mac writes no marker for it.
+if [ -n "$held" ]; then
+    die "snapshot $stamp is complete, but the checkout or image changed during the run: the old manager runs, its init exits 1; install or revert the change (runbook 09, section 2), then back up"
+fi
+mgr=$(docker compose ps -q wazuh.manager)
+waited=0
+# NOTE: the log is read whole, not piped into grep -q. Under pipefail, docker
+# killed by SIGPIPE after an early match would read as no match.
+while :; do
+    boot=$(docker logs "$mgr" 2>&1)
+    grep -q '0-wazuh-init: exited 0' <<<"$boot" && break
+    if grep -q '0-wazuh-init: exited [1-9]' <<<"$boot"; then
+        die "snapshot $stamp is complete, but the new manager's init failed (runbook 06, section 3)"
+    fi
+    [ "$waited" -lt "$INIT_WAIT" ] || die "snapshot $stamp is complete, but the manager's init did not finish"
+    sleep 5
+    waited=$((waited + 5))
+done
+
+waited=0
+while :; do
+    pending=
+    for s in $services; do
+        id=$(docker compose ps -q "$s")
+        st=$(docker inspect -f '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" 2>/dev/null)
+        case $st in
+            'running healthy' | 'running none') ;;
+            *) pending="$pending $s" ;;
+        esac
+    done
+    [ -n "$pending" ] || break
+    [ "$waited" -lt "$HEALTH_WAIT" ] || die "snapshot $stamp is complete, but these did not come back:$pending"
+    sleep 5
+    waited=$((waited + 5))
+done
+
+# The restart's check ran before compose started anything, and the dashboard
+# starts only once the indexer is healthy. A change since then may be live now
+# (if it landed before its service started): fail the run for it rather than
+# mark a backup of a stack the checkout may no longer match.
+now=$(inputs | sha256sum) || now=
+if [ -z "$fp" ] || [ "${now%% *}" != "$fp" ]; then
+    die "snapshot $stamp is complete, but something a start reads changed during the restart and may be live now; install or revert it (runbook 09, section 2), then back up"
+fi
+# The checkout alone misses a change loaded during the restart and reverted on
+# the host before that hash: the containers keep what they loaded. So the guard
+# runs again against the restarted stack.
+guard
+if [ "${#drift[@]}" -gt 0 ]; then
+    say "tier2-snapshot: after the restart, the running stack does not match the checkout:"
+    for d in "${drift[@]}"; do
+        say "  $d"
+    done
+    die "snapshot $stamp is complete, but something a start reads changed during the restart and is live now; install or revert it (runbook 09, section 2), then back up"
+fi
+# Neither sees a change put back in place: a bind edited and restored keeps its
+# inode, and a config-mount entry added and removed leaves no trace in the
+# checkout. Their ctimes moved, so any path a start reads that changed since the
+# run began fails it.
+late=$(touched "$t0") || die "snapshot $stamp is complete, but cannot check what changed during the run"
+if [ -n "$late" ]; then
+    say "tier2-snapshot: changed during the run, even if put back:"
+    while IFS= read -r d; do
+        say "  ${d#"$DEPLOY"/}"
+    done <<<"$late"
+    die "snapshot $stamp is complete, but something a start reads was changed during the run; check it, install or revert it (runbook 09, section 2), then back up"
+fi
+
+# *--- Prune ---*
+
+# The box keeps only this snapshot: its copies only matter until the Mac has
+# them, and the Mac keeps three. Only stamp-named dirs holding a MANIFEST are
+# touched; a run killed before its MANIFEST leaves its partial to the watchdog.
+for d in "$OUT"/* "$OUT"/.*.partial; do
+    if ! [ -d "$d" ] || [ -L "$d" ]; then
+        continue
+    fi
+    n=${d##*/}
+    n=${n#.}
+    n=${n%.partial}
+    [[ $n =~ $STAMP_RE ]] || continue
+    [ "$d" = "$OUT/$stamp" ] && continue
+    if ! [ -f "$d/MANIFEST" ] || [ -L "$d/MANIFEST" ]; then
+        say "kept ${d##*/}: no MANIFEST"
+        continue
+    fi
+    if rm -rf -- "$d"; then
+        say "pruned ${d##*/}"
+    else
+        say "WARN: cannot prune ${d##*/}"
+        kept=1
+    fi
+done
+
+say "snapshot $stamp: $(du -sh -- "$OUT/$stamp" | cut -f1) in $OUT/$stamp"
+printf 'snapshot %s %s\n' "$stamp" "$OUT/$stamp"
+# Exit 3: the snapshot is complete, retention failed. The Mac goes on, and
+# exits 3 itself at the end.
+[ -z "${kept-}" ] || exit 3

@@ -110,6 +110,22 @@ docker compose exec wazuh.manager filebeat test output
 curl -skI https://localhost:443 | head -1
 ```
 
+## 5. Before the first Tier 2 backup on a new manager image — [BOX]
+
+A Tier 2 backup (runbook 09) that sees the checkout or the image change during its run starts
+the old manager container instead of recreating it, so that no config-mount file is installed
+(single-file binds are re-read on any start; runbook 09, section 2). That holds
+only because `wazuh-manager:4.14.6`'s init exits before its config copy when a container is
+started a second time. It is a measured property of that image, not something the backup script
+can enforce, and a new image may behave differently.
+
+So after any manager image change, and before the first backup on it, prove it again on a scratch
+stack running the new image: start a backup, append a line to a rule file in the scratch checkout
+while it archives, and want all three of these: the run fails with `WARN: the checkout, the
+compose file or the image changed during the run`, the manager container is the same one as
+before, and the rule file inside it is unchanged. If any of them fails, do not back up on that
+image until the backup script is changed to match.
+
 ## Acceptance — Phase 0.5
 
 - [x] 3/3 containers up, indexer `(healthy)`, all images `:4.14.6`
@@ -120,5 +136,9 @@ curl -skI https://localhost:443 | head -1
 - [x] Dashboard 443 login OK; API card reads Online v4.14.6
 - [x] Indexer `:9200` still not host-published
 - [x] ISM retention policy re-applied and **version-controlled**
+
+On every later manager image change:
+
+- [ ] The held path proven on scratch with the new image, before the first Tier 2 backup (§ 5)
 
 Next: [`03-windows-ssh-access.md`](03-windows-ssh-access.md).
