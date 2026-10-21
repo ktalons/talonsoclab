@@ -35,3 +35,14 @@ digest/*-intake.json
 
 # macOS
 .DS_Store
+
+# Tier 2 backup marker, written by tools/tier2-backup.sh (runbook 09). The
+# directory is tracked so the manager's read-only bind always has a source.
+state/tier2/*
+!state/tier2/.gitkeep
+# Finished-restore record, written by tools/tier2-restore.sh and read by
+# bin/tier2-start (runbook 09). Outside the bind, so the manager never sees it.
+state/tier2-restored
+state/.tier2-restored.tmp
+# Tier 2 age recipient, a public key. Only the .example is tracked.
+tier2.recipient

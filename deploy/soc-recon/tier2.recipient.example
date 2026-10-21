@@ -1,0 +1,5 @@
+# The age public key Tier 2 archives are encrypted to (runbook 09).
+# Copy to tier2.recipient and replace the line below with the output of
+#   age-keygen -y ~/.config/talon/tier2-identity.txt
+# run on the Mac. Exactly one age1 line. The private key never comes here.
+age1<recipient>

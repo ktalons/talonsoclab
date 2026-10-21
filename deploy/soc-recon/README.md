@@ -20,11 +20,15 @@ generate-indexer-certs.yml  one-shot TLS cert generator, run once before the fir
 crontab.example          planned schedule for the recon run and the digest (not installed)
 recon_pipeline_architecture.png  diagram of the recon pipeline
 bin/idx                  indexer API helper: admin client certificate (--cacert/--cert/--key), never a password in argv
+bin/tier2-snapshot       stops the stack and archives its four state volumes through age (runbook 09; run by tools/tier2-backup.sh)
+bin/tier2-start          starts the stack after tools/tier2-restore.sh, only on a finished restore's volumes (runbook 09 section 4)
 config/                  indexer, dashboard and manager config; *.example templates for the two gitignored secret files
 systemd/                 host timers plus the scripts they run, installed root-owned: Suricata log rotation, daily ET Open
                          updates, manager log retention (runbook 08), and the OnFailure handler that makes a failed run alert
 recon/                   subfinder + httpx + nuclei + diff, one slim image (not deployed)
 scope/                   in-scope targets (domains.txt is gitignored)
+state/tier2/             the Tier 2 backup marker, read-only to the manager at /srv/tier2 (the marker itself is gitignored)
+tier2.recipient.example  the age public key Tier 2 archives are encrypted to (tier2.recipient is gitignored)
 triage/                  human-review queue (not deployed)
 digest/                  daily digest + CASA intake builder (not deployed)
 wazuh/SECURITY.md        credential rotation and keeping secrets out of argv
@@ -33,8 +37,8 @@ wazuh/audit/             auditd execve rules for phase-a-linux endpoints
 wazuh/cont-init/         filebeat init override that keeps the indexer password out of argv
 wazuh/ism/               retention policy (version-controlled on purpose)
 wazuh/shared/            per-group agent config pushed to endpoints
-wazuh/custom-rules/      local Suricata tuning and job age rules (live); Sigma-converted XML lands here in Phase B
-wazuh/probes/            the hourly job age probe the manager runs (runbook 06, section 6)
+wazuh/custom-rules/      local Suricata tuning, job age and Tier 2 age rules (live); Sigma-converted XML lands here in Phase B
+wazuh/probes/            the probes the manager runs: hourly job age (runbook 06, section 6), daily Tier 2 backup age (runbook 09)
 ```
 
 ## Resource budget
@@ -60,6 +64,7 @@ cp scope/domains.txt.example scope/domains.txt    # your own assets only
 cp config/wazuh_indexer/internal_users.yml.example config/wazuh_indexer/internal_users.yml
 cp config/wazuh_dashboard/wazuh.yml.example config/wazuh_dashboard/wazuh.yml
 cp wazuh/authd.pass.example wazuh/authd.pass
+cp tier2.recipient.example tier2.recipient      # a public key; runbook 09 section 1
 mkdir -p data && chown -R 10001 data
 
 # certs, once

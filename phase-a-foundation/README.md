@@ -19,6 +19,7 @@ Docker. **Stack:** [`deploy/soc-recon/`](../deploy/soc-recon/).
 | [06](runbooks/06-suricata-ids-dashboards.md) | Suricata IDS on the host NIC + SOC Overview dashboard | ✅ |
 | [07](runbooks/07-sca-ubuntu-26-04.md) | SCA coverage on Ubuntu 26.04 (adapted CIS policy) | ✅ |
 | [08](runbooks/08-wazuh-log-retention.md) | Wazuh manager log retention (14-day host timer) | ✅ |
+| [09](runbooks/09-tier2-backups.md) | Tier 2 backups: age-encrypted volume snapshots, verified and watched | 🚧 |
 
 ## Acceptance
 
