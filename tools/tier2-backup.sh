@@ -8,12 +8,16 @@
 # encrypted archives to MacbookXD, proves each one decrypts and lists, compares
 # the backed-up config with the live manager's, and only then writes the marker
 # the SIEM watches (rules 100320 and 100321). Plaintext exists only in pipes.
+# Before it promotes a copy, it signs what it verified (the seal), which
+# tools/tier2-restore.sh requires.
 # The overrides below are for the scratch suite; a real run needs none.
 
 # *--- Configuration ---*
 
 set -u -o pipefail
 export LC_ALL=C
+# NOTE: an exported CDPATH makes cd print the directory inside $(...).
+unset CDPATH
 umask 077
 
 BOX=${TIER2_BOX:-talonsoc}
@@ -22,6 +26,11 @@ REMOTE=${TIER2_REMOTE:-talonsoclab/deploy/soc-recon}
 VOLUME=${TIER2_VOLUME:-/Volumes/MacbookXD}
 DEST=$VOLUME/talonsoclab/tier2
 IDENTITY=${TIER2_IDENTITY:-$HOME/.config/talon/tier2-identity.txt}
+SIGNKEY=${TIER2_SIGNKEY:-$HOME/.config/talon/tier2-sign}
+SIGNERS=${TIER2_SIGNERS:-$HOME/.config/talon/tier2-allowed-signers}
+# Every sealed and marked stamp, kept off the drive and off the box, so a restore
+# after losing either can tell the newest genuine snapshot (runbook 09 section 4).
+SEALLOG=${TIER2_SEALLOG:-$HOME/.config/talon/tier2-sealed.log}
 LOCK=$HOME/.config/talon/tier2-backup.lock
 
 # MacbookXD keeps the newest three verified snapshots (PHOENIX, Tier 2).
@@ -39,6 +48,19 @@ say() {
 die() {
     say "tier2-backup: $*"
     exit 1
+}
+
+# sign <statement>: prints its signature by SIGNKEY in the tier2 namespace. The
+# statement goes in on stdin, never through a file on the drive, so the bytes
+# signed are the bytes this run built.
+sign() {
+    printf '%s\n' "$1" | ssh-keygen -Y sign -q -n tier2 -f "$SIGNKEY" 2>/dev/null
+}
+
+# sealed <statement> <signature>: the signature is the tier2 signer's, in
+# SIGNERS, over exactly this statement.
+sealed() {
+    printf '%s\n' "$1" | ssh-keygen -Y verify -q -f "$SIGNERS" -I tier2 -n tier2 -s <(printf '%s\n' "$2") >/dev/null 2>&1
 }
 
 # SECURITY: an unmounted drive must not turn into a folder on the boot disk, and
@@ -65,7 +87,7 @@ on_drive() {
 # Nothing below touches the box until the snapshot, so a refusal here costs no
 # downtime.
 
-for c in age age-keygen rsync ssh shasum tar stat df; do
+for c in age age-keygen rsync ssh ssh-keygen shasum tar stat df; do
     command -v "$c" >/dev/null || die "$c is not installed"
 done
 
@@ -75,6 +97,28 @@ fi
 [ "$(stat -f %Lp "$IDENTITY")" = 600 ] || die "$IDENTITY must be mode 600"
 [ "$(stat -f %u "$IDENTITY")" = "$(id -u)" ] || die "$IDENTITY must be yours"
 pub=$(age-keygen -y "$IDENTITY" 2>/dev/null) || die "$IDENTITY is not an age identity"
+
+# SECURITY: age proves nothing about who wrote an archive: the recipient is
+# public, so anyone who can write the drive can encrypt to it. The seal is a
+# signature over what this run verified, by a key only this Mac holds, and the
+# restore reads nothing that does not carry it. A key the restore would refuse
+# is caught here, before the box stops anything.
+if ! [ -f "$SIGNKEY" ] || [ -L "$SIGNKEY" ]; then
+    die "no signing key at $SIGNKEY (runbook 09, Setup)"
+fi
+[ "$(stat -f %Lp "$SIGNKEY")" = 600 ] || die "$SIGNKEY must be mode 600"
+[ "$(stat -f %u "$SIGNKEY")" = "$(id -u)" ] || die "$SIGNKEY must be yours"
+# NOTE: with a terminal, ssh-keygen would ask for a passphrase, after the stack
+# had already been stopped once; with -P '' it refuses at once instead.
+ssh-keygen -y -P '' -f "$SIGNKEY" >/dev/null 2>&1 || die "$SIGNKEY has a passphrase or is not a key (runbook 09, Setup)"
+if ! [ -f "$SIGNERS" ] || [ -L "$SIGNERS" ]; then
+    die "no allowed-signers file at $SIGNERS (runbook 09, Setup)"
+fi
+[ "$(stat -f %u "$SIGNERS")" = "$(id -u)" ] || die "$SIGNERS must be yours"
+# The signers file is what the restore trusts, so no one else may write it.
+[ $((8#$(stat -f %Lp "$SIGNERS") & 8#022)) -eq 0 ] || die "$SIGNERS must not be writable by group or others"
+sig=$(sign 'tier2 preflight') && sealed 'tier2 preflight' "$sig" ||
+    die "$SIGNKEY does not sign as the tier2 signer in $SIGNERS (runbook 09, Setup)"
 
 # An archive this identity cannot open is not a backup, so check before the
 # box stops anything.
@@ -177,6 +221,13 @@ done
 want=$(for v in "${VOLUMES[@]}"; do printf '%s\n' "${project}_${v}_$stamp.tar.gz.age"; done | sort)
 have=$(awk '{ print $2 }' "$part/MANIFEST" | sort)
 [ "$want" = "$have" ] || die "MANIFEST does not name exactly the four archives"
+# SECURITY: the drive is not this run's alone (it mounted with noowners until
+# 2026-10-21, and root can always write it). The box's own hashes of MANIFEST and INFO
+# are the pin: the copy must match them now, and again when it is sealed, so
+# the seal can only ever name what the box wrote.
+# shellcheck disable=SC2016 # expands on the box
+pin=$(ssh -o BatchMode=yes "$BOX" bash -s -- "$dir" <<<'cd -- "$1" && sha256sum MANIFEST INFO') || die "cannot read the box's hashes of MANIFEST and INFO"
+[ "$(cd -- "$part" && shasum -a 256 MANIFEST INFO)" = "$pin" ] || die "the copy of MANIFEST or INFO is not the box's"
 
 # *--- Verify ---*
 
@@ -236,6 +287,39 @@ if [ "$backed" != "$live" ]; then
 fi
 say "restore test: $(wc -l <<<"$backed" | tr -d ' ') config files match the live manager"
 
+# *--- Seal ---*
+
+# Only now, after the copy, the decrypt-and-list and the restore test passed.
+# The copy check above refused any file the box sent besides MANIFEST, INFO
+# and the archives, so the box cannot supply a seal of its own. The copy is
+# checked against MANIFEST and the pin once more, since the drive can change
+# during the run; what is signed is built here from the pin, never read back.
+on_drive "${dirs[@]}" "$part"
+(cd -- "$part" && shasum -a 256 -c --quiet MANIFEST) || die "the copy changed during the run: it no longer matches MANIFEST"
+[ "$(cd -- "$part" && shasum -a 256 MANIFEST INFO)" = "$pin" ] || die "the copy changed during the run: MANIFEST or INFO is not the box's"
+stmt=$(printf 'tier2 seal v1\nproject %s\nstamp %s\n%s' "$project" "$stamp" "$pin")
+sig=$(sign "$stmt") && sealed "$stmt" "$sig" || die "cannot sign the seal"
+# SECURITY: nothing may already sit under either name, and the writes use
+# noclobber, so a file or a link planted there is refused, not written through.
+for f in VERIFIED VERIFIED.sig; do
+    if [ -e "$part/$f" ] || [ -L "$part/$f" ]; then
+        die "cannot write the seal: VERIFIED or VERIFIED.sig is already in $part"
+    fi
+done
+if ! (set -C && printf '%s\n' "$stmt" >"$part/VERIFIED" && printf '%s\n' "$sig" >"$part/VERIFIED.sig"); then
+    die "cannot write the seal: VERIFIED or VERIFIED.sig is already in $part"
+fi
+# NOTE: noclobber still opens an existing FIFO or device, or a link to one, so
+# the seal must now be two plain files holding exactly what was built.
+for f in VERIFIED VERIFIED.sig; do
+    if ! [ -f "$part/$f" ] || [ -L "$part/$f" ]; then
+        die "cannot write the seal: $part/$f is not a plain file"
+    fi
+done
+[ "$(<"$part/VERIFIED")" = "$stmt" ] && [ "$(<"$part/VERIFIED.sig")" = "$sig" ] ||
+    die "cannot write the seal: what $part holds is not what was signed"
+say "sealed $stamp"
+
 # *--- Mark ---*
 
 on_drive "${dirs[@]}" "$part" "$final"
@@ -258,6 +342,10 @@ m="verified $(date +%s)"
 printf "%s\n" "$m" >"$d/.verified.tmp" && mv -f -- "$d/.verified.tmp" "$d/verified" && cat -- "$d/verified"') ||
     die "the backup verified, but the marker was not written"
 [[ $marker =~ ^verified\ [0-9]{10}$ ]] || die "the marker reads back wrong"
+# The off-box record: the stamp, the seal's hash, and the box's marker time.
+if ! printf '%s %s %s %s\n' "$stamp" "$project" "$(printf '%s\n' "$stmt" | shasum -a 256 | cut -c1-64)" "${marker#verified }" >>"$SEALLOG"; then
+    say "tier2-backup: WARN: the backup verified, but $SEALLOG was not written"
+fi
 
 # *--- Prune ---*
 
