@@ -47,6 +47,38 @@ age-keygen -y ~/.config/talon/tier2-identity.txt        # the public key, age1..
 Put a copy of the identity file in the password manager (Tier 3 in PHOENIX). Losing it means
 every archive is unreadable, which is the point of the encryption and the risk of it.
 
+Then the seal key, also Mac only. `age` keeps the archives secret but cannot say who wrote one:
+the recipient is public, so anyone who can write the drive could encrypt a snapshot of their
+own. The backup signs what it verified with this key, and the restore reads nothing without
+that signature:
+
+```bash
+ssh-keygen -t ed25519 -N '' -C tier2 -f ~/.config/talon/tier2-sign
+printf 'tier2 namespaces="tier2" %s\n' "$(cat ~/.config/talon/tier2-sign.pub)" >~/.config/talon/tier2-allowed-signers
+```
+
+Put the `tier2-allowed-signers` line in the password manager next to the identity. A restore on
+a new Mac needs it; the private seal key does not have to survive, because a new one can seal
+new backups. The key has no passphrase, like the identity beside it: both rest on the Mac
+login. The backup refuses a key with a passphrase, and both tools refuse a signers file that is
+not yours or that group or others can write.
+
+**Re-keying the seal.** Make the new key as above, then do one of two things with the old line:
+
+- **A key retired or lost, never read by anyone else:** **append** the new line with `>>`, keep
+  the old one until every snapshot it sealed is pruned (three backups), then remove it.
+- **A key that may have been read** (malware, a stolen or shared Mac): remove the old line at
+  once. A signature carries no trusted time, so the old line would accept the thief's seals
+  forever. Every snapshot it sealed is then refused; take a new backup straight away.
+
+Either way, replace the password-manager copy with the whole file the same day. Replacing the
+file outright, or a stale copy there, leaves the snapshots it no longer names unrestorable.
+
+Each backup also appends `<stamp> <project> <seal hash> <marker time>` to
+`~/.config/talon/tier2-sealed.log`, which neither the drive nor the box holds. The restore
+reads it to say whether a snapshot is the newest one sealed. Copy it to the password manager
+now and then; it is lost with the Mac.
+
 On the box, install `age` (one sudo line) and give the deploy dir the public key:
 
 ```bash
@@ -85,7 +117,8 @@ tools/tier2-backup.sh
 It runs in this order, and stops at the first failure:
 
 1. **Before the box is touched:** the identity is yours, mode 600, and opens what the box
-   encrypts to; the drive is a mounted volume, not a folder on the boot disk, and no directory
+   encrypts to; the seal key is yours, mode 600, and signs as the signer the restore
+   accepts; the drive is a mounted volume, not a folder on the boot disk, and no directory
    on the way to the destination is a link; 4 GB are free. The drive check runs again before
    each write, because the drive can go away during the 3 to 4 minutes.
 2. **On the box** (`deploy/soc-recon/bin/tier2-snapshot`): refuses unless every service is
@@ -101,6 +134,15 @@ It runs in this order, and stops at the first failure:
    and pass `age -d | tar -tzf -`.
 4. **Restore test:** the `wazuh_etc` archive's `ossec.conf`, every file under `rules/custom/` at
    any depth and each `shared/*/agent.conf` must hash the same as the live manager's copies.
+   Then the copy is sealed: `VERIFIED` (project, stamp, and the hashes of `MANIFEST` and `INFO`
+   as the box itself reported them right after the copy) and `VERIFIED.sig`, signed by
+   `~/.config/talon/tier2-sign`. Just before, the copy is checked against `MANIFEST` and those
+   hashes again. That is a time of check: a change on the drive after it, or one made and put
+   back before it, does not fail the run, but the seal still names only the box's bytes, so such
+   a snapshot is refused at restore, never accepted. The statement is built and signed in
+   memory, never read back from the drive, and both seal files must end up plain files holding
+   exactly what was signed. The copy check refuses any file the box
+   sends besides `MANIFEST`, `INFO` and the archives, so the box cannot supply a seal.
 5. **Mark and prune:** only now does the box get its marker. The drive keeps the newest three
    snapshots and the box keeps the newest one. Only stamp-named directories holding the box's
    `MANIFEST` are pruned; anything else is left alone. A delete that fails, on the drive or on
@@ -276,10 +318,16 @@ tools/tier2-restore.sh <drive>/talonsoclab/tier2/soc-recon/<stamp>
 
 It stops at the first failure, and checks before it writes anything:
 
-1. **The snapshot:** `MANIFEST` matches, exactly the four archives, each decrypts and lists.
-2. **The box:** its compose project is the snapshot's, the stack has no containers, none of
+1. **The seal:** the snapshot is copied into a private dir on the Mac (`$TMPDIR`, ciphertext
+   only, about the snapshot's size free plus 512 MB), the seal files first and the archives only
+   once the seal verifies, and everything below reads that copy.
+   `VERIFIED.sig` must verify against `~/.config/talon/tier2-allowed-signers`, and `VERIFIED`
+   must name this project, this stamp and the hashes of this `MANIFEST` and `INFO`. A snapshot
+   the backup did not verify and sign is refused before any archive is read.
+2. **The snapshot:** `MANIFEST` matches, exactly the four archives, each decrypts and lists.
+3. **The box:** its compose project is the snapshot's, the stack has no containers, none of
    the four volumes exists, and the manager image is already there. Nothing is pulled.
-3. **The restore:** each volume is created with compose's project and volume labels, so
+4. **The restore:** each volume is created with compose's project and volume labels, so
    compose adopts it, plus a `tier2.restore` label with this run's token, pinned by a stopped
    holder container (`tier2.holder=<token>`) before its label is read back, and filled by the
    manager image's `tar`. Docker refuses to remove a volume a container references, so no other
@@ -287,7 +335,7 @@ It stops at the first failure, and checks before it writes anything:
    interrupted run that can still reach the box removes its holders and the volumes it
    created, so the next try starts clean. It warns when the snapshot's `INFO` names
    another image than the box's.
-4. **The record:** once all four are filled, it writes `state/tier2-restored` on the box,
+5. **The record:** once all four are filled, it writes `state/tier2-restored` on the box,
    `restored <stamp> <token>`. A failed write fails the run and removes the volumes.
 
 It refuses a volume that already exists rather than writing into it. Removing a volume is the
@@ -345,6 +393,31 @@ minutes while `vd` refetches.
   or second guard, or the ctime check),
   the box keeps the snapshot and skips its prune, but the Mac writes no marker. Both fail toward
   STALE.
+- **The drive is not the only guard.** MacbookXD mounted with `noowners` until 2026-10-21, when
+  `sudo diskutil enableOwnership /Volumes/MacbookXD` made the modes the tools set (700, 600)
+  count. The tools do not rely on them anyway: the backup seals only the box's own hashes and
+  signs a statement it builds in memory, and the restore copies the snapshot into a private dir
+  on the Mac before it checks or streams anything. Check `mount` shows no `noowners` after the
+  drive is reformatted or moved to another Mac.
+- **The seal does not stand against root on this Mac.** The seal key and the age identity are
+  unencrypted files in `~/.config/talon`; mode 600 stops other accounts, not root, and any admin
+  account can become root. Root can delete or roll back snapshots, read the key and seal a
+  forgery, and decrypt every archive. The seal guards against tampering with the drive away
+  from this Mac, other non-admin accounts, and the box. A second admin account the principal
+  owns is trusted, not an adversary; if it were compromised, a hardware-backed seal key would
+  not help, since root can rewrite the allowed-signers file or the tools themselves. Guard it
+  as an account: a strong password, and Remote Login and Screen Sharing off unless used.
+- **The restore's checks come before its reads of the private copy.** Once staged, the drive
+  cannot reach the stream; the checks still run before each archive is read again from the copy
+  in `$TMPDIR`, which only this account and root can write.
+- **The seal proves where a snapshot came from, not that it is the newest.** An older genuine
+  snapshot restores an older state, agent keys revoked since included. The restore warns when
+  `tier2-sealed.log` has no record of the seal or names a newer stamp. Without the log (a lost
+  Mac), use its password-manager copy; the marker and the 100320 history live on the box, so
+  they help only while it survives.
+- **A SIGKILLed restore leaves its private copy** (ciphertext only) in `$TMPDIR`
+  (`tier2-restore.*`). Any other exit removes it. A snapshot made before the seal existed (none
+  on a live drive) is refused, not read.
 - **A touch or chmod on a single-file bind refuses every backup until its service starts
   again.** The ctime check cannot tell a mode change or a rewrite with the same bytes from an
   edit, so it names the file as not loaded. Install it as in section 2, then back up.
