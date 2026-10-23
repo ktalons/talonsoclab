@@ -69,7 +69,9 @@ the new image ships. Found 2026-10-03.
 
 The manager runs this script as root inside the container on every start, so anyone who can
 edit the host copy gets root in the manager on the next start. Keep the file and its directory
-owned by root and not writable by group or others. On the box both are `root:root 755`.
+owned by root and not writable by group or others. On the box both are `root:root 755`. That
+also means a `git pull` that changes the script fails as talon; the hand-over and take-back steps
+are in runbook 10 § 3.
 
 ## Procedure
 

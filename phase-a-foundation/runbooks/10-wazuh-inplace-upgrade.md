@@ -12,7 +12,8 @@
 > 4.x patch bump.
 >
 > Steps are tagged **[MAC]** (the workstation with the backup drive) and **[BOX]** (SOC host).
-> Written 2026-10-22 for 4.14.6 to 4.14.9; § 1 proven on scratch the same day.
+> Written 2026-10-22 for 4.14.6 to 4.14.9; § 1 proven on scratch the same day, the live run
+> 2026-10-23 (Acceptance below).
 
 ---
 
@@ -97,6 +98,29 @@ only way back (§ 0).
 
 ## 3. Upgrade the stack — [BOX]
 
+`wazuh/cont-init/` and its script are `root:root 755` on purpose (the manager runs the script as
+root, [SECURITY.md](../../deploy/soc-recon/wazuh/SECURITY.md)), so a pull that changes the script
+fails as talon with `unable to unlink ... Permission denied` and leaves the tree half-updated.
+Check first:
+
+```bash
+cd ~/talonsoclab && git fetch -q && git diff --name-only HEAD origin/main -- deploy/soc-recon/wazuh/cont-init
+```
+
+If that prints the script, hand the directory over for the pull, then take it back before
+anything starts the manager:
+
+```bash
+sudo chown talon:talon /home/talon/talonsoclab/deploy/soc-recon/wazuh/cont-init
+git -C ~/talonsoclab pull --ff-only
+sudo chown -R root:root /home/talon/talonsoclab/deploy/soc-recon/wazuh/cont-init
+sudo chmod 755 /home/talon/talonsoclab/deploy/soc-recon/wazuh/cont-init /home/talon/talonsoclab/deploy/soc-recon/wazuh/cont-init/1-config-filebeat
+stat -c '%U:%G %a %n' ~/talonsoclab/deploy/soc-recon/wazuh/cont-init ~/talonsoclab/deploy/soc-recon/wazuh/cont-init/1-config-filebeat
+```
+
+Want `root:root 755` on both. If a pull already failed partway, the box tree was clean before it,
+so `git reset --hard origin/main` (with the directory handed over) finishes it. Otherwise:
+
 ```bash
 cd ~/talonsoclab/deploy/soc-recon && git pull --ff-only
 docker compose config -q
@@ -162,12 +186,22 @@ this, the manager's own record, is the place to read it.
 
 No `-F`. Without it the manager refuses a target that is not newer than the agent, which is the
 check you want. Each agent downloads its signed WPK from `packages.wazuh.com`, so the endpoint
-needs outbound HTTPS. Before 001, check the Dell has no pending reboot: 4.14.9 fixed an MSI
-upgrade that left the agent broken after the next reboot when a restart was pending, but the
-fix ships in the new installer and the Dell's state is what decides it.
+needs outbound HTTPS. Before 001, check the Dell for a pending reboot: 4.14.9 fixed an MSI
+upgrade that left the agent broken after the next reboot when a restart was pending, and the
+fix ships in the 4.14.9 installer the WPK runs. On 2026-10-23 `PendingFileRenameOperations` held
+48 print-spooler driver entries and none for Wazuh, the case the fix narrows to the agent's own
+files; the upgrade went ahead. Confirm 001 is still Active after the Dell's next reboot.
 
-On the Ubuntu host, `apt-mark showhold` keeps listing `wazuh-agent`. The WPK path does not go
-through apt, so the hold stays and keeps `apt upgrade` from moving the agent past the manager.
+On the Ubuntu host, **the WPK upgrade drops the apt hold** on `wazuh-agent` (measured
+2026-10-23: `apt-mark showhold` empty right after 002 went to 4.14.9). Without it, a manual
+`apt upgrade` can move the agent past the manager. Put it back and check:
+
+```bash
+sudo apt-mark hold wazuh-agent
+apt-mark showhold
+```
+
+Want `wazuh-agent`.
 
 ## 6. Prove it from the data — [BOX] then a browser
 
@@ -215,17 +249,24 @@ manager forward.
 
 ## Acceptance
 
-- [ ] Upstream `single-node/` diffed between the two tags; our config needs no merge
-- [ ] Image-dependent files re-checked: filebeat override hash, held path on scratch (runbook
+Run 2026-10-23, 4.14.6 to 4.14.9, commit `5774dc4`:
+
+- [x] Upstream `single-node/` diffed between the two tags; our config needs no merge
+- [x] Image-dependent files re-checked: filebeat override hash, held path on scratch (runbook
       02 § 5), the derived CIS policy re-derived
-- [ ] Tier 2 backup on the old version sealed, stamp recorded, before the pull
-- [ ] All three services report 4.14.9; init `exited 0`; ten daemons; health yellow
-- [ ] The two-day-old index has the same doc count before and after
-- [ ] Logtest: the real Ethertype line still hits 100200 at level 0
-- [ ] Agents 001 to 003 on 4.14.9, Active, with documents in the last hour
-- [ ] The Dell's 24 h Sysmon event ID histogram includes IDs outside {1, 2, 5, 6}
-- [ ] Dashboard API card reads Online v4.14.9; SOC Overview renders
-- [ ] Tier 2 backup on the new version sealed
-- [ ] No `down -v` was run
+- [x] Tier 2 backup on the old version sealed, stamp recorded, before the pull
+      (`2026-10-23T184047Z`)
+- [x] All three services report 4.14.9; init `exited 0`; ten daemons; health yellow (stack up
+      18:55:38Z, no container restarts)
+- [x] The two-day-old index has the same doc count before and after (`2026.10.21`: 240,366)
+- [x] Logtest: the real Ethertype line still hits 100200 at level 0
+- [x] Agents 001 to 003 on 4.14.9, Active, with documents after the upgrade
+- [x] The Dell's 24 h Sysmon event ID histogram includes IDs outside {1, 2, 5, 6} (7, 11, 1)
+- [x] `wazuh-agent` held again on the Ubuntu host (§ 5): `apt-mark showhold` lists it
+- [x] The dashboard loads in a browser after login (Kyle, 12:37 MST); the API answers
+      `api_version 4.14.9` to `wazuh-wui`, the user the API card reads with
+- [x] The API card itself read in the browser as Online v4.14.9 (Kyle, 12:39 MST)
+- [x] Tier 2 backup on the new version sealed (`2026-10-23T190251Z`)
+- [x] No `down -v` was run
 
 Next: Phase B.
