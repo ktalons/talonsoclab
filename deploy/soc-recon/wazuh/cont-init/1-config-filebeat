@@ -10,6 +10,7 @@
 # sha256 86616ca762209db38aac8c64eb47263709b1ef3f4c5574c2136628e9bddf2793. One
 # executable line differs, the second password sed; this header and the comments are
 # new. Re-diff against the stock file on every image upgrade, because this copy shadows it.
+# Re-diffed 2026-10-22: the 4.14.9 stock file has the same sha256.
 #
 # SECURITY: the stock line ran sed with the password in its argv. Host auditd records
 # every execve argv and Wazuh indexes it. This copy writes the literal reference

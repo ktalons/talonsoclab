@@ -98,6 +98,6 @@ past the manager, and it hits real friction along the way.
 Raising the *manager's* version first is the only legitimate way to let the agent go higher
 than today's ceiling, but **don't reach for runbook 02 to do it.** That runbook's
 `docker compose down -v` clean-rebuild was only safe because no agent had enrolled yet;
-repeating it now would destroy live auditd/Sysmon/FIM data from all three enrolled agents. A
-volume-preserving manager upgrade procedure doesn't exist in this repo yet. See
-`ISA.md` ISC-25.2.
+repeating it now would destroy live auditd/Sysmon/FIM data from all three enrolled agents. Use
+[runbook 10](10-wazuh-inplace-upgrade.md) instead: it upgrades the manager with every volume
+kept, then the agents with this tool.

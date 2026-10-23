@@ -24,7 +24,7 @@ name: soc-recon
 services:
   # ─────────────────────── Wazuh SOC stack (always-on) ───────────────────────
   wazuh.indexer:
-    image: wazuh/wazuh-indexer:${WAZUH_VERSION:-4.14.6}
+    image: wazuh/wazuh-indexer:${WAZUH_VERSION:-4.14.9}
     hostname: wazuh.indexer
     restart: unless-stopped
     environment:
@@ -74,7 +74,7 @@ services:
     networks: [soc]
 
   wazuh.manager:
-    image: wazuh/wazuh-manager:${WAZUH_VERSION:-4.14.6}
+    image: wazuh/wazuh-manager:${WAZUH_VERSION:-4.14.9}
     hostname: wazuh.manager
     restart: unless-stopped
     ulimits:
@@ -180,7 +180,7 @@ services:
     networks: [soc]
 
   wazuh.dashboard:
-    image: wazuh/wazuh-dashboard:${WAZUH_VERSION:-4.14.6}
+    image: wazuh/wazuh-dashboard:${WAZUH_VERSION:-4.14.9}
     hostname: wazuh.dashboard
     restart: unless-stopped
     mem_reservation: 512m

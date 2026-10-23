@@ -272,7 +272,7 @@ rotates from `.env` alone, despite the RBAC database persisting in the
 Server-side `200`/`401` results say nothing about whether clients were updated. Finish by
 confirming the dashboard itself:
 
-- Log into the dashboard and check the **API card on the overview page reads `Online v4.14.6`**.
+- Log into the dashboard and check the **API card on the overview page reads `Online v<WAZUH_VERSION>`** (the `.env` value).
   "No API available to connect" means `wazuh.yml` still holds the old password.
 - `filebeat test output` passes. The indexer's own `(healthy)` status is not evidence here: its
   healthcheck uses the admin certificate, so it never presents the `.env` password at all.
@@ -350,7 +350,7 @@ Event ID 1, so a `WAZUH_REGISTRATION_PASSWORD` on the msiexec line lands in the 
 the same way the indexer healthcheck did on Linux.
 
 ```powershell
-Start-Process msiexec.exe -Wait -ArgumentList '/i', 'wazuh-agent-4.14.6-1.msi', '/qn', '/norestart', `
+Start-Process msiexec.exe -Wait -ArgumentList '/i', 'wazuh-agent-4.14.9-1.msi', '/qn', '/norestart', `
   'WAZUH_MANAGER=<manager-ip>', 'WAZUH_AGENT_NAME=<hostname>', `
   'WAZUH_AGENT_GROUP=phase-a-windows', 'WAZUH_PROTOCOL=tcp'
 ```
