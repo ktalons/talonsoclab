@@ -140,5 +140,7 @@ image until the backup script is changed to match.
 On every later manager image change:
 
 - [ ] The held path proven on scratch with the new image, before the first Tier 2 backup (§ 5)
+- [x] 4.14.9, 2026-10-22: `HELD=file`, `dir` and `compose` 9/9 each on scratch; the image's
+      three cont-init scripts are byte-identical to 4.14.6's ([runbook 10](10-wazuh-inplace-upgrade.md) § 1)
 
 Next: [`03-windows-ssh-access.md`](03-windows-ssh-access.md).

@@ -140,9 +140,9 @@ touched() {
 # recreate would read changed since, a recreate would install it, so the old
 # manager container is started instead (its init then exits 1 and every daemon
 # runs the old config): bar 1 outranks a clean init.
-# WARN: "installs nothing" is measured on wazuh-manager 4.14.6, whose init exits
-# before its config copy on a second start. Re-prove it on any new image before
-# its first backup (runbook 02, section 5). It covers config-mount files only:
+# WARN: "installs nothing" is measured on wazuh-manager 4.14.6 and re-proven on
+# 4.14.9 (same init scripts), whose init exits before its config copy on a second
+# start. Re-prove it on any new image before its first backup (runbook 02, section 5). It covers config-mount files only:
 # docker start re-reads every bind source, so a single-file bind changed during
 # the run (a cert, the cont-init script, an indexer or dashboard config) goes
 # live on the start (runbook 09, section 2).

@@ -1,22 +1,30 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # DERIVED FILE — do not hand-edit. Regenerate with the documented transform.
 #
-# Source:  /var/ossec/ruleset/sca/cis_ubuntu24-04.yml  (Wazuh 4.14.6, GPLv2,
+# Source:  /var/ossec/ruleset/sca/cis_ubuntu24-04.yml  (Wazuh 4.14.9, GPLv2,
 #          Copyright (C) 2024 Wazuh Inc. — original header retained below)
-# Derived: 2026-08-09 for TalonSocLab, ISC-25.1
+# Derived: 2026-08-09 for TalonSocLab, ISC-25.1, from 4.14.6
+# Re-derived: 2026-10-22 from 4.14.9 (S0.6). Upstream's only change: five c:
+#          checks (pwquality.conf.d, journal-upload.conf.d) now run under
+#          sh -c, so their *.conf globs expand. Re-derive on every image upgrade.
 #
-# WHY: Wazuh 4.14.6 ships CIS SCA policies for Ubuntu 14.04 through 24.04. Each
+# WHY: Wazuh 4.14.6 to 4.14.9 ship CIS SCA policies for Ubuntu 14.04 through 24.04. Each
 # is gated by a `requirements` block that greps /etc/os-release for its own
 # release string, so on Ubuntu 26.04 EVERY policy is skipped and the host gets
 # ZERO configuration assessment — confirmed from the manager before this file
 # existed: GET /sca/002 returned "No SCA information was returned". Upstream is
 # tracking 26.04 support in wazuh/wazuh#35336 with no SCA plan settled yet.
 #
-# TRANSFORM (exactly four substitutions, each asserted present before and after):
+# TRANSFORM (exactly five whole-line substitutions, each asserted to match once
+# before and once after):
 #   policy.id    cis_ubuntu24-04      -> cis_ubuntu26-04
 #   policy.file  cis_ubuntu24-04.yml  -> cis_ubuntu26-04.yml
 #   policy.name  + "(adapted to Ubuntu 26.04)"
+#   requirements.title  "Check Ubuntu version." -> "Check Ubuntu version (26.04,
+#                adapted from the 24.04 policy)."
 #   requirements rule  r:Ubuntu 24.04 -> r:Ubuntu 26.04   (1 occurrence only)
+# (Until 2026-10-22 this list said four and left out the title line, which the
+# 2026-08-09 file already carried.)
 # All 279 checks and their upstream IDs (35500+) are preserved byte-for-byte so
 # findings stay traceable to the CIS 24.04 benchmark.
 #
@@ -43,7 +51,8 @@
 # and no 4.x backport is in flight. It is also written to the 5.x SCA schema —
 # it uses `name:` for the per-check label (1028 occurrences) and `title:` ZERO
 # times, where a 4.x agent expects `title:`. Dropping it into this 4.14.6 agent
-# is therefore not a safe substitution.
+# is therefore not a safe substitution. Still absent on 2026-10-22: the 4.14.9
+# manager image and the wazuh-agent 4.14.9-1 deb both stop at cis_ubuntu24-04.
 #
 # SWAP TRIGGER: when this lab runs a Wazuh release that ships
 # ruleset/sca/ubuntu/cis_ubuntu26-04.yml, delete this file AND the <sca>
@@ -4481,7 +4490,7 @@ checks:
       - soc_2: ["CC6.1"]
     condition: all
     rules:
-      - 'not c:cat /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf -> r:^enforcing\s*\t*=\s*\t*0'
+      - 'not c:sh -c "cat /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf" -> r:^enforcing\s*\t*=\s*\t*0'
 
   # 5.3.3.2.8 Ensure password quality is enforced for the root user. (Automated)
   - id: 35686
@@ -5064,10 +5073,10 @@ checks:
       - pci_dss_v4.0: ["10.2.1", "10.2.1.1", "10.2.1.2", "10.2.1.3", "10.2.1.4", "10.2.1.5", "10.2.1.6", "10.2.1.7", "10.2.2", "5.3.4", "6.4.1", "6.4.2"]
     condition: all
     rules:
-      - 'c:cat /etc/systemd/journal-upload.conf /etc/systemd/journal-upload.conf.d/*.conf -> r:^URL\s*\t*=\s*\t*\w+'
-      - 'c:cat /etc/systemd/journal-upload.conf /etc/systemd/journal-upload.conf.d/*.conf -> r:^ServerKeyFile\s*\t*=\s*\t*/\w+'
-      - 'c:cat /etc/systemd/journal-upload.conf /etc/systemd/journal-upload.conf.d/*.conf -> r:^ServerCertificateFile\s*\t*=\s*\t*/\w+'
-      - 'c:cat /etc/systemd/journal-upload.conf /etc/systemd/journal-upload.conf.d/*.conf -> r:^TrustedCertificateFile\s*\t*=\s*\t*/\w+'
+      - 'c:sh -c "cat /etc/systemd/journal-upload.conf /etc/systemd/journal-upload.conf.d/*.conf" -> r:^URL\s*\t*=\s*\t*\w+'
+      - 'c:sh -c "cat /etc/systemd/journal-upload.conf /etc/systemd/journal-upload.conf.d/*.conf" -> r:^ServerKeyFile\s*\t*=\s*\t*/\w+'
+      - 'c:sh -c "cat /etc/systemd/journal-upload.conf /etc/systemd/journal-upload.conf.d/*.conf" -> r:^ServerCertificateFile\s*\t*=\s*\t*/\w+'
+      - 'c:sh -c "cat /etc/systemd/journal-upload.conf /etc/systemd/journal-upload.conf.d/*.conf" -> r:^TrustedCertificateFile\s*\t*=\s*\t*/\w+'
       - 'not c:systemctl show rsyslog.service -> r:^LoadState=loaded|^ActiveState=active'
 
   # 6.1.2.1.3 Ensure systemd-journal-upload is enabled and active. (Automated)
