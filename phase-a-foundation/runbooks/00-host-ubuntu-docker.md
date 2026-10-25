@@ -116,6 +116,11 @@ systemctl list-timers 'soc-recon-*'      # four timers, each with a NEXT time
 
 `soc-recon-unit-failed@.service` is already installed (runbook 08, section 1).
 
+A manual `apt upgrade` that takes `docker-ce` or `containerd.io` restarts the Docker daemon, and
+every container comes back by a plain start, the same as after a reboot. Treat it like one: no
+Tier 2 run going, then the init check below. Both come from Docker's own repo, which
+unattended-upgrades does not track by default, so only a manual upgrade does this.
+
 ### A controlled reboot
 
 When 100331 fires, reboot when no Tier 2 run is going and you can watch it come back:
