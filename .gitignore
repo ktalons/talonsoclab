@@ -32,6 +32,8 @@ credentials/
 docs/superpowers/
 docs/internal/
 /ISA.md
+# LifeOS renders an HTML mirror of the ISA beside it
+/ISA.html
 # hardware inventory + spend + rack topology — internal
 /lab-hardware-update.md
 # Detailed personal-record versions of the public runbooks. The public tree carries
