@@ -1,0 +1,21 @@
+# ******************************************************************************
+# *Title: soc-recon Reboot Check Timer*
+# *Author: Kyle Versluis*
+# *Description: Runs the SOC box reboot check daily at 08:00 UTC.*
+# ******************************************************************************
+
+[Unit]
+Description=Daily check for a pending SOC box reboot
+
+[Timer]
+# After apt-daily-upgrade.timer (06:00 UTC plus up to 60 min of random delay),
+# so a kernel unattended-upgrades installed that morning alerts the same day.
+# Clear of the soc-recon jobs at 04:00, 04:30 and 05:00.
+OnCalendar=*-*-* 08:00:00 UTC
+# A run at boot as well: a box that came back on the newest kernel clears the
+# alert without waiting a day, and one that did not says so at once. The check
+# needs no container, so it is safe this early.
+OnBootSec=5min
+
+[Install]
+WantedBy=timers.target

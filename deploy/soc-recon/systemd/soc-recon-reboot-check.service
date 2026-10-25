@@ -1,0 +1,34 @@
+# ******************************************************************************
+# *Title: soc-recon Reboot Check*
+# *Author: Kyle Versluis*
+# *Description: Runs the SOC box reboot check once.*
+# ******************************************************************************
+# The checks live in soc-recon-reboot-check.sh, installed root-owned to
+# /usr/local/sbin (runbook 00, section 5). It reads /run and /boot only, so the
+# unit locks down everything else.
+
+[Unit]
+Description=Report whether the SOC box is waiting on a reboot
+Documentation=https://github.com/ktalons/talonsoclab/blob/main/phase-a-foundation/runbooks/00-host-ubuntu-docker.md
+# A kill at the stop timeout (9/KILL), an exec error (203/EXEC) or any other
+# failure the script never sees logs no status=1/FAILURE line of its own. The
+# handler logs one for it.
+OnFailure=soc-recon-unit-failed@%n.service
+
+[Service]
+Type=oneshot
+# The script reads two directories and a file; anything slower is a hung disk.
+TimeoutStartSec=1min
+TimeoutStopSec=30s
+# Pinned, though it is the default. With SIGPIPE ignored, a write to a closed
+# journal stream fails and the exit trap still exits 1.
+IgnoreSIGPIPE=yes
+# The overrides exist for the tests. Unset here, so `systemctl set-environment`
+# cannot set them for the timer.
+UnsetEnvironment=REBOOT_CHECK_RUN REBOOT_CHECK_BOOT REBOOT_CHECK_RUNNING
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ExecStart=/usr/local/sbin/soc-recon-reboot-check.sh

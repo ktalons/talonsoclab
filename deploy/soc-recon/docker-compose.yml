@@ -149,6 +149,10 @@ services:
       # config silently stale. Acceptance is the boot log showing
       # `Identified Wazuh configuration files to mount...` + `exited 0`, then
       # merged.mg md5 == the agent-reported Shared file hash. See runbook 06 § 3.
+      # Kept on purpose for Phase A (S0.7, 2026-10-23): bin/tier2-snapshot's
+      # held path relies on this stop to install nothing. A fix (a cont-init
+      # hook that fills var/multigroups) needs an explicit backup hold first,
+      # so both move to Phase B. Unchanged in 4.14.9.
       - ./wazuh/custom-rules:/wazuh-config-mount/etc/rules/custom:ro
       # The hourly job age probe (ISC-48, runbook 06 section 6), run as root by the
       # manager's logcollector. Copied, not run in place: the copy is root-owned,

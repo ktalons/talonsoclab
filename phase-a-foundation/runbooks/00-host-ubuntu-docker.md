@@ -69,6 +69,69 @@ Port roles: `443` dashboard, `1514` agent data, `1515` agent enrollment, `55000`
 DHCP reservation on the router against the interface MAC. Everything downstream references
 this address, so a moving IP means stale `known_hosts` entries and re-touching every doc.
 
+## 5. Updates and reboots — [SSH]
+
+*Added 2026-10-23 (S0.7).* Ubuntu's `unattended-upgrades` runs daily from
+`apt-daily-upgrade.timer` (06:00 UTC plus up to an hour of random delay). It installs security
+updates, kernels included, and **never reboots the box**: `Unattended-Upgrade::Automatic-Reboot`
+stays at its default of off. `wazuh-agent` is on its `Package-Blacklist` and held with
+`apt-mark hold` (runbook 05).
+
+Reboots stay manual on purpose. Every reboot brings the manager back by a plain start, whose
+init stops before its config copy (the multigroups trap, `docker-compose.yml` GOTCHA 2). S0.5's
+backup relies on that stop, so the trap stays in Phase A and its fix moves to Phase B together
+with an explicit hold for the backup. An automatic reboot could also land in the middle of a
+Tier 2 run (runbook 09).
+
+A manual policy goes stale without telling you. In September unattended-upgrades moved the
+kernel from -27 to -34, and only a project review noticed. So a daily check turns a pending
+reboot into an alert:
+
+| Piece | What it does |
+|---|---|
+| `systemd/soc-recon-reboot-check.sh` | Reads `/run/reboot-required` (written by `update-notifier-common`) and compares the running kernel with the newest `/boot/vmlinuz-*`. Prints one line, writes nothing. |
+| `systemd/soc-recon-reboot-check.timer` | 08:00 UTC, after unattended-upgrades, and 5 min after every boot. |
+| Rule 100330, level 3 | `no reboot required: running=<release>`, the daily all-clear. |
+| Rule 100331, level 7 | `reboot required: running=... newest=... flag=... pkgs=...` |
+| Rule 40704 | The unit failed. `OnFailure=` covers a kill or an exec error. |
+
+The line reaches the manager through agent 002's journald localfile, the same path as the job
+age rules (runbook 06, section 6).
+
+### Install
+
+Pull first, then install the new rule file on the manager the way every config change goes in
+(runbook 06, section 3, a force-recreate, never a plain restart). Then, from `deploy/soc-recon`:
+
+```bash
+sudo install -o root -g root -m 0755 systemd/soc-recon-reboot-check.sh /usr/local/sbin/
+sudo install -o root -g root -m 0644 systemd/soc-recon-reboot-check.service \
+  systemd/soc-recon-reboot-check.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start soc-recon-reboot-check.service
+journalctl -u soc-recon-reboot-check.service -n 3 --no-pager   # the one line
+sudo systemctl enable --now soc-recon-reboot-check.timer
+systemctl list-timers 'soc-recon-*'      # four timers, each with a NEXT time
+```
+
+`soc-recon-unit-failed@.service` is already installed (runbook 08, section 1).
+
+### A controlled reboot
+
+When 100331 fires, reboot when no Tier 2 run is going and you can watch it come back:
+
+```bash
+sudo reboot
+# then, about 10 min later:
+uname -r                                  # the newest kernel
+docker compose ps                         # four containers, healthy
+docker compose logs wazuh.manager | grep -E '0-wazuh-init|cannot stat'
+```
+
+The manager's init says `exited 1`, and the only error before it is the multigroups copy from
+`data_tmp`. That is the accepted trap. Any other error is a real failure. Check that all three
+agents are Active in the dashboard, and that 100330 fires about 5 min after boot.
+
 ## Acceptance — Phase 0.1
 
 - [x] Ubuntu Server 26.04 LTS booting, Windows gone
