@@ -125,11 +125,12 @@ sudo reboot
 # then, about 10 min later:
 uname -r                                  # the newest kernel
 docker compose ps                         # four containers, healthy
-docker compose logs wazuh.manager | grep -E '0-wazuh-init|cannot stat'
+docker compose logs -t --since 15m wazuh.manager | sed -n '/0-wazuh-init: executing/,/0-wazuh-init: exited/p'
 ```
 
 The manager's init says `exited 1`, and the only error before it is the multigroups copy from
-`data_tmp`. That is the accepted trap. Any other error is a real failure. Check that all three
+`data_tmp`: `Error executing command: 'cp -ar /var/ossec/data_tmp/permanent/var/ossec/var/multigroups/. /var/ossec/var/multigroups'`,
+with every other permanent path reported as already mounted. That is the accepted trap. Any other error is a real failure. Check that all three
 agents are Active in the dashboard, and that 100330 fires about 5 min after boot.
 
 ## Acceptance — Phase 0.1
