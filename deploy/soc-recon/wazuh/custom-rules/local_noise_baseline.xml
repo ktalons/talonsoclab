@@ -1,0 +1,482 @@
+<!--
+  B.0 noise baseline: level-0 children of stock rule 80792 ("Audit: Command"),
+  the host auditd execve alert. Phase B ISA F1; table in
+  phase-b-detection/NOISE-BASELINE.md. IDs 100100-100199.
+
+  Why these exist: the SOC box audits every execve on the host kernel, and the
+  containers run on that kernel, so the stack alerts on its own healthchecks
+  and on the manager's own monitors. Measured 2026-10-24 (a quiet day): 19,973
+  of 20,708 alerts were 80792, and these shapes were about 18,400 of them.
+
+  How each rule is keyed (ISA constraints):
+    - at the Wazuh rule layer, never in auditd (c1e715c)
+    - no login session (auid unset) and no tty, so anything a person runs,
+      on the host or through `docker exec -it`, still alerts
+    - the full exe path and the cwd
+    - the uid, euid and gid the shape really runs as (gid 999 is the
+      manager's wazuh group, 108 the host's)
+    - the AppArmor label in the SYSCALL record: docker-default for a
+      container, runc for runc, unconfined for the host. cwd /var/ossec is
+      both the manager container and the host's own agent 002, and the label
+      is what tells them apart, so tier 2 has one rule per origin
+    - the exact argv, as a pcre2 match on the EXECVE record in full_log. The
+      auditd decoder stops at a7 and leaves hex-encoded args undecoded, so the
+      argv is only complete in full_log. argc pins the count, and the trailing
+      " type=" pins the last argument's end.
+
+  Hex: auditd writes an argument as hex when it holds a space, quote or
+  control byte, so shell command strings appear hex-encoded. Each one below
+  carries its plain text in the comment above it.
+
+  WARN: what these rules cannot see (Forge audit, 2026-10-25):
+    - the parent. A process that repeats a shape exactly is suppressed.
+    - the environment. EXECVE carries no envp, so an exact argv can still run
+      other code: LD_PRELOAD, a planted config file (.curlrc, rpm macros), a
+      sourced file. "Exact argv" is not "exact behavior".
+    - the binary. exe and cwd are paths inside the process's own mount
+      namespace, and docker-default is shared by every container. Root in
+      any container that can write /usr/bin can swap in its own binary
+      and run it under a suppressed shape. Per-service AppArmor labels and
+      read-only root filesystems would close this; neither exists yet.
+    - the event afterwards. logall is off, so a suppressed exec is not
+      archived at the manager. The only copy is the SOC box's own
+      /var/log/audit/audit.log.
+  Each of these needs code execution on the box or in a container first.
+  They are accepted residual risk, recorded in NOISE-BASELINE.md.
+
+  Lint: bun tools/noise-lint.ts (ISA ISC-112).
+-->
+<group name="audit,local,noise_baseline,">
+
+  <!-- Tier 1: container healthchecks -->
+
+  <!--
+    `runc init`, the first exec inside a container for every healthcheck run
+    and every `docker exec`, about 4,300 a day. The overlay cwd changes on
+    recreate, so it is pinned to its shape.
+    Blind to: runc init itself. The exec'd child still alerts on its own
+    unless another rule here names it.
+  -->
+  <rule id="100100" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/runc$</field>
+    <field name="audit.cwd" type="pcre2">^/var/lib/docker/rootfs/overlayfs/[0-9a-f]{64}$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^0$</field>
+    <regex type="pcre2">subj=runc key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=2 a0="runc" a1="init" type=</regex>
+    <description>Noise baseline: runc init for a container exec.</description>
+  </rule>
+
+  <!--
+    The indexer healthcheck (docker-compose.yml, every 30s), about 2,900 a day.
+    The & in the URL is written \x26: the Wazuh XML parser does not decode
+    entities, so &amp; would reach PCRE2 as five literal characters.
+    All 15 arguments are pinned, so bin/idx (-sS -g) and any other curl to
+    _cluster/health still alert (ISA ISC-113).
+    Blind to: this exact curl, cert paths and URL included.
+  -->
+  <rule id="100101" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/curl$</field>
+    <field name="audit.cwd" type="pcre2">^/usr/share/wazuh-indexer$</field>
+    <field name="audit.uid" type="pcre2">^1000$</field>
+    <field name="audit.euid" type="pcre2">^1000$</field>
+    <field name="audit.gid" type="pcre2">^1000$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=15 a0="curl" a1="-sf" a2="-o" a3="/dev/null" a4="-m" a5="8" a6="--cacert" a7="/usr/share/wazuh-indexer/config/certs/root-ca\.pem" a8="--cert" a9="/usr/share/wazuh-indexer/config/certs/admin\.pem" a10="--key" a11="/usr/share/wazuh-indexer/config/certs/admin-key\.pem" a12="--resolve" a13="wazuh\.indexer:9200:127\.0\.0\.1" a14="https://wazuh\.indexer:9200/_cluster/health\?wait_for_status=yellow\x26timeout=5s" type=</regex>
+    <description>Noise baseline: indexer healthcheck curl.</description>
+  </rule>
+
+  <!--
+    The Suricata healthcheck shell (CMD-SHELL, every 60s), about 1,450 a day.
+    a2 is: suricatasc -c uptime >/dev/null 2>&1 || exit 1
+    Blind to: this exact shell line.
+  -->
+  <rule id="100102" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/bash$</field>
+    <field name="audit.cwd" type="pcre2">^/$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^0$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="/bin/sh" a1="-c" a2=73757269636174617363202D6320757074696D65203E2F6465762F6E756C6C20323E2631207C7C20657869742031 type=</regex>
+    <description>Noise baseline: Suricata healthcheck shell.</description>
+  </rule>
+
+  <!--
+    The Suricata healthcheck itself, about 1,450 a day.
+    Blind to: the `suricatasc -c uptime` argv.
+  -->
+  <rule id="100103" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/suricatasc$</field>
+    <field name="audit.cwd" type="pcre2">^/$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^0$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="suricatasc" a1="-c" a2="uptime" type=</regex>
+    <description>Noise baseline: Suricata healthcheck suricatasc.</description>
+  </rule>
+
+  <!-- Tier 2a: the manager container's own monitors (cwd /var/ossec, AppArmor docker-default) -->
+
+  <!--
+    Daemon liveness checks, `/bin/ps -p <pid>`. Steady through the day and
+    bursting on every manager start and stop.
+    Blind to: that ps argv with any pid.
+  -->
+  <rule id="100110" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/ps$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^999$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="/bin/ps" a1="-p" a2="\d+" type=</regex>
+    <description>Noise baseline: manager liveness check ps.</description>
+  </rule>
+
+  <!--
+    The shell around each liveness check (`sh -c`, Amazon Linux bash).
+    a2 is: /bin/ps -p <pid> > /dev/null 2>&1   (pid digits are hex 3[0-9])
+    Blind to: that shell line with any pid.
+  -->
+  <rule id="100111" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/bash$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^999$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="sh" a1="-c" a2=2F62696E2F7073202D7020(3[0-9])+203E202F6465762F6E756C6C20323E2631 type=</regex>
+    <description>Noise baseline: manager liveness check shell.</description>
+  </rule>
+
+  <!--
+    The shells for the three stock command monitors in wazuh_manager.conf,
+    each every 360s from logcollector:
+      6466202D50            df -P
+      6C617374202D6E203230  last -n 20
+      6E65...3264           the netstat listening-ports pipeline, verbatim
+    Blind to: those three exact command lines.
+  -->
+  <rule id="100112" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/bash$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^999$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="sh" a1="-c" a2=(6466202D50|6C617374202D6E203230|6E657473746174202D74756C706E207C207365642027732F5C285B5B3A616C6E756D3A5D5D5C2B5C295C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5C282E2A5C293A5C285B5B3A64696769743A5D5D2A5C295C205C2B5C285B302D395C2E5C3A5C2A5D5C2B5C292E5C2B5C205C285B5B3A64696769743A5D5D2A5C2F5B5B3A616C6E756D3A5D5C2D5D2A5C292E2A2F5C31205C32203D3D205C33203D3D205C34205C352F27207C20736F7274202D6B2034202D67207C207365642027732F203D3D205C282E2A5C29203D3D2F3A5C312F27207C2073656420312C3264) type=</regex>
+    <description>Noise baseline: manager command monitor shell.</description>
+  </rule>
+
+  <!--
+    The three sed stages of the netstat pipeline: the long column rewrite,
+    `s/ == \(.*\) ==/:\1/`, and `1,2d`.
+    Blind to: those three sed scripts.
+  -->
+  <rule id="100113" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/sed$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^999$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=2 a0="sed" a1=(732F5C285B5B3A616C6E756D3A5D5D5C2B5C295C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5C282E2A5C293A5C285B5B3A64696769743A5D5D2A5C295C205C2B5C285B302D395C2E5C3A5C2A5D5C2B5C292E5C2B5C205C285B5B3A64696769743A5D5D2A5C2F5B5B3A616C6E756D3A5D5C2D5D2A5C292E2A2F5C31205C32203D3D205C33203D3D205C34205C352F|732F203D3D205C282E2A5C29203D3D2F3A5C312F|"1,2d") type=</regex>
+    <description>Noise baseline: manager command monitor sed.</description>
+  </rule>
+
+  <!--
+    The netstat pipeline's `sort -k 4 -g` through the coreutils multicall.
+    Blind to: that exact sort.
+  -->
+  <rule id="100114" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/coreutils$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^999$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=6 a0="/usr/bin/coreutils" a1="--coreutils-prog-shebang=sort" a2="/usr/bin/sort" a3="-k" a4="4" a5="-g" type=</regex>
+    <description>Noise baseline: manager command monitor sort.</description>
+  </rule>
+
+  <!--
+    The `df -P` monitor through the coreutils multicall.
+    Blind to: the `df -P` argv.
+  -->
+  <rule id="100115" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/coreutils$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^999$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=4 a0="/usr/bin/coreutils" a1="--coreutils-prog-shebang=df" a2="/usr/bin/df" a3="-P" type=</regex>
+    <description>Noise baseline: manager command monitor df.</description>
+  </rule>
+
+  <!--
+    Read-only rpm queries: the SCA scan's `rpm -q <package>` (is it
+    installed) and syscollector's `rpm -qa`, `rpm -qa` with a query format and
+    `rpm -ql python3-<package>`. Package names use a strict charset.
+    Blind to: those query argvs. The argv installs and erases nothing; what
+    the binary and its macro files do is outside what auditd records.
+  -->
+  <rule id="100116" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/rpm$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^0$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): (argc=2 a0="rpm" a1="-qa"|argc=3 a0="rpm" a1="-q" a2="[A-Za-z0-9][A-Za-z0-9._+-]*"|argc=3 a0="rpm" a1="-ql" a2="python3-[A-Za-z0-9._+-]+"|argc=4 a0="rpm" a1="-qa" a2="--qf" a3=[0-9A-F]+) type=</regex>
+    <description>Noise baseline: manager SCA and syscollector rpm query.</description>
+  </rule>
+
+  <!--
+    Syscollector's python package walk, `xargs -I {} rpm -ql {}`.
+    Blind to: that exact xargs line. The rpm it starts alerts unless 100116
+    names it.
+  -->
+  <rule id="100117" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/xargs$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^0$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=6 a0="xargs" a1="-I" a2="\{\}" a3="rpm" a4="-ql" a5="\{\}" type=</regex>
+    <description>Noise baseline: manager syscollector xargs.</description>
+  </rule>
+
+  <!--
+    PATH-search misses: execvp tries each PATH directory in turn and every
+    miss is a failed execve (ENOENT, exit -2) under the caller's exe. The SCA
+    scan looks for CIS-check tools the container does not ship (findmnt, sshd,
+    systemctl, modprobe, ...), and xargs looks for rpm. About 2,000 a day.
+    Blind to: modulesd or xargs failing to find a bare name on PATH.
+  -->
+  <rule id="100118" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^(/var/ossec/bin/wazuh-modulesd|/usr/bin/xargs)$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^0$</field>
+    <field name="audit.success" type="pcre2">^no$</field>
+    <field name="audit.exit" type="pcre2">^-2$</field>
+    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=PATH msg=audit\(\d+\.\d+:\d+\): item=0 name="(/usr/local/sbin|/usr/local/bin|/usr/sbin|/usr/bin|/sbin|/bin)/[A-Za-z0-9_.-]+" nametype=UNKNOWN </regex>
+    <description>Noise baseline: manager PATH-search miss.</description>
+  </rule>
+
+  <!-- Tier 2b: the host's own agent 002 (cwd /var/ossec, AppArmor unconfined) -->
+
+  <!--
+    The host agent's daemon liveness checks, `/bin/ps -p <pid>`.
+    Blind to: that ps argv with any pid.
+  -->
+  <rule id="100120" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/ps$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^108$</field>
+    <regex type="pcre2">subj=unconfined key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="/bin/ps" a1="-p" a2="\d+" type=</regex>
+    <description>Noise baseline: agent liveness check ps.</description>
+  </rule>
+
+  <!--
+    The shell around each liveness check (system(), sh -c with an end-of-options marker, dash).
+    Blind to: that shell line with any pid.
+  -->
+  <rule id="100121" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/dash$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^108$</field>
+    <regex type="pcre2">subj=unconfined key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=4 a0="sh" a1="-c" a2="--" a3=2F62696E2F7073202D7020(3[0-9])+203E202F6465762F6E756C6C20323E2631 type=</regex>
+    <description>Noise baseline: agent liveness check shell.</description>
+  </rule>
+
+  <!--
+    The host agent's copies of the same three command monitors (df -P,
+    last -n 20, the netstat pipeline), from the agent's default ossec.conf.
+    Blind to: those three exact command lines.
+  -->
+  <rule id="100122" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/dash$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^108$</field>
+    <regex type="pcre2">subj=unconfined key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=4 a0="sh" a1="-c" a2="--" a3=(6466202D50|6C617374202D6E203230|6E657473746174202D74756C706E207C207365642027732F5C285B5B3A616C6E756D3A5D5D5C2B5C295C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5C282E2A5C293A5C285B5B3A64696769743A5D5D2A5C295C205C2B5C285B302D395C2E5C3A5C2A5D5C2B5C292E5C2B5C205C285B5B3A64696769743A5D5D2A5C2F5B5B3A616C6E756D3A5D5C2D5D2A5C292E2A2F5C31205C32203D3D205C33203D3D205C34205C352F27207C20736F7274202D6B2034202D67207C207365642027732F203D3D205C282E2A5C29203D3D2F3A5C312F27207C2073656420312C3264) type=</regex>
+    <description>Noise baseline: agent command monitor shell.</description>
+  </rule>
+
+  <!--
+    The host netstat pipeline's three sed stages.
+    Blind to: those three sed scripts.
+  -->
+  <rule id="100123" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/sed$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^108$</field>
+    <regex type="pcre2">subj=unconfined key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=2 a0="sed" a1=(732F5C285B5B3A616C6E756D3A5D5D5C2B5C295C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5C282E2A5C293A5C285B5B3A64696769743A5D5D2A5C295C205C2B5C285B302D395C2E5C3A5C2A5D5C2B5C292E5C2B5C205C285B5B3A64696769743A5D5D2A5C2F5B5B3A616C6E756D3A5D5C2D5D2A5C292E2A2F5C31205C32203D3D205C33203D3D205C34205C352F|732F203D3D205C282E2A5C29203D3D2F3A5C312F|"1,2d") type=</regex>
+    <description>Noise baseline: agent command monitor sed.</description>
+  </rule>
+
+  <!--
+    The host netstat pipeline's `sort -k 4 -g` (Ubuntu's Rust coreutils).
+    Blind to: that exact sort.
+  -->
+  <rule id="100124" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/lib/cargo/bin/coreutils/sort$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^108$</field>
+    <regex type="pcre2">subj=unconfined key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=4 a0="sort" a1="-k" a2="4" a3="-g" type=</regex>
+    <description>Noise baseline: agent command monitor sort.</description>
+  </rule>
+
+  <!--
+    The host `df -P` monitor (GNU df).
+    Blind to: the `df -P` argv.
+  -->
+  <rule id="100125" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/gnudf$</field>
+    <field name="audit.cwd" type="pcre2">^/var/ossec$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^108$</field>
+    <regex type="pcre2">subj=unconfined key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=2 a0="df" a1="-P" type=</regex>
+    <description>Noise baseline: agent command monitor df.</description>
+  </rule>
+
+  <!-- Tier 3: host housekeeping on a fixed schedule (AppArmor unconfined) -->
+
+  <!--
+    systemd forks this helper for every unit start, then it execs the unit
+    command. About 335 a day.
+    Blind to: the helper itself. The unit command it runs still alerts on its
+    own unless another rule here names it.
+  -->
+  <rule id="100130" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/lib/systemd/systemd-executor$</field>
+    <field name="audit.cwd" type="pcre2">^/$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^0$</field>
+    <regex type="pcre2">subj=unconfined key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=7 a0="/usr/lib/systemd/systemd-executor" a1="--deserialize" a2="\d+" a3="--log-level" a4="info" a5="--log-target" a6="journal-or-kmsg" type=</regex>
+    <description>Noise baseline: systemd exec helper.</description>
+  </rule>
+
+  <!--
+    The sysstat timer's guard, every 10 minutes. a2 is:
+      ENABLED=false; [ -r /etc/default/sysstat ] && . /etc/default/sysstat; test "${ENABLED}" = "true"
+    Blind to: this exact shell line. It sources /etc/default/sysstat, so an
+    edit there runs unseen every 10 minutes. FIM covers /etc on its scheduled
+    scan, not in real time, so the edit itself alerts within a scan cycle.
+  -->
+  <rule id="100131" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/dash$</field>
+    <field name="audit.cwd" type="pcre2">^/$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^0$</field>
+    <regex type="pcre2">subj=unconfined key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="sh" a1="-c" a2=454E41424C45443D66616C73653B205B202D72202F6574632F64656661756C742F73797373746174205D202626202E202F6574632F64656661756C742F737973737461743B20746573742022247B454E41424C45447D22203D20227472756522 type=</regex>
+    <description>Noise baseline: sysstat enabled check.</description>
+  </rule>
+
+  <!--
+    sysstat's sa1 collector script, every 10 minutes.
+    Blind to: the `sa1 1 1` argv. sa1 sources /etc/sysstat/sysstat, so an
+    edit there runs unseen every 10 minutes. FIM covers /etc on its scheduled
+    scan, not in real time, so the edit itself alerts within a scan cycle.
+  -->
+  <rule id="100132" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/bin/dash$</field>
+    <field name="audit.cwd" type="pcre2">^/$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^0$</field>
+    <regex type="pcre2">subj=unconfined key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=4 a0="/bin/sh" a1="/usr/libexec/sysstat/sa1" a2="1" a3="1" type=</regex>
+    <description>Noise baseline: sysstat sa1.</description>
+  </rule>
+
+  <!--
+    The sadc sampler sa1 starts, every 10 minutes.
+    Blind to: this exact sadc sample.
+  -->
+  <rule id="100133" level="0">
+    <if_sid>80792</if_sid>
+    <field name="audit.auid" type="pcre2">^4294967295$</field>
+    <field name="audit.tty" type="pcre2">^\(none\)$</field>
+    <field name="audit.exe" type="pcre2">^/usr/libexec/sysstat/sadc$</field>
+    <field name="audit.cwd" type="pcre2">^/usr/libexec/sysstat$</field>
+    <field name="audit.uid" type="pcre2">^0$</field>
+    <field name="audit.euid" type="pcre2">^0$</field>
+    <field name="audit.gid" type="pcre2">^0$</field>
+    <regex type="pcre2">subj=unconfined key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=8 a0="/usr/libexec/sysstat/sadc" a1="-F" a2="-L" a3="-S" a4="DISK" a5="1" a6="1" a7="/var/log/sysstat" type=</regex>
+    <description>Noise baseline: sysstat sadc.</description>
+  </rule>
+
+</group>
