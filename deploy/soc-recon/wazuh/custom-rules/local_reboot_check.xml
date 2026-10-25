@@ -1,0 +1,31 @@
+<!--
+  soc-recon reboot check (S0.7): grades the daily line soc-recon-reboot-check.sh
+  writes to the journal. Runbook 00, section 5.
+
+  The line arrives from agent 002's journald localfile as
+    <Mmm dd hh:mm:ss> <host> soc-recon-reboot-check.sh[<pid>]: <message>
+  and the pre-decoder takes the script name as program_name, so these are root
+  rules with no decoder, as the job age rules are (local_job_age.xml).
+
+  100330 is the daily all-clear and takes only the exact OK shape. 100331 takes
+  the script's "reboot required" line at level 7, the level a stale job gets:
+  unattended-upgrades never reboots the box, so a pending reboot waits on Kyle.
+  Failures are not graded here: the unit exits 1 and stock 40704 alerts.
+
+  NOTE: these rules fire for any agent, so a forged line elsewhere still shows.
+-->
+<group name="local,soc_recon,reboot_check,">
+
+  <rule id="100330" level="3">
+    <program_name>^soc-recon-reboot-check.sh$</program_name>
+    <regex type="pcre2">^no reboot required: running=[A-Za-z0-9.+_~:-]+$</regex>
+    <description>soc-recon: SOC box runs its newest kernel, no reboot pending.</description>
+  </rule>
+
+  <rule id="100331" level="7">
+    <program_name>^soc-recon-reboot-check.sh$</program_name>
+    <regex type="pcre2">^reboot required: </regex>
+    <description>soc-recon: SOC box is waiting on a reboot (new kernel or libraries).</description>
+  </rule>
+
+</group>
