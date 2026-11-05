@@ -21,7 +21,7 @@ unset CDPATH
 umask 077
 
 BOX=${TIER2_BOX:-soc-host}
-# The deploy dir on the box, relative to talon's home.
+# The deploy dir on the box, relative to the login user's home.
 REMOTE=${TIER2_REMOTE:-talonsoclab/deploy/soc-recon}
 VOLUME=${TIER2_VOLUME:-/Volumes/MacbookXD}
 DEST=$VOLUME/talonsoclab/tier2

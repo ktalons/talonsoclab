@@ -4,10 +4,10 @@ flowchart TB
 %% Companion: network-topology.mmd holds the physical / L2 network (router, switch, rack).
 %% Host: HP EliteDesk mini (6-core i5, 16 GB, 256 GB NVMe) — OWNED outright.
 %% Substrate: Ubuntu Server 26.04 LTS bare-metal + Docker (no Proxmox).
-%% Legend: solid = running now · dashed edge = telemetry / handoff · grey dashed node = not deployed
+%% Legend: solid = running now · dashed edge = telemetry / handoff
 %% Deployment status verified on the box 2026-09-30: indexer, manager, dashboard, suricata and
-%%   all three agents are up. recon-runner, digest and triage exist in the repo but are NOT
-%%   running: no recon image built, no cron installed.
+%%   all three agents are up. The attack-surface recon pipeline once planned for this box was
+%%   never deployed and left the public repo 2026-11-04.
 %% Host timers checked 2026-10-15: three root-owned systemd oneshots (deploy/soc-recon/systemd/)
 %%   rotate Suricata's logs at 04:00Z, update ET Open at 04:30Z and delete the manager's dated
 %%   logs past 14 days at 05:00Z. A failed run starts the OnFailure handler, and the
@@ -31,12 +31,6 @@ flowchart TB
         Suricata["suricata · host network<br/>AF_PACKET on eno1 · ET Open<br/>eve.json on the host disk"]
 
         Timers["host systemd timers<br/>suricata-logrotate 04:00Z · suricata-update 04:30Z<br/>wazuh-retention 05:00Z (14-day manager logs)<br/>OnFailure: soc-recon-unit-failed@"]
-
-        subgraph ReconNet["docker network: recon_net (isolated)"]
-            Recon["recon-runner — NOT DEPLOYED<br/>subfinder→httpx→nuclei→diff<br/>cron: run --rm, 2g cap"]
-        end
-
-        Digest["digest collector — NOT DEPLOYED<br/>generate_digest.py · cron 07:00<br/>→ {date}-intake.json"]
     end
 
     subgraph Endpoints["Real-device Wazuh agents (no VMs on the box) — all Active"]
@@ -47,7 +41,6 @@ flowchart TB
 
     Analyst(["Analyst, on the MacBook<br/>HTTPS to dashboard"])
     CASA["CASA — casa-ai-agent<br/>multi-agent reasoning on Claude<br/>(separate plane, not yet fed)"]
-    Triage["triage/ queue — NOT DEPLOYED<br/>human review gate"]
 
     Internet ==> Host
     Win  -. "TLS 1514" .-> Manager
@@ -62,20 +55,15 @@ flowchart TB
     Indexer --> Dashboard
     Analyst ==> Dashboard
 
-    Recon -.-> Triage
-    Indexer -. "alerts (level≥12)" .-> Digest
-    Triage  -. "newest delta" .-> Digest
-    Digest -. "intake.json (deterministic handoff)" .-> CASA
+    Indexer -. "alerts (handoff not built yet)" .-> CASA
     CASA -. "explainable, NIST-aligned analysis" .-> Analyst
 
     classDef soc fill:#0f172a,stroke:#f59e0b,color:#fff
     classDef ep fill:#0f172a,stroke:#34d399,color:#fff
     classDef ext fill:#374151,stroke:#9ca3af,color:#fff
     classDef casa fill:#3b0764,stroke:#c084fc,color:#fff
-    classDef planned fill:#111827,stroke:#6b7280,color:#9ca3af,stroke-dasharray:4 3
 
     class Indexer,Manager,Dashboard,Suricata,Timers soc
     class Win,Mac,UbuntuHost ep
     class Internet,Analyst ext
-    class Recon,Digest,Triage planned
     class CASA casa

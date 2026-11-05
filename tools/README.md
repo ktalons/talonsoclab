@@ -273,3 +273,92 @@ bun tools/noise-lint.ts                 # deploy/soc-recon/wazuh/custom-rules
 bun tools/noise-lint.ts <dir>           # another rules folder
 bun test tools/noise-lint.test.ts       # planted bad rules it must refuse
 ```
+
+## B.1 rule pipeline
+
+A pack rule goes Sigma YAML, then hand-ported XML, then logtest, then live. These four tools
+cover the steps before live. Stock `wazuh-logtest` cannot reach a Windows rule at all: the
+`windows_eventchannel` decoder is C code that runs only for events off an agent's eventchannel
+queue, and logtest runs XML decoders only. So Windows cases go through a port of that decoder
+and a shim on a scratch manager, never the live one.
+
+### winevt and winevt-capture
+
+`winevt-capture.ts` pulls events off the Dell over ssh with `Get-WinEvent`, keeping each
+event's `Message` and `ToXml()`, the two things the agent sends. The JSON crosses the wire as
+base64 of UTF-8, because the console code page turns the `®` in Microsoft's product strings
+into an `r` on the way out. Private IPv4 and IPv6 addresses become RFC 5737 and RFC 3849
+documentation addresses, and the machine part of an account SID becomes `0-0-n`, each mapped
+the same way across the whole capture. Hostnames and user names go through `--redact`.
+
+`winevt.ts` turns a capture into the JSON that analysisd's `DecodeWinevt` builds, including
+its quirks: values keep cJSON's escaping (a backslash in a path arrives doubled), `(NULL)`,
+`-` and empty values are dropped, and the message keeps its quotes. Its test holds it to a live
+alert field for field.
+
+```bash
+bun tools/winevt-capture.ts <ssh-host> --id 3 --max 5 --redact <hostname>=labhost --redact <user>=labuser > cap.json
+bun tools/winevt.ts cap.json             # one decoded event per line
+bun test tools/winevt.test.ts            # the live-alert match, the quirks, the redaction rules
+```
+
+A capture that will be committed still goes through `bun tools/leakcheck.ts --paths` first.
+
+### logtest
+
+`logtest.ts` runs every case under `phase-b-detection/tests/<rule id>/` through `wazuh-logtest`
+on the scratch manager `b1test` on the box. A case is `pos.json` or `pos-<name>.json`
+(the rule must fire) or `neg-<name>.json` (it must not), holding either `{"capture": ...}`
+from winevt-capture or `{"event": "<one log line>"}`.
+
+Each run stages the kit in `tools/logtest/` (compose file, shim decoder) with the live manager
+conf, the stock json decoders excluded so the shim decodes first, and the rules folder under
+test. It then removes the old scratch volumes, starts the manager, and checks four things
+before any case runs: the init exited 0, `ossec.log` has no ruleset errors, the rule files in
+the container match the tree byte for byte, and the image is the live manager's. The verdicts
+come from analysisd's own reply (the `-d` transcript), not the formatted phases.
+
+A positive passes when its rule is the final one. For a rule in the XML under test, the level
+and MITRE IDs must also be what the XML says, with no logtest warning, which catches an ID
+`mitre.db` silently drops. Every pack rule named in the XML or the Sigma YAML must fire in a
+passing positive and have a negative, so a rule file in a subfolder (copied, never loaded)
+fails the run.
+
+```bash
+bun tools/logtest.ts                     # the repo's rules and phase-b-detection/tests
+bun tools/logtest.ts --rules <dir> --cases <dir>
+bun tools/logtest.ts --keep              # leave the manager up; --reuse runs cases on it again
+bun tools/logtest.ts --save run.txt      # keep the raw transcript
+bun tools/logtest.ts --self-test         # four scenarios on tools/fixtures/logtest
+bun tools/logtest.ts --down              # remove the scratch manager and its volumes
+bun test tools/logtest.test.ts           # the offline half: cases, replies, verdicts, coverage
+```
+
+`--self-test` runs the fixture pack (must pass), a planted copy of a positive filed as a
+negative (must fail on that case alone), the same rule with its condition negated (must fail
+both of its cases), and the rules file moved into a subfolder (must report both rules never
+fired). Exit code 0 is pass, 1 is a failing case or coverage gap, 2 is a setup problem.
+
+Every scratch run is SIEM noise: the manager's init and each `docker exec` are host execs that
+auditd records and agent 002 ships.
+
+### sigma-lint
+
+`sigma-lint.ts` holds each YAML in `phase-b-detection/sigma/` to its XML rule. The YAML carries
+the Wazuh side in `custom.wazuh` (`id`, `if_sid`, `level`, `mitre`). The id must be in a pack
+range and the level must be what the Sigma level maps to (medium 10, high 12, critical 15).
+The XML rule must exist once, at the top of the rules folder, with the same level, `if_sid` and
+MITRE IDs. Each MITRE ID must be in `phase-b-detection/mitre-db-ids.txt` and not revoked there,
+because Wazuh drops an ID its `mitre.db` lacks. The YAML also needs a UUID, a technique tag, a
+condition and a `related` entry of type `derived` naming the upstream rule. A pack XML rule with
+no YAML fails, and so does any XML in a subfolder.
+
+```bash
+bun tools/sigma-lint.ts                  # phase-b-detection/sigma against the custom rules
+bun tools/sigma-lint.ts --sigma <dir> --rules <dir> --mitre <ids file>
+bun tools/sigma-lint.ts --refresh-mitre <mitre.db> "wazuh/wazuh-manager:<tag>"
+bun test tools/sigma-lint.test.ts        # planted disagreements, the level mismatch among them
+```
+
+Refresh the ID list after every manager image change. Copy the database out of a stopped
+container with `docker cp <container>:/var/ossec/var/db/mitre.db -`, which runs nothing inside it.

@@ -1,7 +1,7 @@
 # Phase 0.4 — Network cutover: WiFi → wired through the smart switch
 
 > **What this does:** moves the SOC box off its interim USB-WiFi link onto a wired connection
-> through the rack's TP-Link managed switch, pins the address with a DHCP reservation, and removes
+> through the rack's managed switch, pins the address with a DHCP reservation, and removes
 > the temporary WiFi config.
 >
 > **Why it matters for a SOC:** wired is the correct posture for a sensor host, but the real
@@ -13,8 +13,8 @@
 >
 > **Completed 2026-07-24.**
 
-**Kit:** TP-Link WiFi 7 router (router, the only Layer 3 device here — DHCP, DNS, gateway) ·
-TP-Link managed switch (8-port Easy Smart switch, Layer 2 frame forwarding, VLAN- and SPAN-capable
+**Kit:** WiFi 7 router (the only Layer 3 device here — DHCP, DNS, gateway) ·
+8-port managed switch (Layer 2 frame forwarding, VLAN- and SPAN-capable
 but works with zero configuration on a flat network) · HP EliteDesk mini (`eno1`).
 
 ---

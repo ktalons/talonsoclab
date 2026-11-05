@@ -23,7 +23,7 @@ unset CDPATH
 umask 077
 
 BOX=${TIER2_BOX:-soc-host}
-# The deploy dir on the box, relative to talon's home.
+# The deploy dir on the box, relative to the login user's home.
 REMOTE=${TIER2_REMOTE:-talonsoclab/deploy/soc-recon}
 IDENTITY=${TIER2_IDENTITY:-$HOME/.config/talon/tier2-identity.txt}
 SIGNERS=${TIER2_SIGNERS:-$HOME/.config/talon/tier2-allowed-signers}

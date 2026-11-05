@@ -21,10 +21,10 @@
     not parse. On this LAN that is continuous background chatter, measured
     2026-08-09 at ~66 frames/min, ~95k alerts/day:
 
-      <SWITCH-MAC>       ethertype 0x8899  Realtek RRCP — the managed switch smart
+      <SWITCH-MAC>       ethertype 0x8899  Realtek RRCP — the managed
                                            switch's own management broadcast
       <ROUTER-MAC>       ethertype 0x893A  IEEE 1905.1 (home networking), and
-                                           0x88CC LLDP — the router router
+                                           0x88CC LLDP — the router
 
     Level 0 = analysisd drops it before the alert log, so it never reaches
     filebeat or the indexer. In the first 11 minutes of ISC-26 the indexer took

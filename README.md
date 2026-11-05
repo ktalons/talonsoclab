@@ -1,6 +1,6 @@
 ![TalonSocLab: personal SOC home lab](assets/talon-waveform.png)
 
-[![Phase](https://img.shields.io/badge/phase-A%20%C2%B7%20Hardening-89b4fa)](https://ktalons.github.io/projects/talonsoclab/)
+[![Phase](https://img.shields.io/badge/phase-B%20%C2%B7%20Detection-89b4fa)](https://ktalons.github.io/projects/talonsoclab/)
 [![Last commit](https://img.shields.io/github/last-commit/ktalons/talonsoclab)](https://github.com/ktalons/talonsoclab/commits/main)
 [![Wazuh](https://img.shields.io/badge/Wazuh-4.14-blue)](https://wazuh.com/)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE-ATT%26CK-red)](https://attack.mitre.org/)
@@ -10,14 +10,14 @@
 | Phase<img src="assets/spacer.png" width="260" height="1" alt=""> | Deliverable<img src="assets/spacer.png" width="700" height="1" alt=""> | |
 |---|---|:---:|
 | **A — Foundation SOC Stack** | Wazuh + Sysmon + Suricata, real-device agents, custom dashboards | <img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> |
-| **A+ — Hardening** | Host timers with failure alerts, log retention, secrets out of argv, credential rotation | 🚧 |
-| **B — Detection Engineering** | Sigma rule pack validated against MITRE ATT&CK | ⏭ |
-| **C — AD Attack & Defense** | Mini-AD, top-5 detection chain, purple-team report | 🔴 |
+| **A+ — Hardening** | Host timers with failure alerts, log retention, secrets out of argv, credential rotation, encrypted Tier 2 backups | <img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> |
+| **B — Detection Engineering** | Sigma rule pack validated against MITRE ATT&CK | 🚧 |
+| **C — AD Attack & Defense** | Mini-AD, top-5 detection chain, purple-team report | ⏭ |
 | **D — Honeynet + Threat Intel** | T-Pot into OpenCTI with threat-intel enrichment | 🔴 |
 
 <img src="assets/talon-glyph-64.png" width="20" align="top" alt=""> complete &nbsp;·&nbsp; 🚧 in progress &nbsp;·&nbsp; ⏭ next &nbsp;·&nbsp; 🔴 not started
 
-Right now I'm hardening the Phase A stack before Phase B starts. Suricata 8.0.7 rotates its logs and pulls ET Open rules on host systemd timers, and a failed run raises a Wazuh alert. The manager's own logs age out after 14 days. No secret goes through a process's arguments anymore, and a pre-commit leak check guards this repo.
+Phase A closed on 2026-10-25 with the stack hardened: host timers with failure alerts, 14-day log retention, no secret in any process's arguments, credentials rotated, and age-encrypted backups the SIEM itself watches. Phase B is detection engineering. The noise baseline is measured first, so every rule that follows is judged against what the lab actually looks like when nothing is happening. Then a Sigma rule pack, each rule converted to Wazuh, mapped to MITRE ATT&CK and proven with a positive control on the live manager.
 
 ## Why
 

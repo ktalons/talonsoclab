@@ -10,7 +10,7 @@
 > Steps are tagged **[KEYBOARD]** (no OS = no SSH yet) and **[SSH]**.
 >
 > **Completed 2026-07-11.** Target: EliteDesk mini · 6-core i5 · 16 GB · 256 GB NVMe →
-> hostname `talonsoclab`, user `talon`. As installed: Ubuntu Server **26.04 LTS**.
+> hostname `talonsoclab`, one non-root login user. As installed: Ubuntu Server **26.04 LTS**.
 
 ---
 
@@ -143,7 +143,7 @@ agents are Active in the dashboard, and that 100330 fires about 5 min after boot
 - [x] Ubuntu Server 26.04 LTS booting, Windows gone
 - [x] `ssh talon@<box-ip>` logs in with key, no password prompt
 - [x] `sysctl vm.max_map_count` ≥ `262144` (26.04 defaults to 1048576)
-- [x] `docker compose version` succeeds; `talon` in the `docker` group
+- [x] `docker compose version` succeeds; the login user in the `docker` group
 - [x] `ufw status` → deny incoming, LAN-only allows on 22/443/1514/1515/55000
 - [x] Box IP pinned by DHCP reservation and recorded
 

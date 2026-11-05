@@ -253,7 +253,7 @@ fi
 # Nothing below changes anything until the stack is stopped, so every refusal
 # here leaves the stack exactly as it was.
 
-[ "$(id -u)" -ne 0 ] || die "run as the login user, not root: the archives must stay talon's"
+[ "$(id -u)" -ne 0 ] || die "run as the login user, not root: the archives must stay owned by the login user"
 cd -P -- "$(dirname -- "$0")/.." || die "cannot find the deploy dir"
 DEPLOY=$PWD
 # NOTE: $0 is relative when the Mac runs this, and the cd above broke it.
