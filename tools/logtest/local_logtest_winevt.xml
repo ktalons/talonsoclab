@@ -1,0 +1,30 @@
+<!--
+  tools/logtest.ts scratch manager only. WARN: never mount this on the live manager.
+
+  wazuh-logtest feeds every event in as a localfile line ("1:location:log") and runs the
+  XML decoders only. The real windows_eventchannel decoder is analysisd C code
+  (decoders/winevtchannel.c) that runs only for events arriving on the agent's eventchannel
+  queue, so no Windows rule (all children of 60000, decoded_as windows_eventchannel) is
+  reachable from logtest. This file stands in for it: it takes the JSON DecodeWinevt
+  builds ({"win":{"system":...}}, produced by tools/winevt.ts) and decodes it under the
+  same name and type. logtest.ts excludes the stock json decoders in the scratch ossec.conf
+  and every one of them is repeated here after the shim, because the json decoder's prematch,
+  or json-msgraph's unanchored one on Data text, would win first. logtest.test.ts holds the
+  shim first. (ISA Decisions 2026-10-26, B.1 spike.)
+-->
+<decoder name="windows_eventchannel">
+  <type>ossec</type>
+  <prematch>^{"win":{"system":</prematch>
+  <plugin_decoder>JSON_Decoder</plugin_decoder>
+</decoder>
+
+<decoder name="json-msgraph">
+  <prematch>"integration":"ms-graph"</prematch>
+  <plugin_decoder>JSON_Decoder</plugin_decoder>
+  <json_null_field>discard</json_null_field>
+</decoder>
+
+<decoder name="json">
+  <prematch>^{\s*"</prematch>
+  <plugin_decoder>JSON_Decoder</plugin_decoder>
+</decoder>

@@ -4,11 +4,11 @@ Phase B adds detections, and a new alert only means something if the alerts alre
 are understood. This page records what the lab alerted on before Phase B, which of it was the
 stack watching itself, how that was suppressed, and what is still left.
 
-**Status:** rules written and replay-tested on a scratch manager. Live deployment and the 7-day
-measurement are pending, so every "after" number below is a projection from replaying one real day
-through the new rules. It gets replaced by the live number when the 7 days are in.
+**Status:** live since 2026-10-25 20:33 UTC. The 7-day measurement covers 2026-10-27 to 11-02
+UTC. 10-26 is left out: a test session on the box that day carried 6,145 alerts, and test days
+are not a baseline.
 
-**Target:** a 7-day mean of 3,000 alerts a day or fewer.
+**Target:** a 7-day mean of 3,000 alerts a day or fewer. **Measured: 2,663.**
 
 ## Before
 
@@ -130,38 +130,52 @@ rather than at once.
 
 | | 2026-10-24 before | Replay after | Live 7-day mean |
 |---|--:|--:|--:|
-| 80792 | 19,973 | 1,410 | pending |
-| everything else | 735 | 735 | pending |
-| **All alerts** | **20,708** | **2,145** | **pending** |
+| 80792 | 19,973 | 1,410 | 1,656 |
+| everything else | 735 | 735 | 1,007 |
+| **All alerts** | **20,708** | **2,145** | **2,663** |
+
+The live mean is 18,643 alerts over the seven days. Daily totals ran from 2,241 to 3,192. No
+suppressed event reached the index: a count of rule IDs 100100 to 100199 over the week is 0.
+
+Live sits above the replay for two reasons. About 204 of the 80792 alerts a day are truncated
+records the replay never had (below). And the Windows endpoint's activity changes by day: its
+vendor update service ran on 10-28 and 10-31 and added about 300 alerts each time.
 
 ## What is left, and why it stays
 
-The five largest remaining (rule, image) pairs in the replay. None is suppressed: each one is
-real activity, reported correctly.
+The five largest remaining (rule, image) pairs over the measured week. None is suppressed.
 
 | Rule | Image | Per day | Why it stays |
 |---|---|--:|---|
-| 80792 | `/usr/bin/coreutils` (manager container) | 225 | the lab's own job-age probe, alert-archive reads, and PATH misses when `timeout` looks up bash. Low volume, and the probe is ours |
-| 533 | n/a (macOS agent) | 189 | listening ports opened or closed on the laptop. A real change each time |
-| 80792 | `/usr/bin/bash` (manager container) | 176 | the job-age probe's shells, syscollector's `rpm -qa` pipelines, and `zcat` over rotated alerts |
-| 750 | n/a (Windows endpoint) | 83 | registry values changed under FIM. Real changes, and exactly what FIM is for |
-| 80792 | `/usr/bin/gawk` (manager container) | 82 | the job-age probe's parsing |
+| 80792 | `/usr/bin/coreutils` (containers) | 243 | the lab's own job-age probe in the manager container (169), `timeout` and staging-directory moves from the three daily maintenance jobs (54), and truncated `df` and `sort` records (20). Low volume, and the jobs are ours |
+| 80792 | `/usr/bin/bash` (manager container) | 180 | the job-age probe's shells, syscollector's `rpm -qa` pipelines, and `zcat` over rotated alerts |
+| 80792 | `/usr/bin/sed` (manager container and box agent) | 147 | the port monitor's `sed` stages, arriving truncated. 989 of the week's 1,031 had no working-directory record, so no suppression can match them |
+| 750 | n/a (Windows endpoint) | 136 | registry values changed under FIM. 790 of the week's 955 are Volume Shadow Copy diagnostic values under `Services\VSS\Diag`, rewritten on every shadow copy operation. Real changes that say little. A registry ignore in the agent config is the planned tune |
+| 80792 | `/usr/bin/dash` (SOC box) | 96 | host shells: root's hourly cron job, the daily apt and `cron.daily` runs, and the login banner scripts on each ssh session |
+
+The replay's second pair, the macOS agent's port-change rule 533, fell from 189 a day to 52 and
+left the top five. `/usr/bin/gawk` in the manager container is sixth at 84.
 
 Truncated audit events that arrive without their working-directory record fail every suppression
-and keep alerting. That's deliberate: a rule that can't see all of its fields doesn't fire.
+and keep alerting. That's deliberate: a rule that can't see all of its fields doesn't fire. In
+the measured week 1,428 of the 11,593 alerts from rule 80792 arrived that way, about 204 a day,
+most of them `sed`, `df` and `sort` from the command monitors' pipelines.
 
 Container restarts are loud by design. A manager start runs about 2,000 s6 init execs, and an
 `apt upgrade` run through `sudo` carries a login session, so it alerts in full.
 
 ## Planted true positives
 
-The suppressions must never hide what they look like. These run through the same test:
+The suppressions must never hide what they look like. These run through the same test, and each
+was planted on the live stack after deployment:
 
 - A `curl` to `_cluster/health` from an interactive host shell: alerts as 80792.
 - The same query through `bin/idx` inside the indexer container: alerts as 80792. It runs in the
   same directory under the same user as the healthcheck, and only the argv tells them apart.
 - Lsass access (Sysmon EID 10) from an image not on the allowlist: no Windows rule is suppressed
-  here. The live plant on the Windows endpoint is pending.
+  here. A real Sysmon event written with `New-WinEvent` on the Windows endpoint alerted as rule
+  92900, level 12, two seconds later. A live `OpenProcess` on lsass could not be the plant: LSA
+  protection refuses it before Sysmon logs anything.
 
 ## Testing
 

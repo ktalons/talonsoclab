@@ -1,0 +1,23 @@
+<!--
+  tools/logtest.ts self-test rules, for the scratch manager only. Never copied into
+  deploy/. The ids sit at the top of the EID-3 pack range so they read as pack rules.
+-->
+<group name="logtest_selftest,">
+  <rule id="100399" level="10">
+    <if_sid>61603</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\powershell\.exe$</field>
+    <description>logtest self-test: PowerShell process creation</description>
+    <mitre>
+      <id>T1059.001</id>
+    </mitre>
+  </rule>
+
+  <rule id="100398" level="10">
+    <if_sid>61605</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\svchost\.exe$</field>
+    <description>logtest self-test: svchost network connection</description>
+    <mitre>
+      <id>T1071</id>
+    </mitre>
+  </rule>
+</group>

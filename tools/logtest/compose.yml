@@ -1,0 +1,29 @@
+# Scratch manager for tools/logtest.ts. Project b1test only: no network at all, its own
+# named volumes, and every file under test staged beside this one by the harness, never
+# the live checkout. logtest.ts refuses to run when this image differs from the live
+# manager's default in deploy/soc-recon/docker-compose.yml.
+name: b1test
+services:
+  wazuh.manager:
+    image: wazuh/wazuh-manager:4.14.9
+    hostname: b1test
+    mem_limit: 1500m
+    network_mode: none
+    environment:
+      - INDEXER_URL=https://b1test-no-indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${SCRATCH_INDEXER_PASS:?logtest.ts writes .env first}
+      - FILEBEAT_SSL_VERIFICATION_MODE=full
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=${SCRATCH_API_PASS:?logtest.ts writes .env first}
+    volumes:
+      - etc:/var/ossec/etc
+      - logs:/var/ossec/logs
+      - queue:/var/ossec/queue
+      - ./ossec.conf:/wazuh-config-mount/etc/ossec.conf
+      - ./custom-rules:/wazuh-config-mount/etc/rules/custom:ro
+      - ./local_logtest_winevt.xml:/wazuh-config-mount/etc/decoders/local_logtest_winevt.xml:ro
+volumes:
+  etc:
+  logs:
+  queue:

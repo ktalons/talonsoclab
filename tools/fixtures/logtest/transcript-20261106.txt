@@ -1,0 +1,779 @@
+2026-11-06 07:50:06,911 wazuh_logtest[INFO] Starting wazuh-logtest v4.14.9
+2026-11-06 07:50:06,911 wazuh_logtest[INFO] Type one log per line
+
+2026-11-06 07:50:06,911 wazuh_logtest[INFO] 
+2026-11-06 07:50:06,911 wazuh_logtest[DEBUG] Request: {"version": 1, "origin": {"name": "wazuh-logtest", "module": "wazuh-logtest"}, "command": "log_processing", "parameters": {"location": "stdin", "log_format": "syslog", "event": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"10\",\"version\":\"3\",\"level\":\"4\",\"task\":\"10\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-10-26T01:25:17.0617860Z\",\"eventRecordID\":\"743145\",\"processID\":\"7788\",\"threadID\":\"3368\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"labhost\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process accessed:\\r\\nRuleName: technique_id=T1003,technique_name=B.0 planted true positive\\r\\nUtcTime: 2026-10-26 01:25:16.977\\r\\nSourceProcessGUID: {00000000-0000-0000-0000-000000000000}\\r\\nSourceProcessId: 7788\\r\\nSourceThreadId: 1\\r\\nSourceImage: C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\r\\nTargetProcessGUID: {00000000-0000-0000-0000-000000000000}\\r\\nTargetProcessId: 1056\\r\\nTargetImage: C:\\\\Windows\\\\system32\\\\lsass.exe\\r\\nGrantedAccess: 0x1010\\r\\nCallTrace: B.0-plant\\r\\nSourceUser: LABHOST\\\\labuser\\r\\nTargetUser: NT AUTHORITY\\\\SYSTEM\\\"\"},\"eventdata\":{\"ruleName\":\"technique_id=T1003,technique_name=B.0 planted true positive\",\"utcTime\":\"2026-10-26 01:25:16.977\",\"sourceProcessGUID\":\"{00000000-0000-0000-0000-000000000000}\",\"sourceProcessId\":\"7788\",\"sourceThreadId\":\"1\",\"sourceImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\WindowsPowerShell\\\\\\\\v1.0\\\\\\\\powershell.exe\",\"targetProcessGUID\":\"{00000000-0000-0000-0000-000000000000}\",\"targetProcessId\":\"1056\",\"targetImage\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\lsass.exe\",\"grantedAccess\":\"0x1010\",\"callTrace\":\"B.0-plant\",\"sourceUser\":\"LABHOST\\\\\\\\labuser\",\"targetUser\":\"NT AUTHORITY\\\\\\\\SYSTEM\"}}}"}}
+
+2026-11-06 07:50:07,651 wazuh_logtest[DEBUG] Reply: {"error":0,"data":{"messages":["INFO: (7202): Session initialized with token '9a9d1f26'"],"token":"9a9d1f26","output":{"timestamp":"2026-11-06T07:50:07.646+0000","rule":{"level":12,"description":"Lsass process was accessed by C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe with read permissions, possible credential dump","id":"92900","mitre":{"id":["T1003.001"],"tactic":["Credential Access"],"technique":["LSASS Memory"]},"firedtimes":1,"mail":true,"groups":["sysmon","sysmon_eid10_detections","windows"]},"agent":{"id":"000","name":"b1test"},"manager":{"name":"b1test"},"id":"1793951407.131010","decoder":{"name":"windows_eventchannel"},"data":{"win":{"system":{"providerName":"Microsoft-Windows-Sysmon","providerGuid":"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}","eventID":"10","version":"3","level":"4","task":"10","opcode":"0","keywords":"0x8000000000000000","systemTime":"2026-10-26T01:25:17.0617860Z","eventRecordID":"743145","processID":"7788","threadID":"3368","channel":"Microsoft-Windows-Sysmon/Operational","computer":"labhost","severityValue":"INFORMATION","message":"\"Process accessed:\r\nRuleName: technique_id=T1003,technique_name=B.0 planted true positive\r\nUtcTime: 2026-10-26 01:25:16.977\r\nSourceProcessGUID: {00000000-0000-0000-0000-000000000000}\r\nSourceProcessId: 7788\r\nSourceThreadId: 1\r\nSourceImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nTargetProcessGUID: {00000000-0000-0000-0000-000000000000}\r\nTargetProcessId: 1056\r\nTargetImage: C:\\Windows\\system32\\lsass.exe\r\nGrantedAccess: 0x1010\r\nCallTrace: B.0-plant\r\nSourceUser: LABHOST\\labuser\r\nTargetUser: NT AUTHORITY\\SYSTEM\""},"eventdata":{"ruleName":"technique_id=T1003,technique_name=B.0 planted true positive","utcTime":"2026-10-26 01:25:16.977","sourceProcessGUID":"{00000000-0000-0000-0000-000000000000}","sourceProcessId":"7788","sourceThreadId":"1","sourceImage":"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe","targetProcessGUID":"{00000000-0000-0000-0000-000000000000}","targetProcessId":"1056","targetImage":"C:\\\\Windows\\\\system32\\\\lsass.exe","grantedAccess":"0x1010","callTrace":"B.0-plant","sourceUser":"LABHOST\\\\labuser","targetUser":"NT AUTHORITY\\\\SYSTEM"}}},"location":"stdin"},"alert":true,"codemsg":0}}
+
+2026-11-06 07:50:07,651 wazuh_logtest[DEBUG] {
+  "messages": [
+    "INFO: (7202): Session initialized with token '9a9d1f26'"
+  ],
+  "token": "9a9d1f26",
+  "output": {
+    "timestamp": "2026-11-06T07:50:07.646+0000",
+    "rule": {
+      "level": 12,
+      "description": "Lsass process was accessed by C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe with read permissions, possible credential dump",
+      "id": "92900",
+      "mitre": {
+        "id": [
+          "T1003.001"
+        ],
+        "tactic": [
+          "Credential Access"
+        ],
+        "technique": [
+          "LSASS Memory"
+        ]
+      },
+      "firedtimes": 1,
+      "mail": true,
+      "groups": [
+        "sysmon",
+        "sysmon_eid10_detections",
+        "windows"
+      ]
+    },
+    "agent": {
+      "id": "000",
+      "name": "b1test"
+    },
+    "manager": {
+      "name": "b1test"
+    },
+    "id": "1793951407.131010",
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "data": {
+      "win": {
+        "system": {
+          "providerName": "Microsoft-Windows-Sysmon",
+          "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+          "eventID": "10",
+          "version": "3",
+          "level": "4",
+          "task": "10",
+          "opcode": "0",
+          "keywords": "0x8000000000000000",
+          "systemTime": "2026-10-26T01:25:17.0617860Z",
+          "eventRecordID": "743145",
+          "processID": "7788",
+          "threadID": "3368",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "computer": "labhost",
+          "severityValue": "INFORMATION",
+          "message": "\"Process accessed:\r\nRuleName: technique_id=T1003,technique_name=B.0 planted true positive\r\nUtcTime: 2026-10-26 01:25:16.977\r\nSourceProcessGUID: {00000000-0000-0000-0000-000000000000}\r\nSourceProcessId: 7788\r\nSourceThreadId: 1\r\nSourceImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nTargetProcessGUID: {00000000-0000-0000-0000-000000000000}\r\nTargetProcessId: 1056\r\nTargetImage: C:\\Windows\\system32\\lsass.exe\r\nGrantedAccess: 0x1010\r\nCallTrace: B.0-plant\r\nSourceUser: LABHOST\\labuser\r\nTargetUser: NT AUTHORITY\\SYSTEM\""
+        },
+        "eventdata": {
+          "ruleName": "technique_id=T1003,technique_name=B.0 planted true positive",
+          "utcTime": "2026-10-26 01:25:16.977",
+          "sourceProcessGUID": "{00000000-0000-0000-0000-000000000000}",
+          "sourceProcessId": "7788",
+          "sourceThreadId": "1",
+          "sourceImage": "C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe",
+          "targetProcessGUID": "{00000000-0000-0000-0000-000000000000}",
+          "targetProcessId": "1056",
+          "targetImage": "C:\\\\Windows\\\\system32\\\\lsass.exe",
+          "grantedAccess": "0x1010",
+          "callTrace": "B.0-plant",
+          "sourceUser": "LABHOST\\\\labuser",
+          "targetUser": "NT AUTHORITY\\\\SYSTEM"
+        }
+      }
+    },
+    "location": "stdin"
+  },
+  "alert": true,
+  "codemsg": 0
+}
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] **Phase 1: Completed pre-decoding.
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] **Phase 2: Completed decoding.
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] 	name: 'windows_eventchannel'
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] 	win.eventdata.callTrace: 'B.0-plant'
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] 	win.eventdata.grantedAccess: '0x1010'
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] 	win.eventdata.ruleName: 'technique_id=T1003,technique_name=B.0 planted true positive'
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] 	win.eventdata.sourceImage: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] 	win.eventdata.sourceProcessGUID: '{00000000-0000-0000-0000-000000000000}'
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] 	win.eventdata.sourceProcessId: '7788'
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] 	win.eventdata.sourceThreadId: '1'
+2026-11-06 07:50:07,651 wazuh_logtest[INFO] 	win.eventdata.sourceUser: 'LABHOST\\labuser'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.eventdata.targetImage: 'C:\\Windows\\system32\\lsass.exe'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.eventdata.targetProcessGUID: '{00000000-0000-0000-0000-000000000000}'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.eventdata.targetProcessId: '1056'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.eventdata.targetUser: 'NT AUTHORITY\\SYSTEM'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.eventdata.utcTime: '2026-10-26 01:25:16.977'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.channel: 'Microsoft-Windows-Sysmon/Operational'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.computer: 'labhost'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.eventID: '10'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.eventRecordID: '743145'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.keywords: '0x8000000000000000'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.level: '4'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.message: '"Process accessed:
+RuleName: technique_id=T1003,technique_name=B.0 planted true positive
+UtcTime: 2026-10-26 01:25:16.977
+SourceProcessGUID: {00000000-0000-0000-0000-000000000000}
+SourceProcessId: 7788
+SourceThreadId: 1
+SourceImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+TargetProcessGUID: {00000000-0000-0000-0000-000000000000}
+TargetProcessId: 1056
+TargetImage: C:\Windows\system32\lsass.exe
+GrantedAccess: 0x1010
+CallTrace: B.0-plant
+SourceUser: LABHOST\labuser
+TargetUser: NT AUTHORITY\SYSTEM"'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.opcode: '0'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.processID: '7788'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.providerGuid: '{5770385f-c22a-43e0-bf4c-06f5698ffbd9}'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.providerName: 'Microsoft-Windows-Sysmon'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.severityValue: 'INFORMATION'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.systemTime: '2026-10-26T01:25:17.0617860Z'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.task: '10'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.threadID: '3368'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	win.system.version: '3'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] **Phase 3: Completed filtering (rules).
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	id: '92900'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	level: '12'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	description: 'Lsass process was accessed by C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe with read permissions, possible credential dump'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	groups: '['sysmon', 'sysmon_eid10_detections', 'windows']'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	firedtimes: '1'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	mail: 'True'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	mitre.id: '['T1003.001']'
+2026-11-06 07:50:07,652 wazuh_logtest[INFO] 	mitre.tactic: '['Credential Access']'
+2026-11-06 07:50:07,653 wazuh_logtest[INFO] 	mitre.technique: '['LSASS Memory']'
+2026-11-06 07:50:07,653 wazuh_logtest[INFO] **Alert to be generated.
+
+2026-11-06 07:50:07,653 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,653 wazuh_logtest[DEBUG] Request: {"version": 1, "origin": {"name": "wazuh-logtest", "module": "wazuh-logtest"}, "command": "log_processing", "parameters": {"location": "stdin", "log_format": "syslog", "event": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"3\",\"version\":\"5\",\"level\":\"4\",\"task\":\"3\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-10-26T01:30:02.0205880Z\",\"eventRecordID\":\"743151\",\"processID\":\"2920\",\"threadID\":\"5208\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"labhost\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Network connection detected:\\r\\nRuleName: technique_id=T1571,technique_name=Non-Standard Port\\r\\nUtcTime: 2026-10-26 01:29:42.611\\r\\nProcessGuid: {00000000-a092-6ace-2b00-000000002e00}\\r\\nProcessId: 2316\\r\\nImage: C:\\\\Windows\\\\System32\\\\svchost.exe\\r\\nUser: NT AUTHORITY\\\\NETWORK SERVICE\\r\\nProtocol: udp\\r\\nInitiated: false\\r\\nSourceIsIpv6: false\\r\\nSourceIp: 224.0.0.251\\r\\nSourceHostname: -\\r\\nSourcePort: 5353\\r\\nSourcePortName: -\\r\\nDestinationIsIpv6: false\\r\\nDestinationIp: 192.0.2.1\\r\\nDestinationHostname: -\\r\\nDestinationPort: 5353\\r\\nDestinationPortName: -\\\"\"},\"eventdata\":{\"ruleName\":\"technique_id=T1571,technique_name=Non-Standard Port\",\"utcTime\":\"2026-10-26 01:29:42.611\",\"processGuid\":\"{00000000-a092-6ace-2b00-000000002e00}\",\"processId\":\"2316\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\svchost.exe\",\"user\":\"NT AUTHORITY\\\\\\\\NETWORK SERVICE\",\"protocol\":\"udp\",\"initiated\":\"false\",\"sourceIsIpv6\":\"false\",\"sourceIp\":\"224.0.0.251\",\"sourcePort\":\"5353\",\"destinationIsIpv6\":\"false\",\"destinationIp\":\"192.0.2.1\",\"destinationPort\":\"5353\"}}}", "token": "9a9d1f26"}}
+
+2026-11-06 07:50:07,656 wazuh_logtest[DEBUG] Reply: {"error":0,"data":{"token":"9a9d1f26","output":{"timestamp":"2026-11-06T07:50:07.653+0000","rule":{"level":10,"description":"logtest self-test: svchost network connection","id":"100398","mitre":{"id":["T1071"],"tactic":["Command and Control"],"technique":["Application Layer Protocol"]},"firedtimes":1,"mail":false,"groups":["logtest_selftest"]},"agent":{"id":"000","name":"b1test"},"manager":{"name":"b1test"},"id":"1793951407.134755","full_log":"{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"3\",\"version\":\"5\",\"level\":\"4\",\"task\":\"3\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-10-26T01:30:02.0205880Z\",\"eventRecordID\":\"743151\",\"processID\":\"2920\",\"threadID\":\"5208\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"labhost\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Network connection detected:\\r\\nRuleName: technique_id=T1571,technique_name=Non-Standard Port\\r\\nUtcTime: 2026-10-26 01:29:42.611\\r\\nProcessGuid: {00000000-a092-6ace-2b00-000000002e00}\\r\\nProcessId: 2316\\r\\nImage: C:\\\\Windows\\\\System32\\\\svchost.exe\\r\\nUser: NT AUTHORITY\\\\NETWORK SERVICE\\r\\nProtocol: udp\\r\\nInitiated: false\\r\\nSourceIsIpv6: false\\r\\nSourceIp: 224.0.0.251\\r\\nSourceHostname: -\\r\\nSourcePort: 5353\\r\\nSourcePortName: -\\r\\nDestinationIsIpv6: false\\r\\nDestinationIp: 192.0.2.1\\r\\nDestinationHostname: -\\r\\nDestinationPort: 5353\\r\\nDestinationPortName: -\\\"\"},\"eventdata\":{\"ruleName\":\"technique_id=T1571,technique_name=Non-Standard Port\",\"utcTime\":\"2026-10-26 01:29:42.611\",\"processGuid\":\"{00000000-a092-6ace-2b00-000000002e00}\",\"processId\":\"2316\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\svchost.exe\",\"user\":\"NT AUTHORITY\\\\\\\\NETWORK SERVICE\",\"protocol\":\"udp\",\"initiated\":\"false\",\"sourceIsIpv6\":\"false\",\"sourceIp\":\"224.0.0.251\",\"sourcePort\":\"5353\",\"destinationIsIpv6\":\"false\",\"destinationIp\":\"192.0.2.1\",\"destinationPort\":\"5353\"}}}","decoder":{"name":"windows_eventchannel"},"data":{"win":{"system":{"providerName":"Microsoft-Windows-Sysmon","providerGuid":"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}","eventID":"3","version":"5","level":"4","task":"3","opcode":"0","keywords":"0x8000000000000000","systemTime":"2026-10-26T01:30:02.0205880Z","eventRecordID":"743151","processID":"2920","threadID":"5208","channel":"Microsoft-Windows-Sysmon/Operational","computer":"labhost","severityValue":"INFORMATION","message":"\"Network connection detected:\r\nRuleName: technique_id=T1571,technique_name=Non-Standard Port\r\nUtcTime: 2026-10-26 01:29:42.611\r\nProcessGuid: {00000000-a092-6ace-2b00-000000002e00}\r\nProcessId: 2316\r\nImage: C:\\Windows\\System32\\svchost.exe\r\nUser: NT AUTHORITY\\NETWORK SERVICE\r\nProtocol: udp\r\nInitiated: false\r\nSourceIsIpv6: false\r\nSourceIp: 224.0.0.251\r\nSourceHostname: -\r\nSourcePort: 5353\r\nSourcePortName: -\r\nDestinationIsIpv6: false\r\nDestinationIp: 192.0.2.1\r\nDestinationHostname: -\r\nDestinationPort: 5353\r\nDestinationPortName: -\""},"eventdata":{"ruleName":"technique_id=T1571,technique_name=Non-Standard Port","utcTime":"2026-10-26 01:29:42.611","processGuid":"{00000000-a092-6ace-2b00-000000002e00}","processId":"2316","image":"C:\\\\Windows\\\\System32\\\\svchost.exe","user":"NT AUTHORITY\\\\NETWORK SERVICE","protocol":"udp","initiated":"false","sourceIsIpv6":"false","sourceIp":"224.0.0.251","sourcePort":"5353","destinationIsIpv6":"false","destinationIp":"192.0.2.1","destinationPort":"5353"}}},"location":"stdin"},"alert":true,"codemsg":0}}
+
+2026-11-06 07:50:07,657 wazuh_logtest[DEBUG] {
+  "token": "9a9d1f26",
+  "output": {
+    "timestamp": "2026-11-06T07:50:07.653+0000",
+    "rule": {
+      "level": 10,
+      "description": "logtest self-test: svchost network connection",
+      "id": "100398",
+      "mitre": {
+        "id": [
+          "T1071"
+        ],
+        "tactic": [
+          "Command and Control"
+        ],
+        "technique": [
+          "Application Layer Protocol"
+        ]
+      },
+      "firedtimes": 1,
+      "mail": false,
+      "groups": [
+        "logtest_selftest"
+      ]
+    },
+    "agent": {
+      "id": "000",
+      "name": "b1test"
+    },
+    "manager": {
+      "name": "b1test"
+    },
+    "id": "1793951407.134755",
+    "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"3\",\"version\":\"5\",\"level\":\"4\",\"task\":\"3\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-10-26T01:30:02.0205880Z\",\"eventRecordID\":\"743151\",\"processID\":\"2920\",\"threadID\":\"5208\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"labhost\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Network connection detected:\\r\\nRuleName: technique_id=T1571,technique_name=Non-Standard Port\\r\\nUtcTime: 2026-10-26 01:29:42.611\\r\\nProcessGuid: {00000000-a092-6ace-2b00-000000002e00}\\r\\nProcessId: 2316\\r\\nImage: C:\\\\Windows\\\\System32\\\\svchost.exe\\r\\nUser: NT AUTHORITY\\\\NETWORK SERVICE\\r\\nProtocol: udp\\r\\nInitiated: false\\r\\nSourceIsIpv6: false\\r\\nSourceIp: 224.0.0.251\\r\\nSourceHostname: -\\r\\nSourcePort: 5353\\r\\nSourcePortName: -\\r\\nDestinationIsIpv6: false\\r\\nDestinationIp: 192.0.2.1\\r\\nDestinationHostname: -\\r\\nDestinationPort: 5353\\r\\nDestinationPortName: -\\\"\"},\"eventdata\":{\"ruleName\":\"technique_id=T1571,technique_name=Non-Standard Port\",\"utcTime\":\"2026-10-26 01:29:42.611\",\"processGuid\":\"{00000000-a092-6ace-2b00-000000002e00}\",\"processId\":\"2316\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\svchost.exe\",\"user\":\"NT AUTHORITY\\\\\\\\NETWORK SERVICE\",\"protocol\":\"udp\",\"initiated\":\"false\",\"sourceIsIpv6\":\"false\",\"sourceIp\":\"224.0.0.251\",\"sourcePort\":\"5353\",\"destinationIsIpv6\":\"false\",\"destinationIp\":\"192.0.2.1\",\"destinationPort\":\"5353\"}}}",
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "data": {
+      "win": {
+        "system": {
+          "providerName": "Microsoft-Windows-Sysmon",
+          "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+          "eventID": "3",
+          "version": "5",
+          "level": "4",
+          "task": "3",
+          "opcode": "0",
+          "keywords": "0x8000000000000000",
+          "systemTime": "2026-10-26T01:30:02.0205880Z",
+          "eventRecordID": "743151",
+          "processID": "2920",
+          "threadID": "5208",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "computer": "labhost",
+          "severityValue": "INFORMATION",
+          "message": "\"Network connection detected:\r\nRuleName: technique_id=T1571,technique_name=Non-Standard Port\r\nUtcTime: 2026-10-26 01:29:42.611\r\nProcessGuid: {00000000-a092-6ace-2b00-000000002e00}\r\nProcessId: 2316\r\nImage: C:\\Windows\\System32\\svchost.exe\r\nUser: NT AUTHORITY\\NETWORK SERVICE\r\nProtocol: udp\r\nInitiated: false\r\nSourceIsIpv6: false\r\nSourceIp: 224.0.0.251\r\nSourceHostname: -\r\nSourcePort: 5353\r\nSourcePortName: -\r\nDestinationIsIpv6: false\r\nDestinationIp: 192.0.2.1\r\nDestinationHostname: -\r\nDestinationPort: 5353\r\nDestinationPortName: -\""
+        },
+        "eventdata": {
+          "ruleName": "technique_id=T1571,technique_name=Non-Standard Port",
+          "utcTime": "2026-10-26 01:29:42.611",
+          "processGuid": "{00000000-a092-6ace-2b00-000000002e00}",
+          "processId": "2316",
+          "image": "C:\\\\Windows\\\\System32\\\\svchost.exe",
+          "user": "NT AUTHORITY\\\\NETWORK SERVICE",
+          "protocol": "udp",
+          "initiated": "false",
+          "sourceIsIpv6": "false",
+          "sourceIp": "224.0.0.251",
+          "sourcePort": "5353",
+          "destinationIsIpv6": "false",
+          "destinationIp": "192.0.2.1",
+          "destinationPort": "5353"
+        }
+      }
+    },
+    "location": "stdin"
+  },
+  "alert": true,
+  "codemsg": 0
+}
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] **Phase 1: Completed pre-decoding.
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	full event: '{"win":{"system":{"providerName":"Microsoft-Windows-Sysmon","providerGuid":"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}","eventID":"3","version":"5","level":"4","task":"3","opcode":"0","keywords":"0x8000000000000000","systemTime":"2026-10-26T01:30:02.0205880Z","eventRecordID":"743151","processID":"2920","threadID":"5208","channel":"Microsoft-Windows-Sysmon/Operational","computer":"labhost","severityValue":"INFORMATION","message":"\"Network connection detected:\r\nRuleName: technique_id=T1571,technique_name=Non-Standard Port\r\nUtcTime: 2026-10-26 01:29:42.611\r\nProcessGuid: {00000000-a092-6ace-2b00-000000002e00}\r\nProcessId: 2316\r\nImage: C:\\Windows\\System32\\svchost.exe\r\nUser: NT AUTHORITY\\NETWORK SERVICE\r\nProtocol: udp\r\nInitiated: false\r\nSourceIsIpv6: false\r\nSourceIp: 224.0.0.251\r\nSourceHostname: -\r\nSourcePort: 5353\r\nSourcePortName: -\r\nDestinationIsIpv6: false\r\nDestinationIp: 192.0.2.1\r\nDestinationHostname: -\r\nDestinationPort: 5353\r\nDestinationPortName: -\""},"eventdata":{"ruleName":"technique_id=T1571,technique_name=Non-Standard Port","utcTime":"2026-10-26 01:29:42.611","processGuid":"{00000000-a092-6ace-2b00-000000002e00}","processId":"2316","image":"C:\\\\Windows\\\\System32\\\\svchost.exe","user":"NT AUTHORITY\\\\NETWORK SERVICE","protocol":"udp","initiated":"false","sourceIsIpv6":"false","sourceIp":"224.0.0.251","sourcePort":"5353","destinationIsIpv6":"false","destinationIp":"192.0.2.1","destinationPort":"5353"}}}'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] **Phase 2: Completed decoding.
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	name: 'windows_eventchannel'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	win.eventdata.destinationIp: '192.0.2.1'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	win.eventdata.destinationIsIpv6: 'false'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	win.eventdata.destinationPort: '5353'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	win.eventdata.image: 'C:\\Windows\\System32\\svchost.exe'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	win.eventdata.initiated: 'false'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	win.eventdata.processGuid: '{00000000-a092-6ace-2b00-000000002e00}'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	win.eventdata.processId: '2316'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	win.eventdata.protocol: 'udp'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	win.eventdata.ruleName: 'technique_id=T1571,technique_name=Non-Standard Port'
+2026-11-06 07:50:07,657 wazuh_logtest[INFO] 	win.eventdata.sourceIp: '224.0.0.251'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.eventdata.sourceIsIpv6: 'false'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.eventdata.sourcePort: '5353'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.eventdata.user: 'NT AUTHORITY\\NETWORK SERVICE'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.eventdata.utcTime: '2026-10-26 01:29:42.611'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.channel: 'Microsoft-Windows-Sysmon/Operational'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.computer: 'labhost'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.eventID: '3'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.eventRecordID: '743151'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.keywords: '0x8000000000000000'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.level: '4'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.message: '"Network connection detected:
+RuleName: technique_id=T1571,technique_name=Non-Standard Port
+UtcTime: 2026-10-26 01:29:42.611
+ProcessGuid: {00000000-a092-6ace-2b00-000000002e00}
+ProcessId: 2316
+Image: C:\Windows\System32\svchost.exe
+User: NT AUTHORITY\NETWORK SERVICE
+Protocol: udp
+Initiated: false
+SourceIsIpv6: false
+SourceIp: 224.0.0.251
+SourceHostname: -
+SourcePort: 5353
+SourcePortName: -
+DestinationIsIpv6: false
+DestinationIp: 192.0.2.1
+DestinationHostname: -
+DestinationPort: 5353
+DestinationPortName: -"'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.opcode: '0'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.processID: '2920'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.providerGuid: '{5770385f-c22a-43e0-bf4c-06f5698ffbd9}'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.providerName: 'Microsoft-Windows-Sysmon'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.severityValue: 'INFORMATION'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.systemTime: '2026-10-26T01:30:02.0205880Z'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.task: '3'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.threadID: '5208'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	win.system.version: '5'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] **Phase 3: Completed filtering (rules).
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	id: '100398'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	level: '10'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	description: 'logtest self-test: svchost network connection'
+2026-11-06 07:50:07,658 wazuh_logtest[INFO] 	groups: '['logtest_selftest']'
+2026-11-06 07:50:07,659 wazuh_logtest[INFO] 	firedtimes: '1'
+2026-11-06 07:50:07,659 wazuh_logtest[INFO] 	mail: 'False'
+2026-11-06 07:50:07,659 wazuh_logtest[INFO] 	mitre.id: '['T1071']'
+2026-11-06 07:50:07,659 wazuh_logtest[INFO] 	mitre.tactic: '['Command and Control']'
+2026-11-06 07:50:07,659 wazuh_logtest[INFO] 	mitre.technique: '['Application Layer Protocol']'
+2026-11-06 07:50:07,659 wazuh_logtest[INFO] **Alert to be generated.
+
+2026-11-06 07:50:07,659 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,659 wazuh_logtest[DEBUG] Request: {"version": 1, "origin": {"name": "wazuh-logtest", "module": "wazuh-logtest"}, "command": "log_processing", "parameters": {"location": "stdin", "log_format": "syslog", "event": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-10-26T01:24:51.1391101Z\",\"eventRecordID\":\"743142\",\"processID\":\"2920\",\"threadID\":\"5216\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"labhost\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: technique_id=T1027,technique_name=Obfuscated Files or Information\\r\\nUtcTime: 2026-10-26 01:24:51.135\\r\\nProcessGuid: {00000000-abe3-6ade-fc3b-000000002e00}\\r\\nProcessId: 9536\\r\\nImage: C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe\\r\\nFileVersion: 157.0.8089.0\\r\\nDescription: Google Updater (x64)\\r\\nProduct: Google Updater (x64)\\r\\nCompany: Google LLC\\r\\nOriginalFileName: updater.exe\\r\\nCommandLine: \\\"C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe\\\" --crash-handler --system \\\"--database=C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\Crashpad\\\" --url=https://clients2.google.com/cr/report --annotation=prod=Update4 --annotation=ver=157.0.8089.0 \\\"--attachment=C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\updater.log\\\" \\\"--attachment=C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\updater_history.jsonl\\\" --initial-client-data=0x2b4,0x2b8,0x2bc,0x2b0,0x2c0,0x7ff7a6c72d18,0x7ff7a6c72d28,0x7ff7a6c72d38\\r\\nCurrentDirectory: C:\\\\Windows\\\\system32\\\\\\r\\nUser: NT AUTHORITY\\\\SYSTEM\\r\\nLogonGuid: {00000000-a091-6ace-e703-000000000000}\\r\\nLogonId: 0x3E7\\r\\nTerminalSessionId: 0\\r\\nIntegrityLevel: System\\r\\nHashes: SHA1=042F0E127DAC9ED90A4C0DB1CBEEF773D378F49C,MD5=4F9BF96E5E5369E8F398D75EEBEBD86F,SHA256=6E68DFAFFA39D7C90EFF0F5CF1BFBFE63D023AD3B1BD1987A836FCD138B147B4,IMPHASH=7193381DF640EE8D2B56B3C6CEB440F2\\r\\nParentProcessGuid: {00000000-abe3-6ade-fb3b-000000002e00}\\r\\nParentProcessId: 2032\\r\\nParentImage: C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe\\r\\nParentCommandLine: \\\"C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe\\\" --system --windows-service --service=update\\r\\nParentUser: NT AUTHORITY\\\\SYSTEM\\\"\"},\"eventdata\":{\"ruleName\":\"technique_id=T1027,technique_name=Obfuscated Files or Information\",\"utcTime\":\"2026-10-26 01:24:51.135\",\"processGuid\":\"{00000000-abe3-6ade-fc3b-000000002e00}\",\"processId\":\"9536\",\"image\":\"C:\\\\\\\\Program Files (x86)\\\\\\\\Google\\\\\\\\GoogleUpdater\\\\\\\\157.0.8089.0\\\\\\\\updater.exe\",\"fileVersion\":\"157.0.8089.0\",\"description\":\"Google Updater (x64)\",\"product\":\"Google Updater (x64)\",\"company\":\"Google LLC\",\"originalFileName\":\"updater.exe\",\"commandLine\":\"\\\\\\\"C:\\\\\\\\Program Files (x86)\\\\\\\\Google\\\\\\\\GoogleUpdater\\\\\\\\157.0.8089.0\\\\\\\\updater.exe\\\\\\\" --crash-handler --system \\\\\\\"--database=C:\\\\\\\\Program Files (x86)\\\\\\\\Google\\\\\\\\GoogleUpdater\\\\\\\\157.0.8089.0\\\\\\\\Crashpad\\\\\\\" --url=https://clients2.google.com/cr/report --annotation=prod=Update4 --annotation=ver=157.0.8089.0 \\\\\\\"--attachment=C:\\\\\\\\Program Files (x86)\\\\\\\\Google\\\\\\\\GoogleUpdater\\\\\\\\updater.log\\\\\\\" \\\\\\\"--attachment=C:\\\\\\\\Program Files (x86)\\\\\\\\Google\\\\\\\\GoogleUpdater\\\\\\\\updater_history.jsonl\\\\\\\" --initial-client-data=0x2b4,0x2b8,0x2bc,0x2b0,0x2c0,0x7ff7a6c72d18,0x7ff7a6c72d28,0x7ff7a6c72d38\",\"currentDirectory\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\\",\"user\":\"NT AUTHORITY\\\\\\\\SYSTEM\",\"logonGuid\":\"{00000000-a091-6ace-e703-000000000000}\",\"logonId\":\"0x3e7\",\"terminalSessionId\":\"0\",\"integrityLevel\":\"System\",\"hashes\":\"SHA1=042F0E127DAC9ED90A4C0DB1CBEEF773D378F49C,MD5=4F9BF96E5E5369E8F398D75EEBEBD86F,SHA256=6E68DFAFFA39D7C90EFF0F5CF1BFBFE63D023AD3B1BD1987A836FCD138B147B4,IMPHASH=7193381DF640EE8D2B56B3C6CEB440F2\",\"parentProcessGuid\":\"{00000000-abe3-6ade-fb3b-000000002e00}\",\"parentProcessId\":\"2032\",\"parentImage\":\"C:\\\\\\\\Program Files (x86)\\\\\\\\Google\\\\\\\\GoogleUpdater\\\\\\\\157.0.8089.0\\\\\\\\updater.exe\",\"parentCommandLine\":\"\\\\\\\"C:\\\\\\\\Program Files (x86)\\\\\\\\Google\\\\\\\\GoogleUpdater\\\\\\\\157.0.8089.0\\\\\\\\updater.exe\\\\\\\" --system --windows-service --service=update\",\"parentUser\":\"NT AUTHORITY\\\\\\\\SYSTEM\"}}}", "token": "9a9d1f26"}}
+
+2026-11-06 07:50:07,685 wazuh_logtest[DEBUG] Reply: {"error":0,"data":{"token":"9a9d1f26","output":{"timestamp":"2026-11-06T07:50:07.659+0000","rule":{"description":"Sysmon - Event 1: Process creation Google Updater (x64)","id":"61603","firedtimes":1,"mail":false,"groups":["windows","sysmon","sysmon_event1"],"level":0},"agent":{"id":"000","name":"b1test"},"manager":{"name":"b1test"},"id":"1793951407.169418","decoder":{"name":"windows_eventchannel"},"data":{"win":{"system":{"providerName":"Microsoft-Windows-Sysmon","providerGuid":"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}","eventID":"1","version":"5","level":"4","task":"1","opcode":"0","keywords":"0x8000000000000000","systemTime":"2026-10-26T01:24:51.1391101Z","eventRecordID":"743142","processID":"2920","threadID":"5216","channel":"Microsoft-Windows-Sysmon/Operational","computer":"labhost","severityValue":"INFORMATION","message":"\"Process Create:\r\nRuleName: technique_id=T1027,technique_name=Obfuscated Files or Information\r\nUtcTime: 2026-10-26 01:24:51.135\r\nProcessGuid: {00000000-abe3-6ade-fc3b-000000002e00}\r\nProcessId: 9536\r\nImage: C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe\r\nFileVersion: 157.0.8089.0\r\nDescription: Google Updater (x64)\r\nProduct: Google Updater (x64)\r\nCompany: Google LLC\r\nOriginalFileName: updater.exe\r\nCommandLine: \"C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe\" --crash-handler --system \"--database=C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\Crashpad\" --url=https://clients2.google.com/cr/report --annotation=prod=Update4 --annotation=ver=157.0.8089.0 \"--attachment=C:\\Program Files (x86)\\Google\\GoogleUpdater\\updater.log\" \"--attachment=C:\\Program Files (x86)\\Google\\GoogleUpdater\\updater_history.jsonl\" --initial-client-data=0x2b4,0x2b8,0x2bc,0x2b0,0x2c0,0x7ff7a6c72d18,0x7ff7a6c72d28,0x7ff7a6c72d38\r\nCurrentDirectory: C:\\Windows\\system32\\\r\nUser: NT AUTHORITY\\SYSTEM\r\nLogonGuid: {00000000-a091-6ace-e703-000000000000}\r\nLogonId: 0x3E7\r\nTerminalSessionId: 0\r\nIntegrityLevel: System\r\nHashes: SHA1=042F0E127DAC9ED90A4C0DB1CBEEF773D378F49C,MD5=4F9BF96E5E5369E8F398D75EEBEBD86F,SHA256=6E68DFAFFA39D7C90EFF0F5CF1BFBFE63D023AD3B1BD1987A836FCD138B147B4,IMPHASH=7193381DF640EE8D2B56B3C6CEB440F2\r\nParentProcessGuid: {00000000-abe3-6ade-fb3b-000000002e00}\r\nParentProcessId: 2032\r\nParentImage: C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe\r\nParentCommandLine: \"C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe\" --system --windows-service --service=update\r\nParentUser: NT AUTHORITY\\SYSTEM\""},"eventdata":{"ruleName":"technique_id=T1027,technique_name=Obfuscated Files or Information","utcTime":"2026-10-26 01:24:51.135","processGuid":"{00000000-abe3-6ade-fc3b-000000002e00}","processId":"9536","image":"C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe","fileVersion":"157.0.8089.0","description":"Google Updater (x64)","product":"Google Updater (x64)","company":"Google LLC","originalFileName":"updater.exe","commandLine":"\\\"C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe\\\" --crash-handler --system \\\"--database=C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\Crashpad\\\" --url=https://clients2.google.com/cr/report --annotation=prod=Update4 --annotation=ver=157.0.8089.0 \\\"--attachment=C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\updater.log\\\" \\\"--attachment=C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\updater_history.jsonl\\\" --initial-client-data=0x2b4,0x2b8,0x2bc,0x2b0,0x2c0,0x7ff7a6c72d18,0x7ff7a6c72d28,0x7ff7a6c72d38","currentDirectory":"C:\\\\Windows\\\\system32\\\\","user":"NT AUTHORITY\\\\SYSTEM","logonGuid":"{00000000-a091-6ace-e703-000000000000}","logonId":"0x3e7","terminalSessionId":"0","integrityLevel":"System","hashes":"SHA1=042F0E127DAC9ED90A4C0DB1CBEEF773D378F49C,MD5=4F9BF96E5E5369E8F398D75EEBEBD86F,SHA256=6E68DFAFFA39D7C90EFF0F5CF1BFBFE63D023AD3B1BD1987A836FCD138B147B4,IMPHASH=7193381DF640EE8D2B56B3C6CEB440F2","parentProcessGuid":"{00000000-abe3-6ade-fb3b-000000002e00}","parentProcessId":"2032","parentImage":"C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe","parentCommandLine":"\\\"C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe\\\" --system --windows-service --service=update","parentUser":"NT AUTHORITY\\\\SYSTEM"}}},"location":"stdin"},"alert":false,"codemsg":0}}
+
+2026-11-06 07:50:07,685 wazuh_logtest[DEBUG] {
+  "token": "9a9d1f26",
+  "output": {
+    "timestamp": "2026-11-06T07:50:07.659+0000",
+    "rule": {
+      "description": "Sysmon - Event 1: Process creation Google Updater (x64)",
+      "id": "61603",
+      "firedtimes": 1,
+      "mail": false,
+      "groups": [
+        "windows",
+        "sysmon",
+        "sysmon_event1"
+      ],
+      "level": 0
+    },
+    "agent": {
+      "id": "000",
+      "name": "b1test"
+    },
+    "manager": {
+      "name": "b1test"
+    },
+    "id": "1793951407.169418",
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "data": {
+      "win": {
+        "system": {
+          "providerName": "Microsoft-Windows-Sysmon",
+          "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+          "eventID": "1",
+          "version": "5",
+          "level": "4",
+          "task": "1",
+          "opcode": "0",
+          "keywords": "0x8000000000000000",
+          "systemTime": "2026-10-26T01:24:51.1391101Z",
+          "eventRecordID": "743142",
+          "processID": "2920",
+          "threadID": "5216",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "computer": "labhost",
+          "severityValue": "INFORMATION",
+          "message": "\"Process Create:\r\nRuleName: technique_id=T1027,technique_name=Obfuscated Files or Information\r\nUtcTime: 2026-10-26 01:24:51.135\r\nProcessGuid: {00000000-abe3-6ade-fc3b-000000002e00}\r\nProcessId: 9536\r\nImage: C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe\r\nFileVersion: 157.0.8089.0\r\nDescription: Google Updater (x64)\r\nProduct: Google Updater (x64)\r\nCompany: Google LLC\r\nOriginalFileName: updater.exe\r\nCommandLine: \"C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe\" --crash-handler --system \"--database=C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\Crashpad\" --url=https://clients2.google.com/cr/report --annotation=prod=Update4 --annotation=ver=157.0.8089.0 \"--attachment=C:\\Program Files (x86)\\Google\\GoogleUpdater\\updater.log\" \"--attachment=C:\\Program Files (x86)\\Google\\GoogleUpdater\\updater_history.jsonl\" --initial-client-data=0x2b4,0x2b8,0x2bc,0x2b0,0x2c0,0x7ff7a6c72d18,0x7ff7a6c72d28,0x7ff7a6c72d38\r\nCurrentDirectory: C:\\Windows\\system32\\\r\nUser: NT AUTHORITY\\SYSTEM\r\nLogonGuid: {00000000-a091-6ace-e703-000000000000}\r\nLogonId: 0x3E7\r\nTerminalSessionId: 0\r\nIntegrityLevel: System\r\nHashes: SHA1=042F0E127DAC9ED90A4C0DB1CBEEF773D378F49C,MD5=4F9BF96E5E5369E8F398D75EEBEBD86F,SHA256=6E68DFAFFA39D7C90EFF0F5CF1BFBFE63D023AD3B1BD1987A836FCD138B147B4,IMPHASH=7193381DF640EE8D2B56B3C6CEB440F2\r\nParentProcessGuid: {00000000-abe3-6ade-fb3b-000000002e00}\r\nParentProcessId: 2032\r\nParentImage: C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe\r\nParentCommandLine: \"C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe\" --system --windows-service --service=update\r\nParentUser: NT AUTHORITY\\SYSTEM\""
+        },
+        "eventdata": {
+          "ruleName": "technique_id=T1027,technique_name=Obfuscated Files or Information",
+          "utcTime": "2026-10-26 01:24:51.135",
+          "processGuid": "{00000000-abe3-6ade-fc3b-000000002e00}",
+          "processId": "9536",
+          "image": "C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe",
+          "fileVersion": "157.0.8089.0",
+          "description": "Google Updater (x64)",
+          "product": "Google Updater (x64)",
+          "company": "Google LLC",
+          "originalFileName": "updater.exe",
+          "commandLine": "\\\"C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe\\\" --crash-handler --system \\\"--database=C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\Crashpad\\\" --url=https://clients2.google.com/cr/report --annotation=prod=Update4 --annotation=ver=157.0.8089.0 \\\"--attachment=C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\updater.log\\\" \\\"--attachment=C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\updater_history.jsonl\\\" --initial-client-data=0x2b4,0x2b8,0x2bc,0x2b0,0x2c0,0x7ff7a6c72d18,0x7ff7a6c72d28,0x7ff7a6c72d38",
+          "currentDirectory": "C:\\\\Windows\\\\system32\\\\",
+          "user": "NT AUTHORITY\\\\SYSTEM",
+          "logonGuid": "{00000000-a091-6ace-e703-000000000000}",
+          "logonId": "0x3e7",
+          "terminalSessionId": "0",
+          "integrityLevel": "System",
+          "hashes": "SHA1=042F0E127DAC9ED90A4C0DB1CBEEF773D378F49C,MD5=4F9BF96E5E5369E8F398D75EEBEBD86F,SHA256=6E68DFAFFA39D7C90EFF0F5CF1BFBFE63D023AD3B1BD1987A836FCD138B147B4,IMPHASH=7193381DF640EE8D2B56B3C6CEB440F2",
+          "parentProcessGuid": "{00000000-abe3-6ade-fb3b-000000002e00}",
+          "parentProcessId": "2032",
+          "parentImage": "C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe",
+          "parentCommandLine": "\\\"C:\\\\Program Files (x86)\\\\Google\\\\GoogleUpdater\\\\157.0.8089.0\\\\updater.exe\\\" --system --windows-service --service=update",
+          "parentUser": "NT AUTHORITY\\\\SYSTEM"
+        }
+      }
+    },
+    "location": "stdin"
+  },
+  "alert": false,
+  "codemsg": 0
+}
+2026-11-06 07:50:07,685 wazuh_logtest[INFO] **Phase 1: Completed pre-decoding.
+2026-11-06 07:50:07,685 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,685 wazuh_logtest[INFO] **Phase 2: Completed decoding.
+2026-11-06 07:50:07,685 wazuh_logtest[INFO] 	name: 'windows_eventchannel'
+2026-11-06 07:50:07,685 wazuh_logtest[INFO] 	win.eventdata.commandLine: '\"C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe\" --crash-handler --system \"--database=C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\Crashpad\" --url=https://clients2.google.com/cr/report --annotation=prod=Update4 --annotation=ver=157.0.8089.0 \"--attachment=C:\\Program Files (x86)\\Google\\GoogleUpdater\\updater.log\" \"--attachment=C:\\Program Files (x86)\\Google\\GoogleUpdater\\updater_history.jsonl\" --initial-client-data=0x2b4,0x2b8,0x2bc,0x2b0,0x2c0,0x7ff7a6c72d18,0x7ff7a6c72d28,0x7ff7a6c72d38'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.company: 'Google LLC'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.currentDirectory: 'C:\\Windows\\system32\\'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.description: 'Google Updater (x64)'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.fileVersion: '157.0.8089.0'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.hashes: 'SHA1=042F0E127DAC9ED90A4C0DB1CBEEF773D378F49C,MD5=4F9BF96E5E5369E8F398D75EEBEBD86F,SHA256=6E68DFAFFA39D7C90EFF0F5CF1BFBFE63D023AD3B1BD1987A836FCD138B147B4,IMPHASH=7193381DF640EE8D2B56B3C6CEB440F2'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.image: 'C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.integrityLevel: 'System'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.logonGuid: '{00000000-a091-6ace-e703-000000000000}'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.logonId: '0x3e7'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.originalFileName: 'updater.exe'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.parentCommandLine: '\"C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe\" --system --windows-service --service=update'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.parentImage: 'C:\\Program Files (x86)\\Google\\GoogleUpdater\\157.0.8089.0\\updater.exe'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.parentProcessGuid: '{00000000-abe3-6ade-fb3b-000000002e00}'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.parentProcessId: '2032'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.parentUser: 'NT AUTHORITY\\SYSTEM'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.processGuid: '{00000000-abe3-6ade-fc3b-000000002e00}'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.processId: '9536'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.product: 'Google Updater (x64)'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.ruleName: 'technique_id=T1027,technique_name=Obfuscated Files or Information'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.terminalSessionId: '0'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.user: 'NT AUTHORITY\\SYSTEM'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.eventdata.utcTime: '2026-10-26 01:24:51.135'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.system.channel: 'Microsoft-Windows-Sysmon/Operational'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.system.computer: 'labhost'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.system.eventID: '1'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.system.eventRecordID: '743142'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.system.keywords: '0x8000000000000000'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.system.level: '4'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.system.message: '"Process Create:
+RuleName: technique_id=T1027,technique_name=Obfuscated Files or Information
+UtcTime: 2026-10-26 01:24:51.135
+ProcessGuid: {00000000-abe3-6ade-fc3b-000000002e00}
+ProcessId: 9536
+Image: C:\Program Files (x86)\Google\GoogleUpdater\157.0.8089.0\updater.exe
+FileVersion: 157.0.8089.0
+Description: Google Updater (x64)
+Product: Google Updater (x64)
+Company: Google LLC
+OriginalFileName: updater.exe
+CommandLine: "C:\Program Files (x86)\Google\GoogleUpdater\157.0.8089.0\updater.exe" --crash-handler --system "--database=C:\Program Files (x86)\Google\GoogleUpdater\157.0.8089.0\Crashpad" --url=https://clients2.google.com/cr/report --annotation=prod=Update4 --annotation=ver=157.0.8089.0 "--attachment=C:\Program Files (x86)\Google\GoogleUpdater\updater.log" "--attachment=C:\Program Files (x86)\Google\GoogleUpdater\updater_history.jsonl" --initial-client-data=0x2b4,0x2b8,0x2bc,0x2b0,0x2c0,0x7ff7a6c72d18,0x7ff7a6c72d28,0x7ff7a6c72d38
+CurrentDirectory: C:\Windows\system32\
+User: NT AUTHORITY\SYSTEM
+LogonGuid: {00000000-a091-6ace-e703-000000000000}
+LogonId: 0x3E7
+TerminalSessionId: 0
+IntegrityLevel: System
+Hashes: SHA1=042F0E127DAC9ED90A4C0DB1CBEEF773D378F49C,MD5=4F9BF96E5E5369E8F398D75EEBEBD86F,SHA256=6E68DFAFFA39D7C90EFF0F5CF1BFBFE63D023AD3B1BD1987A836FCD138B147B4,IMPHASH=7193381DF640EE8D2B56B3C6CEB440F2
+ParentProcessGuid: {00000000-abe3-6ade-fb3b-000000002e00}
+ParentProcessId: 2032
+ParentImage: C:\Program Files (x86)\Google\GoogleUpdater\157.0.8089.0\updater.exe
+ParentCommandLine: "C:\Program Files (x86)\Google\GoogleUpdater\157.0.8089.0\updater.exe" --system --windows-service --service=update
+ParentUser: NT AUTHORITY\SYSTEM"'
+2026-11-06 07:50:07,686 wazuh_logtest[INFO] 	win.system.opcode: '0'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	win.system.processID: '2920'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	win.system.providerGuid: '{5770385f-c22a-43e0-bf4c-06f5698ffbd9}'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	win.system.providerName: 'Microsoft-Windows-Sysmon'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	win.system.severityValue: 'INFORMATION'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	win.system.systemTime: '2026-10-26T01:24:51.1391101Z'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	win.system.task: '1'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	win.system.threadID: '5216'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	win.system.version: '5'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] **Phase 3: Completed filtering (rules).
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	id: '61603'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	level: '0'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	description: 'Sysmon - Event 1: Process creation Google Updater (x64)'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	groups: '['windows', 'sysmon', 'sysmon_event1']'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	firedtimes: '1'
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 	mail: 'False'
+
+2026-11-06 07:50:07,687 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,687 wazuh_logtest[DEBUG] Request: {"version": 1, "origin": {"name": "wazuh-logtest", "module": "wazuh-logtest"}, "command": "log_processing", "parameters": {"location": "stdin", "log_format": "syslog", "event": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-10-29T21:11:21.8792457Z\",\"eventRecordID\":\"786877\",\"processID\":\"3952\",\"threadID\":\"5188\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"labhost\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: technique_id=T1059.001,technique_name=PowerShell\\r\\nUtcTime: 2026-10-29 21:11:21.857\\r\\nProcessGuid: {00000000-b679-6ae3-3406-000000003000}\\r\\nProcessId: 6416\\r\\nImage: C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\r\\nFileVersion: 10.0.26100.9818 (WinBuild.160101.0800)\\r\\nDescription: Windows PowerShell 5.1\\r\\nProduct: Microsoft\u00ae Windows\u00ae Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: PowerShell.EXE\\r\\nCommandLine: \\\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\r\\nCurrentDirectory: C:\\\\Users\\\\labuser\\\\\\r\\nUser: labhost\\\\labuser\\r\\nLogonGuid: {00000000-b678-6ae3-2042-8b0100000000}\\r\\nLogonId: 0x18B4220\\r\\nTerminalSessionId: 0\\r\\nIntegrityLevel: High\\r\\nHashes: SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2\\r\\nParentProcessGuid: {00000000-b678-6ae3-3206-000000003000}\\r\\nParentProcessId: 2228\\r\\nParentImage: C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\\r\\nParentCommandLine: \\\"c:\\\\program files\\\\powershell\\\\7\\\\pwsh.exe\\\" -c \\\"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\\"\\r\\nParentUser: labhost\\\\labuser\\\"\"},\"eventdata\":{\"ruleName\":\"technique_id=T1059.001,technique_name=PowerShell\",\"utcTime\":\"2026-10-29 21:11:21.857\",\"processGuid\":\"{00000000-b679-6ae3-3406-000000003000}\",\"processId\":\"6416\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\WindowsPowerShell\\\\\\\\v1.0\\\\\\\\powershell.exe\",\"fileVersion\":\"10.0.26100.9818 (WinBuild.160101.0800)\",\"description\":\"Windows PowerShell 5.1\",\"product\":\"Microsoft\u00ae Windows\u00ae Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"PowerShell.EXE\",\"commandLine\":\"\\\\\\\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\WindowsPowerShell\\\\\\\\v1.0\\\\\\\\powershell.exe\\\\\\\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\",\"currentDirectory\":\"C:\\\\\\\\Users\\\\\\\\labuser\\\\\\\\\",\"user\":\"labhost\\\\\\\\labuser\",\"logonGuid\":\"{00000000-b678-6ae3-2042-8b0100000000}\",\"logonId\":\"0x18b4220\",\"terminalSessionId\":\"0\",\"integrityLevel\":\"High\",\"hashes\":\"SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2\",\"parentProcessGuid\":\"{00000000-b678-6ae3-3206-000000003000}\",\"parentProcessId\":\"2228\",\"parentImage\":\"C:\\\\\\\\Program Files\\\\\\\\PowerShell\\\\\\\\7\\\\\\\\pwsh.exe\",\"parentCommandLine\":\"\\\\\\\"c:\\\\\\\\program files\\\\\\\\powershell\\\\\\\\7\\\\\\\\pwsh.exe\\\\\\\" -c \\\\\\\"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\\\\\\"\",\"parentUser\":\"labhost\\\\\\\\labuser\"}}}", "token": "9a9d1f26"}}
+
+2026-11-06 07:50:07,789 wazuh_logtest[DEBUG] Reply: {"error":0,"data":{"token":"9a9d1f26","output":{"timestamp":"2026-11-06T07:50:07.687+0000","rule":{"level":10,"description":"logtest self-test: PowerShell process creation","id":"100399","mitre":{"id":["T1059.001"],"tactic":["Execution"],"technique":["PowerShell"]},"firedtimes":1,"mail":false,"groups":["logtest_selftest"]},"agent":{"id":"000","name":"b1test"},"manager":{"name":"b1test"},"id":"1793951407.225110","full_log":"{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-10-29T21:11:21.8792457Z\",\"eventRecordID\":\"786877\",\"processID\":\"3952\",\"threadID\":\"5188\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"labhost\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: technique_id=T1059.001,technique_name=PowerShell\\r\\nUtcTime: 2026-10-29 21:11:21.857\\r\\nProcessGuid: {00000000-b679-6ae3-3406-000000003000}\\r\\nProcessId: 6416\\r\\nImage: C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\r\\nFileVersion: 10.0.26100.9818 (WinBuild.160101.0800)\\r\\nDescription: Windows PowerShell 5.1\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: PowerShell.EXE\\r\\nCommandLine: \\\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\r\\nCurrentDirectory: C:\\\\Users\\\\labuser\\\\\\r\\nUser: labhost\\\\labuser\\r\\nLogonGuid: {00000000-b678-6ae3-2042-8b0100000000}\\r\\nLogonId: 0x18B4220\\r\\nTerminalSessionId: 0\\r\\nIntegrityLevel: High\\r\\nHashes: SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2\\r\\nParentProcessGuid: {00000000-b678-6ae3-3206-000000003000}\\r\\nParentProcessId: 2228\\r\\nParentImage: C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\\r\\nParentCommandLine: \\\"c:\\\\program files\\\\powershell\\\\7\\\\pwsh.exe\\\" -c \\\"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\\"\\r\\nParentUser: labhost\\\\labuser\\\"\"},\"eventdata\":{\"ruleName\":\"technique_id=T1059.001,technique_name=PowerShell\",\"utcTime\":\"2026-10-29 21:11:21.857\",\"processGuid\":\"{00000000-b679-6ae3-3406-000000003000}\",\"processId\":\"6416\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\WindowsPowerShell\\\\\\\\v1.0\\\\\\\\powershell.exe\",\"fileVersion\":\"10.0.26100.9818 (WinBuild.160101.0800)\",\"description\":\"Windows PowerShell 5.1\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"PowerShell.EXE\",\"commandLine\":\"\\\\\\\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\WindowsPowerShell\\\\\\\\v1.0\\\\\\\\powershell.exe\\\\\\\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\",\"currentDirectory\":\"C:\\\\\\\\Users\\\\\\\\labuser\\\\\\\\\",\"user\":\"labhost\\\\\\\\labuser\",\"logonGuid\":\"{00000000-b678-6ae3-2042-8b0100000000}\",\"logonId\":\"0x18b4220\",\"terminalSessionId\":\"0\",\"integrityLevel\":\"High\",\"hashes\":\"SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2\",\"parentProcessGuid\":\"{00000000-b678-6ae3-3206-000000003000}\",\"parentProcessId\":\"2228\",\"parentImage\":\"C:\\\\\\\\Program Files\\\\\\\\PowerShell\\\\\\\\7\\\\\\\\pwsh.exe\",\"parentCommandLine\":\"\\\\\\\"c:\\\\\\\\program files\\\\\\\\powershell\\\\\\\\7\\\\\\\\pwsh.exe\\\\\\\" -c \\\\\\\"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\\\\\\"\",\"parentUser\":\"labhost\\\\\\\\labuser\"}}}","decoder":{"name":"windows_eventchannel"},"data":{"win":{"system":{"providerName":"Microsoft-Windows-Sysmon","providerGuid":"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}","eventID":"1","version":"5","level":"4","task":"1","opcode":"0","keywords":"0x8000000000000000","systemTime":"2026-10-29T21:11:21.8792457Z","eventRecordID":"786877","processID":"3952","threadID":"5188","channel":"Microsoft-Windows-Sysmon/Operational","computer":"labhost","severityValue":"INFORMATION","message":"\"Process Create:\r\nRuleName: technique_id=T1059.001,technique_name=PowerShell\r\nUtcTime: 2026-10-29 21:11:21.857\r\nProcessGuid: {00000000-b679-6ae3-3406-000000003000}\r\nProcessId: 6416\r\nImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nFileVersion: 10.0.26100.9818 (WinBuild.160101.0800)\r\nDescription: Windows PowerShell 5.1\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: PowerShell.EXE\r\nCommandLine: \"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\r\nCurrentDirectory: C:\\Users\\labuser\\\r\nUser: labhost\\labuser\r\nLogonGuid: {00000000-b678-6ae3-2042-8b0100000000}\r\nLogonId: 0x18B4220\r\nTerminalSessionId: 0\r\nIntegrityLevel: High\r\nHashes: SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2\r\nParentProcessGuid: {00000000-b678-6ae3-3206-000000003000}\r\nParentProcessId: 2228\r\nParentImage: C:\\Program Files\\PowerShell\\7\\pwsh.exe\r\nParentCommandLine: \"c:\\program files\\powershell\\7\\pwsh.exe\" -c \"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\"\r\nParentUser: labhost\\labuser\""},"eventdata":{"ruleName":"technique_id=T1059.001,technique_name=PowerShell","utcTime":"2026-10-29 21:11:21.857","processGuid":"{00000000-b679-6ae3-3406-000000003000}","processId":"6416","image":"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe","fileVersion":"10.0.26100.9818 (WinBuild.160101.0800)","description":"Windows PowerShell 5.1","product":"Microsoft® Windows® Operating System","company":"Microsoft Corporation","originalFileName":"PowerShell.EXE","commandLine":"\\\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA","currentDirectory":"C:\\\\Users\\\\labuser\\\\","user":"labhost\\\\labuser","logonGuid":"{00000000-b678-6ae3-2042-8b0100000000}","logonId":"0x18b4220","terminalSessionId":"0","integrityLevel":"High","hashes":"SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2","parentProcessGuid":"{00000000-b678-6ae3-3206-000000003000}","parentProcessId":"2228","parentImage":"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe","parentCommandLine":"\\\"c:\\\\program files\\\\powershell\\\\7\\\\pwsh.exe\\\" -c \\\"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\\"","parentUser":"labhost\\\\labuser"}}},"location":"stdin"},"alert":true,"codemsg":0}}
+
+2026-11-06 07:50:07,789 wazuh_logtest[DEBUG] {
+  "token": "9a9d1f26",
+  "output": {
+    "timestamp": "2026-11-06T07:50:07.687+0000",
+    "rule": {
+      "level": 10,
+      "description": "logtest self-test: PowerShell process creation",
+      "id": "100399",
+      "mitre": {
+        "id": [
+          "T1059.001"
+        ],
+        "tactic": [
+          "Execution"
+        ],
+        "technique": [
+          "PowerShell"
+        ]
+      },
+      "firedtimes": 1,
+      "mail": false,
+      "groups": [
+        "logtest_selftest"
+      ]
+    },
+    "agent": {
+      "id": "000",
+      "name": "b1test"
+    },
+    "manager": {
+      "name": "b1test"
+    },
+    "id": "1793951407.225110",
+    "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-10-29T21:11:21.8792457Z\",\"eventRecordID\":\"786877\",\"processID\":\"3952\",\"threadID\":\"5188\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"labhost\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: technique_id=T1059.001,technique_name=PowerShell\\r\\nUtcTime: 2026-10-29 21:11:21.857\\r\\nProcessGuid: {00000000-b679-6ae3-3406-000000003000}\\r\\nProcessId: 6416\\r\\nImage: C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\r\\nFileVersion: 10.0.26100.9818 (WinBuild.160101.0800)\\r\\nDescription: Windows PowerShell 5.1\\r\\nProduct: Microsoft\u00ae Windows\u00ae Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: PowerShell.EXE\\r\\nCommandLine: \\\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\r\\nCurrentDirectory: C:\\\\Users\\\\labuser\\\\\\r\\nUser: labhost\\\\labuser\\r\\nLogonGuid: {00000000-b678-6ae3-2042-8b0100000000}\\r\\nLogonId: 0x18B4220\\r\\nTerminalSessionId: 0\\r\\nIntegrityLevel: High\\r\\nHashes: SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2\\r\\nParentProcessGuid: {00000000-b678-6ae3-3206-000000003000}\\r\\nParentProcessId: 2228\\r\\nParentImage: C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\\r\\nParentCommandLine: \\\"c:\\\\program files\\\\powershell\\\\7\\\\pwsh.exe\\\" -c \\\"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\\"\\r\\nParentUser: labhost\\\\labuser\\\"\"},\"eventdata\":{\"ruleName\":\"technique_id=T1059.001,technique_name=PowerShell\",\"utcTime\":\"2026-10-29 21:11:21.857\",\"processGuid\":\"{00000000-b679-6ae3-3406-000000003000}\",\"processId\":\"6416\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\WindowsPowerShell\\\\\\\\v1.0\\\\\\\\powershell.exe\",\"fileVersion\":\"10.0.26100.9818 (WinBuild.160101.0800)\",\"description\":\"Windows PowerShell 5.1\",\"product\":\"Microsoft\u00ae Windows\u00ae Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"PowerShell.EXE\",\"commandLine\":\"\\\\\\\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\WindowsPowerShell\\\\\\\\v1.0\\\\\\\\powershell.exe\\\\\\\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\",\"currentDirectory\":\"C:\\\\\\\\Users\\\\\\\\labuser\\\\\\\\\",\"user\":\"labhost\\\\\\\\labuser\",\"logonGuid\":\"{00000000-b678-6ae3-2042-8b0100000000}\",\"logonId\":\"0x18b4220\",\"terminalSessionId\":\"0\",\"integrityLevel\":\"High\",\"hashes\":\"SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2\",\"parentProcessGuid\":\"{00000000-b678-6ae3-3206-000000003000}\",\"parentProcessId\":\"2228\",\"parentImage\":\"C:\\\\\\\\Program Files\\\\\\\\PowerShell\\\\\\\\7\\\\\\\\pwsh.exe\",\"parentCommandLine\":\"\\\\\\\"c:\\\\\\\\program files\\\\\\\\powershell\\\\\\\\7\\\\\\\\pwsh.exe\\\\\\\" -c \\\\\\\"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\\\\\\"\",\"parentUser\":\"labhost\\\\\\\\labuser\"}}}",
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "data": {
+      "win": {
+        "system": {
+          "providerName": "Microsoft-Windows-Sysmon",
+          "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+          "eventID": "1",
+          "version": "5",
+          "level": "4",
+          "task": "1",
+          "opcode": "0",
+          "keywords": "0x8000000000000000",
+          "systemTime": "2026-10-29T21:11:21.8792457Z",
+          "eventRecordID": "786877",
+          "processID": "3952",
+          "threadID": "5188",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "computer": "labhost",
+          "severityValue": "INFORMATION",
+          "message": "\"Process Create:\r\nRuleName: technique_id=T1059.001,technique_name=PowerShell\r\nUtcTime: 2026-10-29 21:11:21.857\r\nProcessGuid: {00000000-b679-6ae3-3406-000000003000}\r\nProcessId: 6416\r\nImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nFileVersion: 10.0.26100.9818 (WinBuild.160101.0800)\r\nDescription: Windows PowerShell 5.1\r\nProduct: Microsoft\u00ae Windows\u00ae Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: PowerShell.EXE\r\nCommandLine: \"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\r\nCurrentDirectory: C:\\Users\\labuser\\\r\nUser: labhost\\labuser\r\nLogonGuid: {00000000-b678-6ae3-2042-8b0100000000}\r\nLogonId: 0x18B4220\r\nTerminalSessionId: 0\r\nIntegrityLevel: High\r\nHashes: SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2\r\nParentProcessGuid: {00000000-b678-6ae3-3206-000000003000}\r\nParentProcessId: 2228\r\nParentImage: C:\\Program Files\\PowerShell\\7\\pwsh.exe\r\nParentCommandLine: \"c:\\program files\\powershell\\7\\pwsh.exe\" -c \"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\"\r\nParentUser: labhost\\labuser\""
+        },
+        "eventdata": {
+          "ruleName": "technique_id=T1059.001,technique_name=PowerShell",
+          "utcTime": "2026-10-29 21:11:21.857",
+          "processGuid": "{00000000-b679-6ae3-3406-000000003000}",
+          "processId": "6416",
+          "image": "C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe",
+          "fileVersion": "10.0.26100.9818 (WinBuild.160101.0800)",
+          "description": "Windows PowerShell 5.1",
+          "product": "Microsoft\u00ae Windows\u00ae Operating System",
+          "company": "Microsoft Corporation",
+          "originalFileName": "PowerShell.EXE",
+          "commandLine": "\\\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA",
+          "currentDirectory": "C:\\\\Users\\\\labuser\\\\",
+          "user": "labhost\\\\labuser",
+          "logonGuid": "{00000000-b678-6ae3-2042-8b0100000000}",
+          "logonId": "0x18b4220",
+          "terminalSessionId": "0",
+          "integrityLevel": "High",
+          "hashes": "SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2",
+          "parentProcessGuid": "{00000000-b678-6ae3-3206-000000003000}",
+          "parentProcessId": "2228",
+          "parentImage": "C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe",
+          "parentCommandLine": "\\\"c:\\\\program files\\\\powershell\\\\7\\\\pwsh.exe\\\" -c \\\"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\\"",
+          "parentUser": "labhost\\\\labuser"
+        }
+      }
+    },
+    "location": "stdin"
+  },
+  "alert": true,
+  "codemsg": 0
+}
+2026-11-06 07:50:07,789 wazuh_logtest[INFO] **Phase 1: Completed pre-decoding.
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	full event: '{"win":{"system":{"providerName":"Microsoft-Windows-Sysmon","providerGuid":"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}","eventID":"1","version":"5","level":"4","task":"1","opcode":"0","keywords":"0x8000000000000000","systemTime":"2026-10-29T21:11:21.8792457Z","eventRecordID":"786877","processID":"3952","threadID":"5188","channel":"Microsoft-Windows-Sysmon/Operational","computer":"labhost","severityValue":"INFORMATION","message":"\"Process Create:\r\nRuleName: technique_id=T1059.001,technique_name=PowerShell\r\nUtcTime: 2026-10-29 21:11:21.857\r\nProcessGuid: {00000000-b679-6ae3-3406-000000003000}\r\nProcessId: 6416\r\nImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nFileVersion: 10.0.26100.9818 (WinBuild.160101.0800)\r\nDescription: Windows PowerShell 5.1\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: PowerShell.EXE\r\nCommandLine: \"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\r\nCurrentDirectory: C:\\Users\\labuser\\\r\nUser: labhost\\labuser\r\nLogonGuid: {00000000-b678-6ae3-2042-8b0100000000}\r\nLogonId: 0x18B4220\r\nTerminalSessionId: 0\r\nIntegrityLevel: High\r\nHashes: SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2\r\nParentProcessGuid: {00000000-b678-6ae3-3206-000000003000}\r\nParentProcessId: 2228\r\nParentImage: C:\\Program Files\\PowerShell\\7\\pwsh.exe\r\nParentCommandLine: \"c:\\program files\\powershell\\7\\pwsh.exe\" -c \"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\"\r\nParentUser: labhost\\labuser\""},"eventdata":{"ruleName":"technique_id=T1059.001,technique_name=PowerShell","utcTime":"2026-10-29 21:11:21.857","processGuid":"{00000000-b679-6ae3-3406-000000003000}","processId":"6416","image":"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe","fileVersion":"10.0.26100.9818 (WinBuild.160101.0800)","description":"Windows PowerShell 5.1","product":"Microsoft® Windows® Operating System","company":"Microsoft Corporation","originalFileName":"PowerShell.EXE","commandLine":"\\\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA","currentDirectory":"C:\\\\Users\\\\labuser\\\\","user":"labhost\\\\labuser","logonGuid":"{00000000-b678-6ae3-2042-8b0100000000}","logonId":"0x18b4220","terminalSessionId":"0","integrityLevel":"High","hashes":"SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2","parentProcessGuid":"{00000000-b678-6ae3-3206-000000003000}","parentProcessId":"2228","parentImage":"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe","parentCommandLine":"\\\"c:\\\\program files\\\\powershell\\\\7\\\\pwsh.exe\\\" -c \\\"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\\\"","parentUser":"labhost\\\\labuser"}}}'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] **Phase 2: Completed decoding.
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	name: 'windows_eventchannel'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.commandLine: '\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.company: 'Microsoft Corporation'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.currentDirectory: 'C:\\Users\\labuser\\'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.description: 'Windows PowerShell 5.1'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.fileVersion: '10.0.26100.9818 (WinBuild.160101.0800)'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.hashes: 'SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.image: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.integrityLevel: 'High'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.logonGuid: '{00000000-b678-6ae3-2042-8b0100000000}'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.logonId: '0x18b4220'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.originalFileName: 'PowerShell.EXE'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.parentCommandLine: '\"c:\\program files\\powershell\\7\\pwsh.exe\" -c \"powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA\"'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.parentImage: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.parentProcessGuid: '{00000000-b678-6ae3-3206-000000003000}'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.parentProcessId: '2228'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.parentUser: 'labhost\\labuser'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.processGuid: '{00000000-b679-6ae3-3406-000000003000}'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.processId: '6416'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.product: 'Microsoft® Windows® Operating System'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.ruleName: 'technique_id=T1059.001,technique_name=PowerShell'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.terminalSessionId: '0'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.user: 'labhost\\labuser'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.eventdata.utcTime: '2026-10-29 21:11:21.857'
+2026-11-06 07:50:07,790 wazuh_logtest[INFO] 	win.system.channel: 'Microsoft-Windows-Sysmon/Operational'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.computer: 'labhost'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.eventID: '1'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.eventRecordID: '786877'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.keywords: '0x8000000000000000'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.level: '4'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.message: '"Process Create:
+RuleName: technique_id=T1059.001,technique_name=PowerShell
+UtcTime: 2026-10-29 21:11:21.857
+ProcessGuid: {00000000-b679-6ae3-3406-000000003000}
+ProcessId: 6416
+Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+FileVersion: 10.0.26100.9818 (WinBuild.160101.0800)
+Description: Windows PowerShell 5.1
+Product: Microsoft® Windows® Operating System
+Company: Microsoft Corporation
+OriginalFileName: PowerShell.EXE
+CommandLine: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA
+CurrentDirectory: C:\Users\labuser\
+User: labhost\labuser
+LogonGuid: {00000000-b678-6ae3-2042-8b0100000000}
+LogonId: 0x18B4220
+TerminalSessionId: 0
+IntegrityLevel: High
+Hashes: SHA1=E37F651BF5F009DC7CAB8043E68BAA52FD33EFF6,MD5=A1DA1A7056D53AC10F8163B04FE66DFB,SHA256=D8F182560210D43BAAF767D482AD1DC1207372522E91413B9D5E515A875E552D,IMPHASH=D13BDC01ABFF6F56AD7B49B3F47C0DE2
+ParentProcessGuid: {00000000-b678-6ae3-3206-000000003000}
+ParentProcessId: 2228
+ParentImage: C:\Program Files\PowerShell\7\pwsh.exe
+ParentCommandLine: "c:\program files\powershell\7\pwsh.exe" -c "powershell -NoProfile -NonInteractive -EncodedCommand JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKAHQAcgB5ACAAewAKACAAIAAkAGUAdgAgAD0AIABHAGUAdAAtAFcAaQBuAEUAdgBlAG4AdAAgAC0ATABvAGcATgBhAG0AZQAgACcATQBpAGMAcgBvAHMAbwBmAHQALQBXAGkAbgBkAG8AdwBzAC0AUwB5AHMAbQBvAG4ALwBPAHAAZQByAGEAdABpAG8AbgBhAGwAJwAgAC0ARgBpAGwAdABlAHIAWABQAGEAdABoACAAJwAqAFsAUwB5AHMAdABlAG0AWwAoAEUAdgBlAG4AdABJAEQAPQAxACkAXQBdACcAIAAtAE0AYQB4AEUAdgBlAG4AdABzACAAMwAKAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgAGkAZgAgACgAJABfAC4ARgB1AGwAbAB5AFEAdQBhAGwAaQBmAGkAZQBkAEUAcgByAG8AcgBJAGQAIAAtAG4AbwB0AGwAaQBrAGUAIAAnAE4AbwBNAGEAdABjAGgAaQBuAGcARQB2AGUAbgB0AHMARgBvAHUAbgBkACoAJwApACAAewAgAHQAaAByAG8AdwAgAH0ACgAgACAAJABlAHYAIAA9ACAAQAAoACkACgB9AAoAJABvAHUAdAAgAD0AIABAACgAJABlAHYAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgAFsAbwByAGQAZQByAGUAZABdAEAAewAgAGkAZAAgAD0AIAAkAF8ALgBJAGQAOwAgAHIAZQBjAG8AcgBkACAAPQAgACQAXwAuAFIAZQBjAG8AcgBkAEkAZAA7ACAAbQBlAHMAcwBhAGcAZQAgAD0AIAAkAF8ALgBNAGUAcwBzAGEAZwBlADsAIAB4AG0AbAAgAD0AIAAkAF8ALgBUAG8AWABtAGwAKAApACAAfQAgAH0AKQAKAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACgAQwBvAG4AdgBlAHIAdABUAG8ALQBKAHMAbwBuACAALQBJAG4AcAB1AHQATwBiAGoAZQBjAHQAIAAkAG8AdQB0ACAALQBEAGUAcAB0AGgAIAAzACAALQBDAG8AbQBwAHIAZQBzAHMAKQApACkA"
+ParentUser: labhost\labuser"'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.opcode: '0'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.processID: '3952'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.providerGuid: '{5770385f-c22a-43e0-bf4c-06f5698ffbd9}'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.providerName: 'Microsoft-Windows-Sysmon'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.severityValue: 'INFORMATION'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.systemTime: '2026-10-29T21:11:21.8792457Z'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.task: '1'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.threadID: '5188'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	win.system.version: '5'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] **Phase 3: Completed filtering (rules).
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	id: '100399'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	level: '10'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	description: 'logtest self-test: PowerShell process creation'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	groups: '['logtest_selftest']'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	firedtimes: '1'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	mail: 'False'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	mitre.id: '['T1059.001']'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	mitre.tactic: '['Execution']'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 	mitre.technique: '['PowerShell']'
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] **Alert to be generated.
+
+2026-11-06 07:50:07,791 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,791 wazuh_logtest[DEBUG] Request: {"version": 1, "origin": {"name": "wazuh-logtest", "module": "wazuh-logtest"}, "command": "log_processing", "parameters": {"location": "stdin", "log_format": "syslog", "event": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"10\",\"version\":\"3\",\"level\":\"4\",\"task\":\"10\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-10-26T01:25:17.0617860Z\",\"eventRecordID\":\"743145\",\"processID\":\"7788\",\"threadID\":\"3368\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"labhost\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process accessed:\\r\\nRuleName: technique_id=T1003,technique_name=B.0 planted true positive\\r\\nUtcTime: 2026-10-26 01:25:16.977\\r\\nSourceProcessGUID: {00000000-0000-0000-0000-000000000000}\\r\\nSourceProcessId: 7788\\r\\nSourceThreadId: 1\\r\\nSourceImage: C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\r\\nTargetProcessGUID: {00000000-0000-0000-0000-000000000000}\\r\\nTargetProcessId: 1056\\r\\nTargetImage: C:\\\\Windows\\\\system32\\\\lsass.exe\\r\\nGrantedAccess: 0x1010\\r\\nCallTrace: B.0-plant\\r\\nSourceUser: LABHOST\\\\labuser\\r\\nTargetUser: NT AUTHORITY\\\\SYSTEM\\\"\"},\"eventdata\":{\"ruleName\":\"technique_id=T1003,technique_name=B.0 planted true positive\",\"utcTime\":\"2026-10-26 01:25:16.977\",\"sourceProcessGUID\":\"{00000000-0000-0000-0000-000000000000}\",\"sourceProcessId\":\"7788\",\"sourceThreadId\":\"1\",\"sourceImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\WindowsPowerShell\\\\\\\\v1.0\\\\\\\\powershell.exe\",\"targetProcessGUID\":\"{00000000-0000-0000-0000-000000000000}\",\"targetProcessId\":\"1056\",\"targetImage\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\lsass.exe\",\"grantedAccess\":\"0x1010\",\"callTrace\":\"B.0-plant\",\"sourceUser\":\"LABHOST\\\\\\\\labuser\",\"targetUser\":\"NT AUTHORITY\\\\\\\\SYSTEM\"}}}", "token": "9a9d1f26"}}
+
+2026-11-06 07:50:07,796 wazuh_logtest[DEBUG] Reply: {"error":0,"data":{"token":"9a9d1f26","output":{"timestamp":"2026-11-06T07:50:07.792+0000","rule":{"level":12,"description":"Lsass process was accessed by C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe with read permissions, possible credential dump","id":"92900","mitre":{"id":["T1003.001"],"tactic":["Credential Access"],"technique":["LSASS Memory"]},"firedtimes":2,"mail":true,"groups":["sysmon","sysmon_eid10_detections","windows"]},"agent":{"id":"000","name":"b1test"},"manager":{"name":"b1test"},"id":"1793951407.227825","decoder":{"name":"windows_eventchannel"},"data":{"win":{"system":{"providerName":"Microsoft-Windows-Sysmon","providerGuid":"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}","eventID":"10","version":"3","level":"4","task":"10","opcode":"0","keywords":"0x8000000000000000","systemTime":"2026-10-26T01:25:17.0617860Z","eventRecordID":"743145","processID":"7788","threadID":"3368","channel":"Microsoft-Windows-Sysmon/Operational","computer":"labhost","severityValue":"INFORMATION","message":"\"Process accessed:\r\nRuleName: technique_id=T1003,technique_name=B.0 planted true positive\r\nUtcTime: 2026-10-26 01:25:16.977\r\nSourceProcessGUID: {00000000-0000-0000-0000-000000000000}\r\nSourceProcessId: 7788\r\nSourceThreadId: 1\r\nSourceImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nTargetProcessGUID: {00000000-0000-0000-0000-000000000000}\r\nTargetProcessId: 1056\r\nTargetImage: C:\\Windows\\system32\\lsass.exe\r\nGrantedAccess: 0x1010\r\nCallTrace: B.0-plant\r\nSourceUser: LABHOST\\labuser\r\nTargetUser: NT AUTHORITY\\SYSTEM\""},"eventdata":{"ruleName":"technique_id=T1003,technique_name=B.0 planted true positive","utcTime":"2026-10-26 01:25:16.977","sourceProcessGUID":"{00000000-0000-0000-0000-000000000000}","sourceProcessId":"7788","sourceThreadId":"1","sourceImage":"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe","targetProcessGUID":"{00000000-0000-0000-0000-000000000000}","targetProcessId":"1056","targetImage":"C:\\\\Windows\\\\system32\\\\lsass.exe","grantedAccess":"0x1010","callTrace":"B.0-plant","sourceUser":"LABHOST\\\\labuser","targetUser":"NT AUTHORITY\\\\SYSTEM"}}},"location":"stdin"},"alert":true,"codemsg":0}}
+
+2026-11-06 07:50:07,796 wazuh_logtest[DEBUG] {
+  "token": "9a9d1f26",
+  "output": {
+    "timestamp": "2026-11-06T07:50:07.792+0000",
+    "rule": {
+      "level": 12,
+      "description": "Lsass process was accessed by C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe with read permissions, possible credential dump",
+      "id": "92900",
+      "mitre": {
+        "id": [
+          "T1003.001"
+        ],
+        "tactic": [
+          "Credential Access"
+        ],
+        "technique": [
+          "LSASS Memory"
+        ]
+      },
+      "firedtimes": 2,
+      "mail": true,
+      "groups": [
+        "sysmon",
+        "sysmon_eid10_detections",
+        "windows"
+      ]
+    },
+    "agent": {
+      "id": "000",
+      "name": "b1test"
+    },
+    "manager": {
+      "name": "b1test"
+    },
+    "id": "1793951407.227825",
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "data": {
+      "win": {
+        "system": {
+          "providerName": "Microsoft-Windows-Sysmon",
+          "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+          "eventID": "10",
+          "version": "3",
+          "level": "4",
+          "task": "10",
+          "opcode": "0",
+          "keywords": "0x8000000000000000",
+          "systemTime": "2026-10-26T01:25:17.0617860Z",
+          "eventRecordID": "743145",
+          "processID": "7788",
+          "threadID": "3368",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "computer": "labhost",
+          "severityValue": "INFORMATION",
+          "message": "\"Process accessed:\r\nRuleName: technique_id=T1003,technique_name=B.0 planted true positive\r\nUtcTime: 2026-10-26 01:25:16.977\r\nSourceProcessGUID: {00000000-0000-0000-0000-000000000000}\r\nSourceProcessId: 7788\r\nSourceThreadId: 1\r\nSourceImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nTargetProcessGUID: {00000000-0000-0000-0000-000000000000}\r\nTargetProcessId: 1056\r\nTargetImage: C:\\Windows\\system32\\lsass.exe\r\nGrantedAccess: 0x1010\r\nCallTrace: B.0-plant\r\nSourceUser: LABHOST\\labuser\r\nTargetUser: NT AUTHORITY\\SYSTEM\""
+        },
+        "eventdata": {
+          "ruleName": "technique_id=T1003,technique_name=B.0 planted true positive",
+          "utcTime": "2026-10-26 01:25:16.977",
+          "sourceProcessGUID": "{00000000-0000-0000-0000-000000000000}",
+          "sourceProcessId": "7788",
+          "sourceThreadId": "1",
+          "sourceImage": "C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe",
+          "targetProcessGUID": "{00000000-0000-0000-0000-000000000000}",
+          "targetProcessId": "1056",
+          "targetImage": "C:\\\\Windows\\\\system32\\\\lsass.exe",
+          "grantedAccess": "0x1010",
+          "callTrace": "B.0-plant",
+          "sourceUser": "LABHOST\\\\labuser",
+          "targetUser": "NT AUTHORITY\\\\SYSTEM"
+        }
+      }
+    },
+    "location": "stdin"
+  },
+  "alert": true,
+  "codemsg": 0
+}
+2026-11-06 07:50:07,796 wazuh_logtest[INFO] **Phase 1: Completed pre-decoding.
+2026-11-06 07:50:07,796 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,796 wazuh_logtest[INFO] **Phase 2: Completed decoding.
+2026-11-06 07:50:07,796 wazuh_logtest[INFO] 	name: 'windows_eventchannel'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.callTrace: 'B.0-plant'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.grantedAccess: '0x1010'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.ruleName: 'technique_id=T1003,technique_name=B.0 planted true positive'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.sourceImage: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.sourceProcessGUID: '{00000000-0000-0000-0000-000000000000}'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.sourceProcessId: '7788'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.sourceThreadId: '1'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.sourceUser: 'LABHOST\\labuser'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.targetImage: 'C:\\Windows\\system32\\lsass.exe'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.targetProcessGUID: '{00000000-0000-0000-0000-000000000000}'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.targetProcessId: '1056'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.targetUser: 'NT AUTHORITY\\SYSTEM'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.eventdata.utcTime: '2026-10-26 01:25:16.977'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.channel: 'Microsoft-Windows-Sysmon/Operational'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.computer: 'labhost'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.eventID: '10'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.eventRecordID: '743145'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.keywords: '0x8000000000000000'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.level: '4'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.message: '"Process accessed:
+RuleName: technique_id=T1003,technique_name=B.0 planted true positive
+UtcTime: 2026-10-26 01:25:16.977
+SourceProcessGUID: {00000000-0000-0000-0000-000000000000}
+SourceProcessId: 7788
+SourceThreadId: 1
+SourceImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+TargetProcessGUID: {00000000-0000-0000-0000-000000000000}
+TargetProcessId: 1056
+TargetImage: C:\Windows\system32\lsass.exe
+GrantedAccess: 0x1010
+CallTrace: B.0-plant
+SourceUser: LABHOST\labuser
+TargetUser: NT AUTHORITY\SYSTEM"'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.opcode: '0'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.processID: '7788'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.providerGuid: '{5770385f-c22a-43e0-bf4c-06f5698ffbd9}'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.providerName: 'Microsoft-Windows-Sysmon'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.severityValue: 'INFORMATION'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.systemTime: '2026-10-26T01:25:17.0617860Z'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.task: '10'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.threadID: '3368'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 	win.system.version: '3'
+2026-11-06 07:50:07,797 wazuh_logtest[INFO] 
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] **Phase 3: Completed filtering (rules).
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] 	id: '92900'
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] 	level: '12'
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] 	description: 'Lsass process was accessed by C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe with read permissions, possible credential dump'
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] 	groups: '['sysmon', 'sysmon_eid10_detections', 'windows']'
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] 	firedtimes: '2'
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] 	mail: 'True'
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] 	mitre.id: '['T1003.001']'
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] 	mitre.tactic: '['Credential Access']'
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] 	mitre.technique: '['LSASS Memory']'
+2026-11-06 07:50:07,798 wazuh_logtest[INFO] **Alert to be generated.
+
+2026-11-06 07:50:07,798 wazuh_logtest[DEBUG] Removing session with token 9a9d1f26.
