@@ -1,0 +1,71 @@
+# ******************************************************************************
+# *Title: 100342 rundll32 public connection*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ rundll32 internet connection rule.*
+# ******************************************************************************
+# Ported in part. The XML rule is 100342 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid3_pack.xml.
+#
+# Two upstream filters are not here. Each needs a field that Sysmon event 3
+# does not carry:
+#   filter_main_app_sdb
+#     CommandLine|endswith '\system32\PcaSvc.dll,PcaPatchSdbTask'
+#   filter_main_svchost_update_processes
+#     ParentImage 'C:\Windows\System32\svchost.exe' with DestinationPort 443
+# Without them the rule alerts on whatever those two filters would have dropped:
+# rundll32.exe started by svchost.exe on port 443, and the PcaSvc.dll task. Event
+# 3 alone cannot say which events those are. One was seen on the lab endpoint and
+# its event 1 showed the PcaSvc.dll task. See phase-b-detection/CONSTRUCTS.md.
+title: Rundll32 Internet Connection
+id: 48114b63-f551-4dad-8140-e7769dbcf186
+related:
+    - id: cdc8da7d-c303-42f8-b08c-b4ab47230263
+      type: derived
+status: test
+description: Detects a rundll32.exe that opens a connection to a public IP address.
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/network_connection/net_connection_win_rundll32_net_connections.yml
+    - https://www.hybrid-analysis.com/sample/759fb4c0091a78c5ee035715afe3084686a8493f39014aea72dae36869de9ff6?environmentId=100
+author: Florian Roth (Nextron Systems), Kyle Versluis (Wazuh port)
+date: 2026-11-12
+tags:
+    - attack.stealth
+    - attack.t1218.011
+    - attack.execution
+logsource:
+    category: network_connection
+    product: windows
+detection:
+    selection:
+        Image|endswith: '\rundll32.exe'
+        Initiated: 'true'
+    filter_main_local_ranges:
+        DestinationIp|cidr:
+            - '127.0.0.0/8'
+            - '10.0.0.0/8'
+            - '172.16.0.0/12'
+            - '192.168.0.0/16'
+            - '169.254.0.0/16'
+            - '::1/128'
+            - 'fe80::/10'
+            - 'fc00::/7'
+    filter_main_ms_ranges:
+        DestinationIp|cidr:
+            - '20.0.0.0/8'
+            - '51.103.0.0/16'
+            - '51.104.0.0/16'
+            - '51.105.0.0/16'
+    filter_main_azure_managed:
+        SourceHostname|endswith: '.internal.cloudapp.net'
+    condition: selection and not 1 of filter_main_*
+falsepositives:
+    - The PcaSvc.dll compatibility task (PcaPatchSdbTask), run by Task Scheduler as SYSTEM, when it reaches a Microsoft address outside the listed ranges. Seen once on the lab endpoint. Upstream drops it with the two filters this port lacks
+    - Communication to other corporate systems that use IP addresses from public address spaces
+level: medium
+custom:
+    wazuh:
+        id: 100342
+        if_sid: '61605, 92101, 92108'
+        level: 10
+        mitre:
+            - T1218.011

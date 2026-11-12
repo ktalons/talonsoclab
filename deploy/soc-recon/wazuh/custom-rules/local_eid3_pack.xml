@@ -1,0 +1,131 @@
+<!--
+  B.2 EID-3 pack: children of stock rule 61605 (Sysmon event 3, a network
+  connection) and of its two level-0 children, hand-ported from the Sigma
+  YAML in phase-b-detection/sigma/. Phase B ISA F3. IDs 100340-100397;
+  100398 and 100399 are the logtest self-test ids.
+
+  How the port reads (each construct is in phase-b-detection/CONSTRUCTS.md):
+    - every matcher is pcre2 and case-insensitive, as a Sigma string match is
+    - a value list is one alternation
+    - "not 1 of filter_*" is a negated field, one per field, with the values
+      of every filter on that field joined. A rule holds no OR across fields
+      and the pack has no room for a level-0 helper, so a filter that needs
+      two fields at once cannot be written here
+    - a negated field works only on a field every event carries. Wazuh drops
+      an EventData value of "-", so SourceHostname is absent from most events,
+      and a rule with a negated field on an absent field never matches. A
+      filter on such a field is a negated regex over the whole log line
+    - |cidr is an address-prefix pattern, because a dynamic field has no CIDR
+      type. Sysmon writes IPv6 in full (ff02:0:0:0:0:0:0:fb), so loopback is
+      matched as 0:0:0:0:0:0:0:1 as well as ::1
+    - a dollar sign is written \x24, so the XML reader never takes it for a
+      variable
+    - the decoder hands a rule each backslash of a path doubled, so a separator
+      inside a path is written \\+ (one backslash or more)
+    - the group names nothing a stock if_group matches. Stock rules 92101,
+      92104, 92105, 92107 and 92108 attach to the sysmon_event3 group by
+      if_group, and a pack rule in that group would take them as children and
+      lose the final match to them
+    - every rule names three parents. Wazuh tries a parent's level-0 children
+      first, and stock 92101 (powershell.exe over tcp) and 92108 (any
+      connection to port 3389) are level 0, so either one would end the event
+      with no alert. A pack rule that hangs from them as well is tried as
+      their child and takes the final match. Stock 92110 does the same
+    - when two rules match, the higher level is final, and at the same level
+      the rule loaded first. Stock 92104 (U+202E in the image path) and 92109
+      (port 3389 with loopback at both ends) are level 15 and are final over
+      any pack rule. The event still alerts, under the stock rule
+
+  WARN: what the port drops. Sysmon event 3 carries no CommandLine and no
+  ParentImage, so 100342 lacks two upstream filters: rundll32.exe started by
+  svchost.exe on port 443, and the PcaSvc.dll task. It alerts on whatever they
+  would have dropped. The Dell's Sysmon log held one SYSTEM rundll32.exe
+  event to a Microsoft address on 443 when the pack was written
+  (phase-b-detection/tests/100342/pos-real.json). Its event 1 shows the
+  PcaSvc.dll task started by svchost.exe, so both filters would have dropped
+  it. Event 3 alone cannot tell that task from anything else rundll32.exe runs.
+
+  WARN: a negated field does not match when the field is absent. 100342 and
+  100343 are silent on an event with no DestinationIp, where the Sigma rule
+  would alert. Sysmon writes the field on every event 3.
+
+  Lint: bun tools/sigma-lint.ts. Tests: bun tools/logtest.ts (ISA ISC-130).
+-->
+<group name="local,eid3_pack,">
+
+  <!-- SigmaHQ 0dba975d: certutil.exe as a download tool. -->
+  <rule id="100340" level="12">
+    <if_sid>61605, 92101, 92108</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\certutil\.exe$</field>
+    <field name="win.eventdata.initiated" type="pcre2">(?i)^true$</field>
+    <field name="win.eventdata.destinationPort" type="pcre2">^(?:80|135|443|445)$</field>
+    <description>EID 3 pack: certutil.exe opened a network connection on port 80, 135, 443 or 445.</description>
+    <mitre>
+      <id>T1105</id>
+    </mitre>
+  </rule>
+
+  <!-- SigmaHQ c7e91a02: regsvr32.exe has no ordinary reason to open a connection. -->
+  <rule id="100341" level="10">
+    <if_sid>61605, 92101, 92108</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\regsvr32\.exe$</field>
+    <field name="win.eventdata.initiated" type="pcre2">(?i)^true$</field>
+    <description>EID 3 pack: regsvr32.exe opened a network connection.</description>
+    <mitre>
+      <id>T1559.001</id>
+      <id>T1218.010</id>
+    </mitre>
+  </rule>
+
+  <!--
+    SigmaHQ cdc8da7d: rundll32.exe to a public address. The negated address
+    field joins filter_main_local_ranges and filter_main_ms_ranges (20.0.0.0/8
+    and 51.103.0.0/16 to 51.105.0.0/16). filter_main_azure_managed is the
+    negated regex: SourceHostname is absent whenever Sysmon logs "-", which on
+    the Dell is every event, so a negated field there would stop the rule.
+    Blind to: any address in those Microsoft ranges, as upstream is.
+  -->
+  <rule id="100342" level="10">
+    <if_sid>61605, 92101, 92108</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\rundll32\.exe$</field>
+    <field name="win.eventdata.initiated" type="pcre2">(?i)^true$</field>
+    <field name="win.eventdata.destinationIp" type="pcre2" negate="yes">(?i)^(?:127\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|20\.|51\.10[345]\.|(?:::1|0:0:0:0:0:0:0:1)$|fe[89ab][0-9a-f]:|f[cd][0-9a-f]{2}:)</field>
+    <regex type="pcre2" negate="yes">(?i)"sourceHostname":"[^"]*\.internal\.cloudapp\.net"</regex>
+    <description>EID 3 pack: rundll32.exe opened a connection to a public address.</description>
+    <mitre>
+      <id>T1218.011</id>
+    </mitre>
+  </rule>
+
+  <!--
+    SigmaHQ 992a6cae: wscript.exe or cscript.exe to a public address. The
+    Microsoft range here is 20.0.0.0/11, so the second octet runs 0 to 31.
+  -->
+  <rule id="100343" level="12">
+    <if_sid>61605, 92101, 92108</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(?:wscript|cscript)\.exe$</field>
+    <field name="win.eventdata.initiated" type="pcre2">(?i)^true$</field>
+    <field name="win.eventdata.destinationIp" type="pcre2" negate="yes">(?i)^(?:127\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|20\.(?:\d|[12]\d|3[01])\.|(?:::1|0:0:0:0:0:0:0:1)$|fe[89ab][0-9a-f]:|f[cd][0-9a-f]{2}:)</field>
+    <description>EID 3 pack: wscript.exe or cscript.exe opened a connection to a public address.</description>
+    <mitre>
+      <id>T1105</id>
+    </mitre>
+  </rule>
+
+  <!--
+    SigmaHQ 7b434893: a process running from a folder programs do not live in.
+    Upstream's file-sharing domain filter is left out on purpose: it exists so
+    a sibling rule can own those domains, and this pack does not carry that
+    rule, so the filter would only hide them.
+  -->
+  <rule id="100344" level="12">
+    <if_sid>61605, 92101, 92108</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)(?::\\+\x24Recycle\.bin|:\\+Perflogs\\|:\\+Temp\\|:\\+Users\\+Default\\|:\\+Users\\+Public\\|:\\+Windows\\+Fonts\\|:\\+Windows\\+IME\\|:\\+Windows\\+System32\\+Tasks\\|:\\+Windows\\+Tasks\\|\\config\\+systemprofile\\|\\Contacts\\|\\Favorites\\|\\Favourites\\|\\Music\\|\\Pictures\\|\\Videos\\|\\Windows\\+addins\\)</field>
+    <field name="win.eventdata.initiated" type="pcre2">(?i)^true$</field>
+    <description>EID 3 pack: a process in an uncommon or suspicious folder opened a network connection.</description>
+    <mitre>
+      <id>T1105</id>
+    </mitre>
+  </rule>
+
+</group>

@@ -1,0 +1,63 @@
+# ******************************************************************************
+# *Title: 100344 suspicious location network connection*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ uncommon process location rule.*
+# ******************************************************************************
+# Ported with one filter left out on purpose. The XML rule is 100344 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid3_pack.xml.
+#
+# Upstream's filter_main_domains drops connections to file-sharing domains so
+# that its sibling rule e0f8ab85-0ac9-423b-a73a-81b3c7b1aa97 can own them. This
+# pack does not carry that sibling, so the filter would only hide those
+# connections. The port alerts on them instead.
+title: Network Connection Initiated From Process Located In Potentially Suspicious Or Uncommon Location
+id: c31b1ed8-38e1-48b7-b127-58e3562759b2
+related:
+    - id: 7b434893-c57d-4f41-908d-6a17bf1ae98f
+      type: derived
+status: test
+description: |
+    Detects a network connection initiated by a program running from a suspicious or uncommon file system location.
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/network_connection/net_connection_win_susp_initiated_uncommon_or_suspicious_locations.yml
+    - https://docs.google.com/spreadsheets/d/17pSTDNpa0sf6pHeRhusvWG6rThciE8CsXTSlDUAZDyo
+author: Florian Roth (Nextron Systems), Nasreddine Bencherchali (Nextron Systems), Kyle Versluis (Wazuh port)
+date: 2026-11-12
+tags:
+    - attack.command-and-control
+    - attack.t1105
+logsource:
+    category: network_connection
+    product: windows
+detection:
+    selection:
+        Initiated: 'true'
+        Image|contains:
+            - ':\$Recycle.bin'
+            - ':\Perflogs\'
+            - ':\Temp\'
+            - ':\Users\Default\'
+            - ':\Users\Public\'
+            - ':\Windows\Fonts\'
+            - ':\Windows\IME\'
+            - ':\Windows\System32\Tasks\'
+            - ':\Windows\Tasks\'
+            - '\config\systemprofile\'
+            - '\Contacts\'
+            - '\Favorites\'
+            - '\Favourites\'
+            - '\Music\'
+            - '\Pictures\'
+            - '\Videos\'
+            - '\Windows\addins\'
+    condition: selection
+falsepositives:
+    - Unknown
+level: high
+custom:
+    wazuh:
+        id: 100344
+        if_sid: '61605, 92101, 92108'
+        level: 12
+        mitre:
+            - T1105
