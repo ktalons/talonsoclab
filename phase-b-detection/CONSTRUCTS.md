@@ -167,6 +167,11 @@ them.
   other 117 are built from one real capture with fields changed, and each case's `note` names
   the fields. `203.0.113.10` in a case is a documentation address standing in for a public one.
 - Every one of the 17 folders in 100344 has a positive case.
+- The live test of 100340 (2026-11-12) did not use the best-known download form. On the lab's
+  Windows endpoint Defender blocked `certutil -urlcache -split -f`: the process did not start
+  and 100340 raised no alert. The test used `certutil -generateSSTFromWU`, which raised 100340
+  within seconds. This is one dated observation. The block is a signature that can change with
+  a definitions update, and it does not apply where Defender is off or excluded.
 
 ## The folder as a whole
 
