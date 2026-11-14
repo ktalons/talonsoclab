@@ -11,7 +11,7 @@ survive `docker compose down -v` — same failure class as the ISM policy
 
 | Group | Purpose |
 |---|---|
-| `phase-a-windows` | Windows endpoints. Adds the Sysmon eventchannel collector on top of the agent's default Security/System/Application channels. |
+| `phase-a-windows` | Windows endpoints. Adds the Sysmon eventchannel collector on top of the agent's default Security/System/Application channels, and one registry ignore for the keys under Volume Shadow Copy's `Services\VSS\Diag`, which change on every shadow copy and made most of the registry alerts. |
 | `phase-a-linux` | Linux endpoints. Adds `/var/log/audit/audit.log`; the default config collects syslog and auth.log but not audit. Rules in [`../audit/`](../audit/). Also tails Suricata's `/var/log/suricata/eve.json` (only the SOC host has it) and ships `cis_ubuntu26-04.yml`, the CIS SCA policy adapted to Ubuntu 26.04. |
 | `phase-a-macos` | macOS endpoints. Adds a filtered unified-log collector. The default `/var/log/system.log` carries almost nothing on modern macOS. |
 
