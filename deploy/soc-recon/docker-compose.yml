@@ -25,6 +25,13 @@ services:
     image: wazuh/wazuh-indexer:${WAZUH_VERSION:-4.14.9}
     hostname: wazuh.indexer
     restart: unless-stopped
+    # SECURITY: each service runs under its own copy of Docker's default AppArmor profile
+    # (apparmor/, ISA ISC-115), so the label in a host audit record names the one service
+    # an exec came from. The noise suppressions in wazuh/custom-rules pin these names.
+    # The profile must be loaded on the host before the container starts, or the start
+    # fails. Checked by: bun tools/apparmor-profiles.ts
+    security_opt:
+      - apparmor=soc-recon-indexer
     environment:
       # heap == reservation floor, keep Xms == Xmx. Tuned for a 16 GB host
       # (INDEXER_HEAP=2g in .env). Raise only after a RAM upgrade.
@@ -75,6 +82,9 @@ services:
     image: wazuh/wazuh-manager:${WAZUH_VERSION:-4.14.9}
     hostname: wazuh.manager
     restart: unless-stopped
+    # Its own AppArmor profile; see wazuh.indexer.
+    security_opt:
+      - apparmor=soc-recon-manager
     ulimits:
       memlock: { soft: -1, hard: -1 }
       nofile: { soft: 655360, hard: 655360 }
@@ -185,6 +195,9 @@ services:
     image: wazuh/wazuh-dashboard:${WAZUH_VERSION:-4.14.9}
     hostname: wazuh.dashboard
     restart: unless-stopped
+    # Its own AppArmor profile; see wazuh.indexer.
+    security_opt:
+      - apparmor=soc-recon-dashboard
     mem_reservation: 512m
     mem_limit: 1g
     oom_score_adj: -500
@@ -220,6 +233,23 @@ services:
     image: jasonish/suricata:${SURICATA_VERSION:-8.0.7}
     hostname: suricata
     restart: unless-stopped
+    # Its own AppArmor profile; see wazuh.indexer.
+    security_opt:
+      - apparmor=soc-recon-suricata
+    # SECURITY: a read-only root filesystem, so nothing in this container can replace a
+    # binary under /usr/bin and run it as one of the suppressed healthcheck shapes (ISA
+    # ISC-119). The image's four volumes stay writable: /etc/suricata, /var/lib/suricata,
+    # /var/log/suricata, /var/run/suricata. The two tmpfs mounts are what the nightly
+    # jobs need: suricata-update unpacks through /tmp, and logrotate keeps its state file
+    # in /var/lib/logrotate. Without them the engine still comes up healthy and both jobs
+    # fail (scratch, 2026-11-14 UTC), so the healthcheck alone does not prove this setup.
+    # NOTE: tmpfs pages count against mem_limit. /tmp is capped at 256m: the update's
+    # measured 1.62 GB peak plus a full /tmp is 1.89 GB, still under the 2g cap.
+    # The other three services cannot run this way yet; NOISE-BASELINE.md has the paths.
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /var/lib/logrotate:size=1m,mode=0755
     # HOST networking, not the `soc` bridge. An IDS on a bridge network sees
     # only that bridge — it would come up green and observe nothing real.
     # Consequence: a `networks:` key is INVALID on this service, and Suricata

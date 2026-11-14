@@ -121,6 +121,12 @@ every container comes back by a plain start, the same as after a reboot. Treat i
 Tier 2 run going, then the init check below. Both come from Docker's own repo, which
 unattended-upgrades does not track by default, so only a manual upgrade does this.
 
+A `docker-ce` upgrade is also when to check the four AppArmor profiles. They are copies of the
+default profile Docker builds for one release, and a newer release can add rules the copies
+do not have. The check is two commands in
+[`deploy/soc-recon/apparmor/README.md`](../../deploy/soc-recon/apparmor/README.md). Nothing
+alerts when it is skipped.
+
 ### A controlled reboot
 
 When 100331 fires, reboot when no Tier 2 run is going and you can watch it come back:

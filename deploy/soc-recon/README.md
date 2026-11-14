@@ -24,6 +24,7 @@ systemd/                 host timers plus the scripts they run, installed root-o
                          updates, manager log retention (runbook 08), and the OnFailure handler that makes a failed run alert
 state/tier2/             the Tier 2 backup marker, read-only to the manager at /srv/tier2 (the marker itself is gitignored)
 tier2.recipient.example  the age public key Tier 2 archives are encrypted to (tier2.recipient is gitignored)
+apparmor/                one AppArmor profile per service, a copy of docker-default under the service's name (apparmor/README.md)
 wazuh/SECURITY.md        credential rotation and keeping secrets out of argv
 wazuh/authd.pass.example placeholder for the agent enrollment password (wazuh/authd.pass is gitignored)
 wazuh/audit/             auditd execve rules for phase-a-linux endpoints
@@ -61,10 +62,19 @@ cp tier2.recipient.example tier2.recipient      # a public key; runbook 09 secti
 docker compose -f generate-indexer-certs.yml run --rm generator
 sudo chmod 755 config/wazuh_indexer_ssl_certs && sudo chmod 644 config/wazuh_indexer_ssl_certs/*
 
+# AppArmor profiles, before the first up and after any change to apparmor/
+sudo install -m 0644 apparmor/soc-recon-* /etc/apparmor.d/
+sudo apparmor_parser -r /etc/apparmor.d/soc-recon-*
+
 docker compose up -d                              # dashboard at https://<host>
 ```
 
-Host prerequisite: `vm.max_map_count=262144`.
+Host prerequisites: `vm.max_map_count=262144`, and the four AppArmor profiles in
+[`apparmor/`](apparmor/) loaded. A service whose profile is not loaded does not start. The
+noise suppressions name those profiles. Loading a profile changes nothing by itself. On a
+running stack, the label each container runs under and the rules that name it change
+together, in one bare `docker compose up -d --force-recreate`
+([`apparmor/README.md`](apparmor/README.md)).
 
 Compose refuses to start unless `.env` sets all three passwords (`WAZUH_INDEXER_PASS`,
 `WAZUH_DASHBOARD_PASS`, `WAZUH_API_PASS`). The three copied files hold the demo hashes, the demo

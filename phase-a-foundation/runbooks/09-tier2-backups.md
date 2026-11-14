@@ -232,10 +232,15 @@ It stops at the first failure, and checks before it writes anything:
 It never writes into an existing volume. Removing one destroys state, so it stays a deliberate
 `docker volume rm` by hand.
 
-Then, on the box, start the stack through the guard and check the init:
+Then, on the box, start the stack through the guard and check the init. On a rebuilt box,
+load the four AppArmor profiles first: every service names one, and a service whose profile
+is not in the kernel does not start
+([`deploy/soc-recon/apparmor/README.md`](../../deploy/soc-recon/apparmor/README.md)).
 
 ```bash
 cd ~/talonsoclab/deploy/soc-recon
+sudo install -m 0644 apparmor/soc-recon-* /etc/apparmor.d/   # rebuilt box only
+sudo apparmor_parser -r /etc/apparmor.d/soc-recon-*          # rebuilt box only
 bin/tier2-start
 docker compose logs wazuh.manager | grep '0-wazuh-init: exited'     # want exited 0
 ```

@@ -15,10 +15,13 @@
     - the full exe path and the cwd
     - the uid, euid and gid the shape really runs as (gid 999 is the
       manager's wazuh group, 108 the host's)
-    - the AppArmor label in the SYSCALL record: docker-default for a
-      container, runc for runc, unconfined for the host. cwd /var/ossec is
-      both the manager container and the host's own agent 002, and the label
-      is what tells them apart, so tier 2 has one rule per origin
+    - the AppArmor label in the SYSCALL record: the service's own profile for
+      a container (soc-recon-indexer, soc-recon-manager, soc-recon-suricata;
+      deploy/soc-recon/apparmor/, set per service in docker-compose.yml),
+      runc for runc, unconfined for the host. cwd /var/ossec is both the
+      manager container and the host's own agent 002, and the label is what
+      tells them apart, so tier 2 has one rule per origin. No rule pins
+      docker-default: every other container on the box shares that label
     - the exact argv, as a pcre2 match on the EXECVE record in full_log. The
       auditd decoder stops at a7 and leaves hex-encoded args undecoded, so the
       argv is only complete in full_log. argc pins the count, and the trailing
@@ -34,10 +37,14 @@
       other code: LD_PRELOAD, a planted config file (.curlrc, rpm macros), a
       sourced file. "Exact argv" is not "exact behavior".
     - the binary. exe and cwd are paths inside the process's own mount
-      namespace, and docker-default is shared by every container. Root in
-      any container that can write /usr/bin can swap in its own binary
-      and run it under a suppressed shape. Per-service AppArmor labels and
-      read-only root filesystems would close this; neither exists yet.
+      namespace. Root in a container that can write /usr/bin can swap in
+      its own binary and run it under one of that same service's shapes.
+      Pinning the service's own label means a different container that
+      does it alerts (ISA ISC-117). A read-only root filesystem stops the
+      service itself, and only suricata has one (ISA ISC-119).
+    - the label's owner. A label names a profile, not a container. Anyone
+      who can start a container can start it under a service's profile,
+      and that is already root on the box.
     - the event afterwards. logall is off, so a suppressed exec is not
       archived at the manager. The only copy is the SOC box's own
       /var/log/audit/audit.log.
@@ -48,7 +55,7 @@
 -->
 <group name="audit,local,noise_baseline,">
 
-  <!-- Tier 1: container healthchecks -->
+  <!-- Tier 1: container healthchecks (AppArmor runc, then each service's own profile) -->
 
   <!--
     `runc init`, the first exec inside a container for every healthcheck run
@@ -87,7 +94,7 @@
     <field name="audit.uid" type="pcre2">^1000$</field>
     <field name="audit.euid" type="pcre2">^1000$</field>
     <field name="audit.gid" type="pcre2">^1000$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=15 a0="curl" a1="-sf" a2="-o" a3="/dev/null" a4="-m" a5="8" a6="--cacert" a7="/usr/share/wazuh-indexer/config/certs/root-ca\.pem" a8="--cert" a9="/usr/share/wazuh-indexer/config/certs/admin\.pem" a10="--key" a11="/usr/share/wazuh-indexer/config/certs/admin-key\.pem" a12="--resolve" a13="wazuh\.indexer:9200:127\.0\.0\.1" a14="https://wazuh\.indexer:9200/_cluster/health\?wait_for_status=yellow\x26timeout=5s" type=</regex>
+    <regex type="pcre2">subj=soc-recon-indexer key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=15 a0="curl" a1="-sf" a2="-o" a3="/dev/null" a4="-m" a5="8" a6="--cacert" a7="/usr/share/wazuh-indexer/config/certs/root-ca\.pem" a8="--cert" a9="/usr/share/wazuh-indexer/config/certs/admin\.pem" a10="--key" a11="/usr/share/wazuh-indexer/config/certs/admin-key\.pem" a12="--resolve" a13="wazuh\.indexer:9200:127\.0\.0\.1" a14="https://wazuh\.indexer:9200/_cluster/health\?wait_for_status=yellow\x26timeout=5s" type=</regex>
     <description>Noise baseline: indexer healthcheck curl.</description>
   </rule>
 
@@ -105,7 +112,7 @@
     <field name="audit.uid" type="pcre2">^0$</field>
     <field name="audit.euid" type="pcre2">^0$</field>
     <field name="audit.gid" type="pcre2">^0$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="/bin/sh" a1="-c" a2=73757269636174617363202D6320757074696D65203E2F6465762F6E756C6C20323E2631207C7C20657869742031 type=</regex>
+    <regex type="pcre2">subj=soc-recon-suricata key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="/bin/sh" a1="-c" a2=73757269636174617363202D6320757074696D65203E2F6465762F6E756C6C20323E2631207C7C20657869742031 type=</regex>
     <description>Noise baseline: Suricata healthcheck shell.</description>
   </rule>
 
@@ -122,11 +129,11 @@
     <field name="audit.uid" type="pcre2">^0$</field>
     <field name="audit.euid" type="pcre2">^0$</field>
     <field name="audit.gid" type="pcre2">^0$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="suricatasc" a1="-c" a2="uptime" type=</regex>
+    <regex type="pcre2">subj=soc-recon-suricata key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="suricatasc" a1="-c" a2="uptime" type=</regex>
     <description>Noise baseline: Suricata healthcheck suricatasc.</description>
   </rule>
 
-  <!-- Tier 2a: the manager container's own monitors (cwd /var/ossec, AppArmor docker-default) -->
+  <!-- Tier 2a: the manager container's own monitors (cwd /var/ossec, AppArmor soc-recon-manager) -->
 
   <!--
     Daemon liveness checks, `/bin/ps -p <pid>`. Steady through the day and
@@ -142,7 +149,7 @@
     <field name="audit.uid" type="pcre2">^0$</field>
     <field name="audit.euid" type="pcre2">^0$</field>
     <field name="audit.gid" type="pcre2">^999$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="/bin/ps" a1="-p" a2="\d+" type=</regex>
+    <regex type="pcre2">subj=soc-recon-manager key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="/bin/ps" a1="-p" a2="\d+" type=</regex>
     <description>Noise baseline: manager liveness check ps.</description>
   </rule>
 
@@ -160,7 +167,7 @@
     <field name="audit.uid" type="pcre2">^0$</field>
     <field name="audit.euid" type="pcre2">^0$</field>
     <field name="audit.gid" type="pcre2">^999$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="sh" a1="-c" a2=2F62696E2F7073202D7020(3[0-9])+203E202F6465762F6E756C6C20323E2631 type=</regex>
+    <regex type="pcre2">subj=soc-recon-manager key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="sh" a1="-c" a2=2F62696E2F7073202D7020(3[0-9])+203E202F6465762F6E756C6C20323E2631 type=</regex>
     <description>Noise baseline: manager liveness check shell.</description>
   </rule>
 
@@ -181,7 +188,7 @@
     <field name="audit.uid" type="pcre2">^0$</field>
     <field name="audit.euid" type="pcre2">^0$</field>
     <field name="audit.gid" type="pcre2">^999$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="sh" a1="-c" a2=(6466202D50|6C617374202D6E203230|6E657473746174202D74756C706E207C207365642027732F5C285B5B3A616C6E756D3A5D5D5C2B5C295C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5C282E2A5C293A5C285B5B3A64696769743A5D5D2A5C295C205C2B5C285B302D395C2E5C3A5C2A5D5C2B5C292E5C2B5C205C285B5B3A64696769743A5D5D2A5C2F5B5B3A616C6E756D3A5D5C2D5D2A5C292E2A2F5C31205C32203D3D205C33203D3D205C34205C352F27207C20736F7274202D6B2034202D67207C207365642027732F203D3D205C282E2A5C29203D3D2F3A5C312F27207C2073656420312C3264) type=</regex>
+    <regex type="pcre2">subj=soc-recon-manager key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=3 a0="sh" a1="-c" a2=(6466202D50|6C617374202D6E203230|6E657473746174202D74756C706E207C207365642027732F5C285B5B3A616C6E756D3A5D5D5C2B5C295C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5C282E2A5C293A5C285B5B3A64696769743A5D5D2A5C295C205C2B5C285B302D395C2E5C3A5C2A5D5C2B5C292E5C2B5C205C285B5B3A64696769743A5D5D2A5C2F5B5B3A616C6E756D3A5D5C2D5D2A5C292E2A2F5C31205C32203D3D205C33203D3D205C34205C352F27207C20736F7274202D6B2034202D67207C207365642027732F203D3D205C282E2A5C29203D3D2F3A5C312F27207C2073656420312C3264) type=</regex>
     <description>Noise baseline: manager command monitor shell.</description>
   </rule>
 
@@ -199,7 +206,7 @@
     <field name="audit.uid" type="pcre2">^0$</field>
     <field name="audit.euid" type="pcre2">^0$</field>
     <field name="audit.gid" type="pcre2">^999$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=2 a0="sed" a1=(732F5C285B5B3A616C6E756D3A5D5D5C2B5C295C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5C282E2A5C293A5C285B5B3A64696769743A5D5D2A5C295C205C2B5C285B302D395C2E5C3A5C2A5D5C2B5C292E5C2B5C205C285B5B3A64696769743A5D5D2A5C2F5B5B3A616C6E756D3A5D5C2D5D2A5C292E2A2F5C31205C32203D3D205C33203D3D205C34205C352F|732F203D3D205C282E2A5C29203D3D2F3A5C312F|"1,2d") type=</regex>
+    <regex type="pcre2">subj=soc-recon-manager key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=2 a0="sed" a1=(732F5C285B5B3A616C6E756D3A5D5D5C2B5C295C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5B5B3A64696769743A5D5D5C2B5C205C2B5C282E2A5C293A5C285B5B3A64696769743A5D5D2A5C295C205C2B5C285B302D395C2E5C3A5C2A5D5C2B5C292E5C2B5C205C285B5B3A64696769743A5D5D2A5C2F5B5B3A616C6E756D3A5D5C2D5D2A5C292E2A2F5C31205C32203D3D205C33203D3D205C34205C352F|732F203D3D205C282E2A5C29203D3D2F3A5C312F|"1,2d") type=</regex>
     <description>Noise baseline: manager command monitor sed.</description>
   </rule>
 
@@ -216,7 +223,7 @@
     <field name="audit.uid" type="pcre2">^0$</field>
     <field name="audit.euid" type="pcre2">^0$</field>
     <field name="audit.gid" type="pcre2">^999$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=6 a0="/usr/bin/coreutils" a1="--coreutils-prog-shebang=sort" a2="/usr/bin/sort" a3="-k" a4="4" a5="-g" type=</regex>
+    <regex type="pcre2">subj=soc-recon-manager key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=6 a0="/usr/bin/coreutils" a1="--coreutils-prog-shebang=sort" a2="/usr/bin/sort" a3="-k" a4="4" a5="-g" type=</regex>
     <description>Noise baseline: manager command monitor sort.</description>
   </rule>
 
@@ -233,7 +240,7 @@
     <field name="audit.uid" type="pcre2">^0$</field>
     <field name="audit.euid" type="pcre2">^0$</field>
     <field name="audit.gid" type="pcre2">^999$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=4 a0="/usr/bin/coreutils" a1="--coreutils-prog-shebang=df" a2="/usr/bin/df" a3="-P" type=</regex>
+    <regex type="pcre2">subj=soc-recon-manager key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=4 a0="/usr/bin/coreutils" a1="--coreutils-prog-shebang=df" a2="/usr/bin/df" a3="-P" type=</regex>
     <description>Noise baseline: manager command monitor df.</description>
   </rule>
 
@@ -253,7 +260,7 @@
     <field name="audit.uid" type="pcre2">^0$</field>
     <field name="audit.euid" type="pcre2">^0$</field>
     <field name="audit.gid" type="pcre2">^0$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): (argc=2 a0="rpm" a1="-qa"|argc=3 a0="rpm" a1="-q" a2="[A-Za-z0-9][A-Za-z0-9._+-]*"|argc=3 a0="rpm" a1="-ql" a2="python3-[A-Za-z0-9._+-]+"|argc=4 a0="rpm" a1="-qa" a2="--qf" a3=[0-9A-F]+) type=</regex>
+    <regex type="pcre2">subj=soc-recon-manager key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): (argc=2 a0="rpm" a1="-qa"|argc=3 a0="rpm" a1="-q" a2="[A-Za-z0-9][A-Za-z0-9._+-]*"|argc=3 a0="rpm" a1="-ql" a2="python3-[A-Za-z0-9._+-]+"|argc=4 a0="rpm" a1="-qa" a2="--qf" a3=[0-9A-F]+) type=</regex>
     <description>Noise baseline: manager SCA and syscollector rpm query.</description>
   </rule>
 
@@ -271,7 +278,7 @@
     <field name="audit.uid" type="pcre2">^0$</field>
     <field name="audit.euid" type="pcre2">^0$</field>
     <field name="audit.gid" type="pcre2">^0$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=6 a0="xargs" a1="-I" a2="\{\}" a3="rpm" a4="-ql" a5="\{\}" type=</regex>
+    <regex type="pcre2">subj=soc-recon-manager key="audit-wazuh-c".*type=EXECVE msg=audit\(\d+\.\d+:\d+\): argc=6 a0="xargs" a1="-I" a2="\{\}" a3="rpm" a4="-ql" a5="\{\}" type=</regex>
     <description>Noise baseline: manager syscollector xargs.</description>
   </rule>
 
@@ -293,7 +300,7 @@
     <field name="audit.gid" type="pcre2">^0$</field>
     <field name="audit.success" type="pcre2">^no$</field>
     <field name="audit.exit" type="pcre2">^-2$</field>
-    <regex type="pcre2">subj=docker-default key="audit-wazuh-c".*type=PATH msg=audit\(\d+\.\d+:\d+\): item=0 name="(/usr/local/sbin|/usr/local/bin|/usr/sbin|/usr/bin|/sbin|/bin)/[A-Za-z0-9_.-]+" nametype=UNKNOWN </regex>
+    <regex type="pcre2">subj=soc-recon-manager key="audit-wazuh-c".*type=PATH msg=audit\(\d+\.\d+:\d+\): item=0 name="(/usr/local/sbin|/usr/local/bin|/usr/sbin|/usr/bin|/sbin|/bin)/[A-Za-z0-9_.-]+" nametype=UNKNOWN </regex>
     <description>Noise baseline: manager PATH-search miss.</description>
   </rule>
 

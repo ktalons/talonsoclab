@@ -261,18 +261,89 @@ a real leak.
 ([`phase-b-detection/NOISE-BASELINE.md`](../phase-b-detection/NOISE-BASELINE.md)). A rule in the
 noise range 100100 to 100199 must be level 0 under a listed parent (`if_sid` 80792), pin the
 image path (`audit.exe` or `win.eventdata.image`), and carry at least two field constraints.
-Every matcher must be `pcre2`, not negated, anchored `^...$`, and unable to match an empty or
-arbitrary value. An auditd rule must also pin auid, tty, cwd, uid, euid and gid, plus the
-AppArmor label and `argc` in its `full_log` regex. Any rule that keeps an event out of the
-index (level below `log_alert_level`, `noalert`, `no_log`) fails outside the range, except the
-Phase A Suricata rule 100200. CDATA fails, and so does an id used twice in the folder. The
-pattern checks use JS RegExp as a stand-in for PCRE2; a pattern it cannot compile fails.
+Every matcher must be `pcre2` and not negated, every field anchored `^...$`, and no matcher
+may match the empty string or the lint's arbitrary probe value. A pattern that alternates outside a group fails, since its second branch
+would carry no anchor and no label. An auditd rule must also pin auid, tty, cwd, uid, euid and
+gid, plus the AppArmor label and `argc` in its `full_log` regex. It has exactly one regex, no
+`<match>`, and no field named twice. The label is the first thing the regex matches, as plain
+text, and must be `runc`, `unconfined` or one of the service profiles from
+`apparmor-profiles.ts`. `docker-default` fails: every other container on the box runs under
+it. Any rule that keeps an event out of the index (level below `log_alert_level`, `noalert`,
+`no_log`) fails outside the range, except the Phase A Suricata rule 100200, which is pinned to
+the digest of its body. CDATA fails, and so does an id used twice in the folder.
+
+The pattern checks use JS RegExp as a stand-in for PCRE2, and the two do not read every
+pattern the same way: a class that opens with `]`, a POSIX class and an XML entity each got
+a label-free branch past an earlier version of this lint. So a noise-range matcher may use
+only a named subset, and anything else fails as "outside the pattern subset":
+
+- the characters `A-Z a-z 0-9`, space and `" , - / : = _`, and `.` for any character
+- the escapes `\d \. \( \) \? \{ \}` and `\xHH` (so `&` is written `\x26`)
+- a class of letters, digits and `. _ + -`, never negated and never empty
+- a group, which is the only place `|` may appear, with no empty branch
+- one of `*`, `+`, `?` or `{n}` (n up to 999) after an atom, greedy, never two in a row
+- `^` as the first character and `$` as the last
+- at most 1,000 characters and four levels of group, no class written `[.x.]`, and no
+  `{n}` on a group (a group takes `*`, `+` or `?`): PCRE2 refuses to compile what these
+  rule out, or can, and JS does not
+- two known differences are left inside the subset, both on input that auditd would
+  hex-encode before a rule saw it: PCRE2's `$` also matches before a final newline, and `.`
+  reads a carriage return and bytes above 0x7F differently in the two engines
+
+The sets hold what the committed rules use. Widening one is a decision to make with the
+PCRE2 documentation open, not a way to get a rule through. Inside the subset, 2,000 random
+patterns gave the same result in JS and in PCRE2 10.49 on 12,000 inputs, which is evidence
+and not proof. The lint is a guard against mistakes. The check that a rules file does what
+it should is a logtest run on a scratch manager, where Wazuh's own parser and PCRE2 read it.
+A suppression rule may carry only `id` and `level`, and hold only `if_sid`, `field`, `regex`
+and `description`. In any rule, `id` is 1 to 999999 and `level` 0 to 16, written as plain
+numbers with no leading zero or sign, because Wazuh reads them with C integer parsing and
+would take `0003` or a very large value differently from the lint. An `<options>` value must
+be one the lint knows. No file may hold `&` outside a comment, a rule must be closed and not
+inside another, and `lintDir` fails on any file in the folder that is not `.xml` (the
+folder's `.gitkeep` excepted), since the whole folder is mounted into the manager. Every tag in a rules file must be lower-case with
+double-quoted attributes and no attribute given twice. That applies to every rules file in
+the folder, pack rules included, and it refuses three things Wazuh itself accepts: a
+self-closing tag such as `<same_source_ip />` (write `<same_source_ip></same_source_ip>`), an
+`<?xml ?>` declaration, and a tag split across lines. No rules file may hold a `<var>`
+element (Wazuh substitutes it into patterns after the lint has read them), an `overwrite`
+attribute (it edits a rule defined elsewhere, a stock one included), or a comment written
+`<!-->` or holding `!>`. Whether Wazuh's parser really reads those differently from the
+lint was not measured, so they are refused instead.
 
 ```bash
 bun tools/noise-lint.ts                 # deploy/soc-recon/wazuh/custom-rules
 bun tools/noise-lint.ts <dir>           # another rules folder
 bun test tools/noise-lint.test.ts       # planted bad rules it must refuse
 ```
+
+## apparmor-profiles
+
+`apparmor-profiles.ts` holds each compose service to its own copy of Docker's default
+AppArmor profile ([`deploy/soc-recon/apparmor/`](../deploy/soc-recon/apparmor/README.md)). A
+profile must equal `docker-default.reference` with only its name changed. Every service in
+`docker-compose.yml` must name exactly one profile in `security_opt`, its own, and must not
+run privileged. A service with no mapped profile fails. The reference is pinned to a SHA-256
+in the tool, so a weakened reference with four copies rebuilt from it fails too. The profile
+names the tool exports are the labels `noise-lint.ts` accepts.
+
+The check reads one compose file as written. What compose would resolve from elsewhere is
+refused, not followed: `extends`, a top-level `include`, a variable in `security_opt`, a
+`runtime`, an override file beside the compose file, a second compose file there
+(`compose.yaml`, `compose.yml` or `docker-compose.yaml`, any of which makes it uncertain
+which file a bare `docker compose up` reads), and any
+`!` outside a comment line (the YAML parser drops tags such as `!reset`, which change what
+compose builds).
+
+```bash
+bun tools/apparmor-profiles.ts           # check the profile folder and the compose file
+bun tools/apparmor-profiles.ts --write   # rebuild the profiles from the reference
+bun test tools/apparmor-profiles.test.ts # planted faults it must refuse
+```
+
+It cannot see a `COMPOSE_FILE` set in the box's `.env`, which profiles the kernel has
+loaded, or what a running
+container is confined by: `docker inspect` and `aa-status` on the box answer that.
 
 ## B.1 rule pipeline
 
