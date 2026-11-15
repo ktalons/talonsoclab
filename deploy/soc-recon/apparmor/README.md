@@ -57,7 +57,7 @@ done
 
 Both files matter: `template.go` is the profile text, and `apparmor.go` picks the ABI line
 and the includes that go into it. No output means neither moved and the copies stand (both are
-identical at 29.9.3, checked 2026-11-14). Any output means: work out what the new pair renders
+identical at 29.9.3, which the box has run since 2026-11-15; checked again that day). Any output means: work out what the new pair renders
 to on this host, change `docker-default.reference` to match, update `REFERENCE_SHA256` in
 `tools/apparmor-profiles.ts`, run `bun tools/apparmor-profiles.ts --write`, install and load
 the four files again, recreate the stack, and change the version named in this file.
