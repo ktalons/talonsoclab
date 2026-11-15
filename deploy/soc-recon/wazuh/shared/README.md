@@ -49,3 +49,23 @@ docker compose exec wazuh.manager ls -la /var/ossec/etc/shared/phase-a-{linux,ma
 
 Want each group listed, and `agent.conf` and `merged.mg` present as `wazuh:wazuh` in each
 directory. `phase-a-linux` also holds `cis_ubuntu26-04.yml`.
+
+Then have Wazuh parse every group's `agent.conf`:
+
+```bash
+docker compose exec wazuh.manager /var/ossec/bin/verify-agent-conf
+```
+
+Want `verify-agent-conf: OK` under each group and exit 0. The `sca` warning that
+`etc/shared/cis_ubuntu26-04.yml` is not found is expected: the checker looks for the policy
+beside the group folders. This is the manager's Linux build: it reads the XML and the
+settings every platform shares, and skips the content of Windows-only elements such as
+`registry_ignore`.
+
+The manager serves a file that fails this check anyway. An agent that receives one raises
+rule 220, `Invalid remote configuration`, and keeps its running settings, but only until
+its service next restarts: the bad file is on its disk, and by Wazuh's source a restarted
+agent then loads nothing from it, without a message. For the Windows group that means no
+Sysmon. The 2026-11-14 registry ignore shipped that way: its pattern ended in a backslash,
+which Wazuh's XML reader takes as an escape for the closing tag. It was corrected the next
+day.

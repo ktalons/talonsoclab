@@ -4,10 +4,14 @@ Phase B adds detections, and a new alert only means something if the alerts alre
 are understood. This page records what the lab alerted on before Phase B, which of it was the
 stack watching itself, how that was suppressed, and what is still left.
 
-**Status:** live since 2026-10-25 20:33 UTC, with every container rule pinned to the shared
-`docker-default` label. The per-service labels described below were added in 2026-11: the
-profiles are loaded on the box, and the rules that pin them take effect at the stack recreate
-that follows this commit. No live measurement of them is in this document yet. The 7-day
+**Status:** live since 2026-10-25 20:33 UTC. Until 2026-11-14 every container rule pinned the
+shared `docker-default` label; the per-service labels described below went live at the stack
+recreate of 2026-11-14 17:43 UTC. The 24 hours after that recreate carried 3,793 alerts, over
+the 3,000 target: 814 arrived in the recreate's first two minutes, and the Windows endpoint's
+vendor update service ran three times that day. The 24 hours that start one hour after the
+recreate carried 2,722. The label change itself moved nothing: once start-up was over, the four
+containers raised 592 unsuppressed `Audit: Command` alerts in the window, against 591 under the
+shared label across the same span of 2026-11-12 to 11-13. The 7-day
 measurement covers 2026-10-27 to 11-02 UTC. 10-26 is left out: a test session on the box that day carried 6,145 alerts, and test days
 are not a baseline.
 
@@ -208,7 +212,7 @@ The five largest remaining (rule, image) pairs over the measured week. None is s
 | 80792 | `/usr/bin/coreutils` (containers) | 243 | the lab's own job-age probe in the manager container (169), `timeout` and staging-directory moves from the three daily maintenance jobs (54), and truncated `df` and `sort` records (20). Low volume, and the jobs are ours |
 | 80792 | `/usr/bin/bash` (manager container) | 180 | the job-age probe's shells, syscollector's `rpm -qa` pipelines, and `zcat` over rotated alerts |
 | 80792 | `/usr/bin/sed` (manager container and box agent) | 147 | the port monitor's `sed` stages, arriving truncated. 989 of the week's 1,031 had no working-directory record, so no suppression can match them |
-| 750 | n/a (Windows endpoint) | 136 | registry values changed under FIM. 790 of the week's 955 are Volume Shadow Copy diagnostic values under `Services\VSS\Diag`, rewritten on every shadow copy operation. Real changes that say little. A registry ignore for the keys under it was added to the shared Windows agent config in 2026-11 and is judged by the next week's count |
+| 750 | n/a (Windows endpoint) | 136 | registry values changed under FIM. 790 of the week's 955 are Volume Shadow Copy diagnostic values under `Services\VSS\Diag`, rewritten on every shadow copy operation. Real changes that say little. A registry ignore for the keys under it was added to the shared Windows agent config on 2026-11-14 with a pattern the agent could not parse, so the agent kept its old settings and these alerts continued. The pattern was corrected on 2026-11-15 and is judged by the week after it reaches the agent |
 | 80792 | `/usr/bin/dash` (SOC box) | 96 | host shells: root's hourly cron job, the daily apt and `cron.daily` runs, and the login banner scripts on each ssh session |
 
 The replay's second pair, the macOS agent's port-change rule 533, fell from 189 a day to 52 and
