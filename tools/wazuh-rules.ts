@@ -12,8 +12,12 @@ import { join, relative } from "node:path";
 // *--- Configuration ---*
 
 // Phase B detection pack ids (ISA Constraints). 100300-100331 belong to Phase A, so the
-// EID-3 rules start at 100340. B.3 adds its ranges here.
-export const PACK_RANGES: [number, number][] = [[100340, 100399]];
+// EID-3 rules start at 100340. The B.3 rules on Sysmon events 1, 11, 13 and 22 take
+// 100400-100499.
+export const PACK_RANGES: [number, number][] = [
+  [100340, 100399],
+  [100400, 100499],
+];
 // The <rule> attributes rules.c getattributes knows (2250-2350); any other fails the file.
 const RULE_ATTRS = new Set(["id", "level", "maxsize", "timeframe", "frequency", "accuracy", "noalert", "ignore", "overwrite"]);
 // The rule elements whose text the reader keeps; the children of <mitre> are the others.

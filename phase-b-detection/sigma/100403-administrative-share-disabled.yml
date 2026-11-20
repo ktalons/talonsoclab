@@ -1,0 +1,47 @@
+# ******************************************************************************
+# *Title: 100403 administrative share disabled*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ disable administrative share rule.*
+# ******************************************************************************
+# Ported in full. The XML rule is 100403 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid13_pack.xml.
+#
+# Nothing is dropped. The two TargetObject conditions (a contains and an
+# endswith) are one pattern in the XML, since a Wazuh rule would otherwise
+# need the same field named twice.
+title: Disable Administrative Share Creation at Startup
+id: 5d9a04cd-0a2f-438c-888a-595a0a97087d
+related:
+    - id: c7dcacd0-cc59-4004-b0a4-1d6cdebe6f3e
+      type: derived
+status: test
+description: Administrative shares are hidden network shares created by Microsoft Windows NT operating systems that grant system administrators remote access to every disk volume on a network-connected system
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/registry/registry_set/registry_set_disable_administrative_share.yml
+    - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1070.005/T1070.005.md#atomic-test-4---disable-administrative-share-creation-at-startup
+author: frack113, Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.stealth
+    - attack.t1070.005
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|contains: '\Services\LanmanServer\Parameters\'
+        TargetObject|endswith:
+            - '\AutoShareWks'
+            - '\AutoShareServer'
+        Details: 'DWORD (0x00000000)'
+    condition: selection
+falsepositives:
+    - Unknown
+level: medium
+custom:
+    wazuh:
+        id: 100403
+        if_sid: '61615, 92300'
+        level: 10
+        mitre:
+            - T1070.005

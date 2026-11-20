@@ -1,0 +1,67 @@
+# ******************************************************************************
+# *Title: 100401 print port monitor registry*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ print port monitor registry rule.*
+# ******************************************************************************
+# Ported in part. The XML rule is 100401 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid13_pack.xml.
+#
+# One upstream filter is not here:
+#   filter_optional_cutepdf
+#     Image 'C:\Windows\System32\spoolsv.exe', TargetObject containing
+#     '\Control\Print\Monitors\CutePDF Writer Monitor v4.0\Driver', Details
+#     'cpwmon64_v40.dll' and User containing 'AUTHORI' or 'AUTORI'
+# It needs four fields at once, and a Wazuh rule holds no OR across fields, so
+# "not (A and B and C and D)" cannot be written. Dropping it only adds alerts:
+# the rule fires when CutePDF Writer registers its monitor. Narrowing it to the
+# one field it names (TargetObject) would instead hide any DLL written to that
+# key name, which an attacker could pick. The other two filters test one field
+# each and are in the XML as one negated TargetObject.
+#
+# filter_optional_vnc needs 'Control\Print\Environments\' and
+# '\Control\Print\Monitors\' in the same TargetObject, which a real key path
+# almost never holds. It is kept as upstream has it.
+title: Add Port Monitor Persistence in Registry
+id: e0fc0406-acfd-43ee-9ab8-ced4bfd10563
+related:
+    - id: 944e8941-f6f6-4ee8-ac05-1c224e923c0e
+      type: derived
+status: test
+description: |
+    Adversaries may use port monitors to run an attacker supplied DLL during system boot for persistence or privilege escalation.
+    A port monitor can be set through the AddMonitor API call to set a DLL to be loaded at startup.
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/registry/registry_set/registry_set_add_port_monitor.yml
+    - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1547.010/T1547.010.md
+author: frack113, Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.privilege-escalation
+    - attack.persistence
+    - attack.t1547.010
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|contains: '\Control\Print\Monitors\'
+        Details|endswith: '.dll'
+    filter_optional_monvnc:
+        TargetObject|contains: '\Control\Print\Monitors\MONVNC\Driver'
+    filter_optional_vnc:
+        TargetObject|contains|all:
+            - 'Control\Print\Environments\'
+            - '\Drivers\'
+            - '\VNC Printer'
+    condition: selection and not 1 of filter_optional_*
+falsepositives:
+    - CutePDF Writer registering its monitor (cpwmon64_v40.dll), which upstream drops with the filter this port lacks
+    - A printer driver installer that adds a monitor DLL
+level: medium
+custom:
+    wazuh:
+        id: 100401
+        if_sid: '61615, 92300'
+        level: 10
+        mitre:
+            - T1547.010

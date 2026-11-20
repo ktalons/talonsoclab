@@ -1,0 +1,56 @@
+# ******************************************************************************
+# *Title: 100408 certutil encode*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ certutil -encode rule.*
+# ******************************************************************************
+# Ported in part. The XML rule is 100408 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid1_pack.xml.
+#
+# Upstream's selection_img is Image OR OriginalFileName:
+#   - Image|endswith: '\certutil.exe'
+#   - OriginalFileName: 'CertUtil.exe'
+# One Wazuh rule holds no OR across fields, so the port keeps the Image branch
+# only. What that costs: a certutil.exe copied under another name is not seen by
+# this rule. Stock rule 92016 (level 13) alerts on a renamed certutil.exe, so
+# the event still alerts, under 92016, unless the process was started over WMI.
+# Then stock 92069 (level 0) takes the event first and nothing alerts. See
+# phase-b-detection/CONSTRUCTS.md.
+#
+# |windash is ported in full: the flag may start with a hyphen, a slash, an en
+# dash, an em dash or a horizontal bar (U+2013, U+2014, U+2015).
+title: File Encoded To Base64 Via Certutil.EXE
+id: 793bea80-02e5-43c9-916f-4d9467540ca9
+related:
+    - id: e62a9f0c-ca1e-46b2-85d5-a6da77f86d1a
+      type: derived
+status: test
+description: Detects the execution of certutil with the "encode" flag to encode a file to base64. This can be abused by threat actors and attackers for data exfiltration
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/process_creation/proc_creation_win_certutil_encode.yml
+    - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/certutil
+    - https://unit42.paloaltonetworks.com/new-babyshark-malware-targets-u-s-national-security-think-tanks/
+    - https://lolbas-project.github.io/lolbas/Binaries/Certutil/
+author: Florian Roth (Nextron Systems), Jonhnathan Ribeiro, oscd.community, Nasreddine Bencherchali (Nextron Systems), Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.stealth
+    - attack.t1027
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+        Image|endswith: '\certutil.exe'
+    selection_cli:
+        CommandLine|contains|windash: '-encode'
+    condition: all of selection_*
+falsepositives:
+    - As this is a general purpose rule, legitimate usage of the encode functionality will trigger some false positives. Apply additional filters accordingly
+level: medium
+custom:
+    wazuh:
+        id: 100408
+        if_sid: '61603, 92025, 92028, 92042, 92069'
+        level: 10
+        mitre:
+            - T1027

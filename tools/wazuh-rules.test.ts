@@ -46,7 +46,8 @@ describe("parseRules", () => {
   });
 
   test("knows the pack range", () => {
-    expect([100339, 100340, 100399, 100400].map(isPack)).toEqual([false, true, true, false]);
+    // 100340-100399 is event 3, 100400-100499 the B.3 rules (ISA Constraints, 2026-11-20).
+    expect([100339, 100340, 100399, 100400, 100499, 100500].map(isPack)).toEqual([false, true, true, true, true, false]);
   });
 
   // os_xml takes either quote and spaces after "=" but not before it (os_xml.c 580-625).

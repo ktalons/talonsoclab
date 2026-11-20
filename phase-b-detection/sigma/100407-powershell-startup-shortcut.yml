@@ -1,0 +1,63 @@
+# ******************************************************************************
+# *Title: 100407 PowerShell startup shortcut*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ PowerShell Startup shortcut rule.*
+# ******************************************************************************
+# Ported in full. The XML rule is 100407 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid11_pack.xml.
+#
+# Nothing is dropped, so nothing is lost. The port differs from upstream in one
+# way: a path separator is written as one or more backslashes, because the
+# decoder doubles each one, so a path with a repeated separator matches where
+# Sigma would not. The |contains and |endswith on TargetFilename are one
+# ordered pattern in the XML, the folder and then .lnk.
+#
+# powershell.exe writing a .lnk into the all-users Startup folder
+# (C:\ProgramData\...\StartUp) also matches stock rule 92226, level 14. This
+# rule is final all the same: 92226 hangs under two level 6 rules, and Wazuh
+# tries this rule first at level 12, so the event ends here. Such a write
+# alerted at 14 before this pack and alerts at 12 now. The case
+# pos-powershell-all-users-lnk pins it. The user Startup folder, where the
+# cited Atomic Red Team test writes, has no level 14 rule at all.
+title: Potential Startup Shortcut Persistence Via PowerShell.EXE
+id: 7a6ca755-6c92-4f79-a438-5e819d9a0f46
+related:
+    - id: 92fa78e7-4d39-45f1-91a3-8b23f3f1088d
+      type: derived
+status: test
+description: |
+    Detects PowerShell writing startup shortcuts.
+    This procedure was highlighted in Red Canary Intel Insights Oct. 2021, "We frequently observe adversaries using PowerShell to write malicious .lnk files into the startup directory to establish persistence.
+    Accordingly, this detection opportunity is likely to identify persistence mechanisms in multiple threats.
+    In the context of Yellow Cockatoo, this persistence mechanism eventually launches the command-line script that leads to the installation of a malicious DLL"
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/file/file_event/file_event_win_powershell_startup_shortcuts.yml
+    - https://redcanary.com/blog/intelligence-insights-october-2021/
+    - https://github.com/redcanaryco/atomic-red-team/blob/36d49de4c8b00bf36054294b4a1fcbab3917d7c5/atomics/T1547.001/T1547.001.md#atomic-test-7---add-executable-shortcut-link-to-user-startup-folder
+author: Christopher Peacock '@securepeacock', SCYTHE, Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.privilege-escalation
+    - attack.persistence
+    - attack.t1547.001
+logsource:
+    category: file_event
+    product: windows
+detection:
+    selection:
+        Image|endswith:
+            - '\powershell.exe'
+            - '\pwsh.exe'
+        TargetFilename|contains: '\start menu\programs\startup\'
+        TargetFilename|endswith: '.lnk'
+    condition: selection
+falsepositives:
+    - Depending on your environment accepted applications may leverage this at times. It is recommended to search for anomalies inidicative of malware.
+level: high
+custom:
+    wazuh:
+        id: 100407
+        if_sid: '61613, 92216'
+        level: 12
+        mitre:
+            - T1547.001

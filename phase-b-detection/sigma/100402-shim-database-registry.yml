@@ -1,0 +1,61 @@
+# ******************************************************************************
+# *Title: 100402 shim database registry*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ shim database registry rule.*
+# ******************************************************************************
+# Ported in full. The XML rule is 100402 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid13_pack.xml.
+#
+# The three Details filters are written the other way round. Wazuh drops an
+# EventData value that is empty, "-" or "(NULL)", so a Details that Sysmon left
+# empty is a missing field, and a negated test on a missing field never
+# matches. The XML therefore requires a Details that is present, not empty and
+# not "(Empty)". That is what "not 1 of filter_main_*" leaves, with one loss: a
+# Details of a literal "-" or "(NULL)" is dropped too, so the port is silent on
+# those two where upstream would alert. Whether Sysmon ever writes either is
+# not established. See phase-b-detection/CONSTRUCTS.md.
+title: Potential Persistence Via Shim Database Modification
+id: 38cd1cc0-0928-4678-b6e6-6456e843a2d0
+related:
+    - id: dfb5b4e8-91d0-4291-b40a-e3b0d3942c45
+      type: derived
+status: test
+description: |
+    Adversaries may establish persistence and/or elevate privileges by executing malicious content triggered by application shims.
+    The Microsoft Windows Application Compatibility Infrastructure/Framework (Application Shim) was created to allow for backward compatibility of software as the operating system codebase changes over time
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/registry/registry_set/registry_set_persistence_shim_database.yml
+    - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1546.011/T1546.011.md#atomic-test-3---registry-key-creation-andor-modification-events-for-sdb
+    - https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html
+    - https://andreafortuna.org/2018/11/12/process-injection-and-persistence-using-application-shimming/
+author: frack113, Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.privilege-escalation
+    - attack.persistence
+    - attack.t1546.011
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|contains:
+            - '\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\InstalledSDB\'
+            - '\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Custom\'
+    filter_main_empty_string:
+        Details: ''
+    filter_main_empty_value:
+        Details: '(Empty)'
+    filter_main_null:
+        Details: null
+    condition: selection and not 1 of filter_main_*
+falsepositives:
+    - Legitimate custom SHIM installations will also trigger this rule
+level: medium
+custom:
+    wazuh:
+        id: 100402
+        if_sid: '61615, 92300'
+        level: 10
+        mitre:
+            - T1546.011

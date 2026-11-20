@@ -1,0 +1,144 @@
+<!--
+  B.3 EID-13 pack: children of stock rule 61615 (Sysmon event 13, a registry
+  value set) and of its one level-0 child, hand-ported from the Sigma YAML in
+  phase-b-detection/sigma/. Phase B ISA F4. IDs 100400 to 100404 here; the
+  other B.3 rules sit in their own pack files.
+
+  How the port reads (each construct is in phase-b-detection/CONSTRUCTS.md):
+    - every matcher is pcre2 and case-insensitive, as a Sigma string match is
+    - |contains is an unanchored pattern and |endswith ends in $
+    - |contains and |endswith on one field (100403) are one ordered pattern.
+      Sigma lets the two overlap on the one backslash between them, so the
+      pattern takes a separator, then anything or nothing, then the value name
+    - "not 1 of filter_*" on TargetObject (100401) is one negated field with
+      both filters joined. TargetObject is on every event 13, so a negated
+      field is safe there
+    - |contains|all is a run of lookaheads, one per needle, so the needles
+      match in any order as Sigma has them
+    - a filter on Details that Sigma writes as null, '' or '(Empty)' (100402)
+      is written the other way round, as a positive test. Wazuh drops an
+      EventData value that is empty, "-" or "(NULL)", so an empty Details is
+      an absent field, and a negated field on an absent field never matches.
+      The rule asks for a Details that is present and is not "(Empty)". That
+      is what the three filters leave, with one loss: Wazuh also drops a
+      Details of a literal "-" or "(NULL)", so the rule is silent on those
+      two where Sigma would alert. Whether Sysmon ever writes either is not
+      established. Two cases pin the silence
+    - a dollar sign before a closing parenthesis is written \z, so the rule
+      loader has nothing to read as a variable
+    - the decoder hands a rule each backslash of a path doubled, so a separator
+      inside a path is written \\+ (one backslash or more). Sigma wants exactly
+      one, so a path with a doubled separator in the live event also matches
+    - the group names nothing a stock if_group matches. Stock rules attach to
+      group sysmon_event_13 by if_group (92300, 92304, 92307), and a pack rule
+      in that group would take them as children and lose the final match to
+      them
+    - every rule names two parents, 61615 and 92300. Wazuh tries a parent's
+      level-0 children first, and stock 92300 is the one level-0 child of
+      61615 (any value under a Run, RunOnce or Terminal Server Run key), so an
+      event that lands on one of those keys and also matches a pack rule would
+      end at 92300 with no alert unless the pack rule hangs from it as well.
+      None of the five patterns can match a Run path except a value that is
+      named for the pattern (a Run value called UserInitMprLogonScript, in
+      100400), so for four of the five the second parent is the idiom only.
+      The other stock children of 61615 are not level 0: 92304 (level 6,
+      ms-settings or Folder shell open command), 92307 (level 3, a .exe under
+      Services) and 92308 (level 3, a CLSID LocalServer). They alert rather
+      than swallow, so no pack rule needs them as parents
+    - under one parent Wazuh tries the higher level first, and at the same
+      level the rule loaded first, and the first match is final. Under 92300,
+      stock 92301 (level 12, .lnk, .vbs or .vba in Details under a Run key)
+      and 92303 (level 12, VNC or tvnserver.exe in Details under a Run key)
+      are final over a pack rule that also matches that event. The event
+      still alerts, under the stock rule, and a case pins each. Stock 92302
+      (level 6, reg.exe under a Run key) is below every pack rule here
+
+  WARN: what the port drops. 100401 lacks upstream's filter_optional_cutepdf,
+  which tests Image, TargetObject, Details and User at once. A Wazuh rule holds
+  no OR across fields, so "not (A and B and C and D)" cannot be written, and
+  keeping only the TargetObject part would hide any DLL written under that
+  key name. The rule therefore alerts when CutePDF Writer registers its
+  monitor (spoolsv.exe writing cpwmon64_v40.dll). The case
+  phase-b-detection/tests/100401/pos-cutepdf.json keeps the cost visible.
+
+  WARN: blind to a WOW6432Node path in 100402. Upstream matches
+  \SOFTWARE\Microsoft\Windows NT\..., and a 32-bit process writes under
+  \SOFTWARE\WOW6432Node\Microsoft\Windows NT\..., which neither rule matches.
+  The port keeps the upstream needle.
+
+  Lint: bun tools/sigma-lint.ts. Tests: bun tools/logtest.ts (ISA ISC-130).
+-->
+<group name="local,eid13_pack,">
+
+  <!-- SigmaHQ 9ace0707: the UserInitMprLogonScript value runs a script at logon. -->
+  <rule id="100400" level="10">
+    <if_sid>61615, 92300</if_sid>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)UserInitMprLogonScript</field>
+    <description>EID 13 pack: the UserInitMprLogonScript registry value was set.</description>
+    <mitre>
+      <id>T1037.001</id>
+    </mitre>
+  </rule>
+
+  <!--
+    SigmaHQ 944e8941: a port monitor DLL under Control\Print\Monitors.
+    The two single-field filters are one negated TargetObject: the MONVNC
+    driver value, and the VNC printer (three needles, any order). The CutePDF
+    filter needs four fields and is not here; see the WARN above.
+  -->
+  <rule id="100401" level="10">
+    <if_sid>61615, 92300</if_sid>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\+Control\\+Print\\+Monitors\\+</field>
+    <field name="win.eventdata.targetObject" type="pcre2" negate="yes">(?i)\\+Control\\+Print\\+Monitors\\+MONVNC\\+Driver|^(?=.*Control\\+Print\\+Environments\\+)(?=.*\\+Drivers\\+)(?=.*\\+VNC Printer)</field>
+    <field name="win.eventdata.details" type="pcre2">(?i)\.dll$</field>
+    <description>EID 13 pack: a DLL was set under Control\Print\Monitors.</description>
+    <mitre>
+      <id>T1547.010</id>
+    </mitre>
+  </rule>
+
+  <!--
+    SigmaHQ dfb5b4e8: a value under AppCompatFlags InstalledSDB or Custom.
+    Details must be present and must not be "(Empty)"; the lookahead ends at
+    \z because Details cannot be tested for absence any other way.
+  -->
+  <rule id="100402" level="10">
+    <if_sid>61615, 92300</if_sid>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\+SOFTWARE\\+Microsoft\\+Windows NT\\+CurrentVersion\\+AppCompatFlags\\+(?:InstalledSDB|Custom)\\+</field>
+    <field name="win.eventdata.details" type="pcre2">(?i)^(?!\(Empty\)\z).+</field>
+    <description>EID 13 pack: a value was set under AppCompatFlags InstalledSDB or Custom.</description>
+    <mitre>
+      <id>T1546.011</id>
+    </mitre>
+  </rule>
+
+  <!--
+    SigmaHQ c7dcacd0: AutoShareWks or AutoShareServer set to 0 under
+    LanmanServer\Parameters. The contains and endswith on TargetObject are one
+    pattern.
+  -->
+  <rule id="100403" level="10">
+    <if_sid>61615, 92300</if_sid>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\+Services\\+LanmanServer\\+Parameters\\+(?:.*\\+)?AutoShare(?:Wks|Server)$</field>
+    <field name="win.eventdata.details" type="pcre2">(?i)^DWORD \(0x00000000\)$</field>
+    <description>EID 13 pack: AutoShareWks or AutoShareServer was set to 0.</description>
+    <mitre>
+      <id>T1070.005</id>
+    </mitre>
+  </rule>
+
+  <!--
+    SigmaHQ 48437c39: EnableLUA set to 0. The needle is a contains, as
+    upstream has it, so a value name that only starts with EnableLUA matches.
+  -->
+  <rule id="100404" level="10">
+    <if_sid>61615, 92300</if_sid>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\+Microsoft\\+Windows\\+CurrentVersion\\+Policies\\+System\\+EnableLUA</field>
+    <field name="win.eventdata.details" type="pcre2">(?i)^DWORD \(0x00000000\)$</field>
+    <description>EID 13 pack: UAC was disabled by setting EnableLUA to 0.</description>
+    <mitre>
+      <id>T1548.002</id>
+    </mitre>
+  </rule>
+
+</group>

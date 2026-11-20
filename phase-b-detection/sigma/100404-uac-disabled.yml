@@ -1,0 +1,49 @@
+# ******************************************************************************
+# *Title: 100404 UAC disabled*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ UAC disabled registry rule.*
+# ******************************************************************************
+# Ported in full. The XML rule is 100404 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid13_pack.xml.
+#
+# Nothing is dropped. The two similar upstream rules named in related are not
+# ported. Note that the change takes effect at the next reboot, so the alert is
+# the warning and the registry value is what to check.
+title: UAC Disabled
+id: eda3ae17-3d52-4bff-bb00-bef9a7775e50
+related:
+    - id: 48437c39-9e5f-47fb-af95-3d663c3f2919
+      type: derived
+    - id: c5f6a85d-b647-40f7-bbad-c10b66bab038
+      type: similar
+    - id: 0d7ceeef-3539-4392-8953-3dc664912714
+      type: similar
+status: stable
+description: |
+    Detects when an attacker tries to disable User Account Control (UAC) by setting the registry value "EnableLUA" to 0.
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/registry/registry_set/registry_set_uac_disable.yml
+    - https://github.com/redcanaryco/atomic-red-team/blob/7e11e9b79583545f208a6dc3fa062f2ed443d999/atomics/T1548.002/T1548.002.md
+author: frack113, Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.privilege-escalation
+    - attack.t1548.002
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|contains: '\Microsoft\Windows\CurrentVersion\Policies\System\EnableLUA'
+        Details: 'DWORD (0x00000000)'
+    condition: selection
+falsepositives:
+    - Unknown
+level: medium
+custom:
+    wazuh:
+        id: 100404
+        if_sid: '61615, 92300'
+        level: 10
+        mitre:
+            - T1548.002

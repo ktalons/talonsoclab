@@ -1,0 +1,84 @@
+# ******************************************************************************
+# *Title: 100406 startup folder script file*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ suspicious Startup folder file rule.*
+# ******************************************************************************
+# Ported in full. The XML rule is 100406 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid11_pack.xml.
+#
+# Nothing is dropped, so nothing is lost. The port differs from upstream in one
+# way: a path separator is written as one or more backslashes, because the
+# decoder doubles each one, so a path with a repeated separator matches where
+# Sigma would not. The |contains and |endswith on TargetFilename are one
+# ordered pattern in the XML, the folder and then the extension.
+#
+# powershell.exe writing a script into the all-users Startup folder
+# (C:\ProgramData\...\StartUp) also matches stock rule 92226, level 14. This
+# rule is final all the same: 92226 hangs under two level 6 rules, and Wazuh
+# tries this rule first at level 12, so the event ends here. Such a write
+# alerted at 14 before this pack and alerts at 12 now. The case
+# pos-powershell-all-users-bat pins it.
+#
+# A .lnk is not on the extension list. 100407 covers a .lnk written by
+# PowerShell. Upstream's sibling 2aa0a6b4, which alerts on any file in a
+# Startup folder, is not ported.
+title: Suspicious Startup Folder Persistence
+id: 980d7954-c492-4b82-9b9f-eae3723d37dc
+related:
+    - id: 28208707-fe31-437f-9a7f-4b1108b94d2e
+      type: derived
+status: test
+description: |
+    Detects the creation of potentially malicious script and executable files in Windows startup folders, which is a common persistence technique used by threat actors.
+    These files (.ps1, .vbs, .js, .bat, etc.) are automatically executed when a user logs in, making the Startup folder an attractive target for attackers.
+    This technique is frequently observed in malvertising campaigns and malware distribution where attackers attempt to maintain long-term access to compromised systems.
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/file/file_event/file_event_win_susp_startup_folder_persistence.yml
+    - https://github.com/last-byte/PersistenceSniper
+    - https://www.microsoft.com/en-us/security/blog/2025/03/06/malvertising-campaign-leads-to-info-stealers-hosted-on-github/
+    - https://github.com/redcanaryco/atomic-red-team/blob/5ede8f21e42ebe37e0a6eff757dba60bcfa85859/atomics/T1547.001/T1547.001.md
+author: Nasreddine Bencherchali (Nextron Systems), Swachchhanda Shrawan Poudel (Nextron Systems), Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.privilege-escalation
+    - attack.execution
+    - attack.t1204.002
+    - attack.persistence
+    - attack.t1547.001
+logsource:
+    category: file_event
+    product: windows
+detection:
+    selection:
+        TargetFilename|contains: '\Windows\Start Menu\Programs\Startup\'
+        TargetFilename|endswith:
+            # Add or remove suspicious extensions according to your env needs
+            - '.bat'
+            - '.cmd'
+            - '.dll'
+            - '.hta'
+            - '.jar'
+            - '.js'
+            - '.jse'
+            - '.msi'
+            - '.ps1'
+            - '.psd1'
+            - '.psm1'
+            - '.scr'
+            - '.url'
+            - '.vba'
+            - '.vbe'
+            - '.vbs'
+            - '.wsf'
+    condition: selection
+falsepositives:
+    - Rare legitimate usage of some of the extensions mentioned in the rule
+level: high
+custom:
+    wazuh:
+        id: 100406
+        if_sid: '61613, 92216'
+        level: 12
+        mitre:
+            - T1204.002
+            - T1547.001

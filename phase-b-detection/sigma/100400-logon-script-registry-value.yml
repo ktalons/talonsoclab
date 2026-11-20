@@ -1,0 +1,44 @@
+# ******************************************************************************
+# *Title: 100400 logon script registry value*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ UserInitMprLogonScript registry rule.*
+# ******************************************************************************
+# Ported in full. The XML rule is 100400 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid13_pack.xml.
+#
+# Nothing is dropped. The match is a plain contains on TargetObject, and the
+# rule does not look at which process wrote the value, as upstream does not.
+title: Potential Persistence Via Logon Scripts - Registry
+id: 32d3957a-ec17-430a-991b-67951e5a755e
+related:
+    - id: 9ace0707-b560-49b8-b6ca-5148b42f39fb
+      type: derived
+status: test
+description: Detects creation of the "UserInitMprLogonScript" registry value, which can be used as a persistence method by malicious actors
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/registry/registry_set/registry_set_persistence_logon_scripts_userinitmprlogonscript.yml
+    - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1037.001/T1037.001.md
+author: Tom Ueltschi (@c_APT_ure), Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.privilege-escalation
+    - attack.t1037.001
+    - attack.persistence
+    - attack.lateral-movement
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|contains: 'UserInitMprLogonScript'
+    condition: selection
+falsepositives:
+    - Investigate the contents of the "UserInitMprLogonScript" value to determine if the added script is legitimate
+level: medium
+custom:
+    wazuh:
+        id: 100400
+        if_sid: '61615, 92300'
+        level: 10
+        mitre:
+            - T1037.001

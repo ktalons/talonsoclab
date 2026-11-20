@@ -1,0 +1,109 @@
+<!--
+  B.3 EID-11 pack: children of stock rule 61613 (Sysmon event 11, a file
+  created) and of its one level-0 child, hand-ported from the Sigma YAML in
+  phase-b-detection/sigma/. Phase B ISA F4. IDs 100405 to 100407 here; the
+  other B.3 rules sit in their own pack files.
+
+  How the port reads (each construct is in phase-b-detection/CONSTRUCTS.md):
+    - every matcher is pcre2 and case-insensitive, as a Sigma string match is
+    - |contains is an unanchored pattern and |endswith ends in $
+    - |contains and |endswith on one field (100406, 100407) are one ordered
+      pattern: the folder, then anything, then the extension at the end. The
+      two cannot overlap, because the folder text ends in a backslash and every
+      extension starts with a dot, so the one pattern says what the pair says
+    - the decoder hands a rule each backslash of a path doubled, so a separator
+      inside a path is written \\+ (one backslash or more). Sigma wants exactly
+      one, so a path with a doubled separator in the live event also matches
+    - the group names nothing a stock if_group matches. Stock rules attach to
+      group sysmon_event_11 by if_group (rules in the 92200 to 92227 file, and
+      91001 in the Exchange ProxyLogon file), and a pack rule in that group
+      would take them as children and lose the final match to them
+    - every rule names two parents, 61613 and 92216. Wazuh tries a parent's
+      level-0 children first, and stock 92216 (powershell.exe writing a .tmp
+      file under Windows\Temp or Users) is level 0: it matches on the text
+      .tmp anywhere in the path, so powershell.exe writing a file called
+      a.tmp.lnk ends at 92216 with no alert unless the pack rule hangs from it
+      as well. 92216 cannot match a path under AppPatch\Custom (100405), so
+      there the second parent is the idiom only
+    - under one parent Wazuh tries the higher level first, and at the same
+      level the rule loaded first, and the first match is final. Stock rules
+      sit beside the pack rules under 61613, so a stock rule at level 12 or
+      more is final over a pack rule on an event both match. Four can be:
+      92211 (level 14, rundll32.exe writing a launchable file), 92212 (level
+      14, powershell.exe writing a name with .7z, .zip or .rar in it), 92215
+      (level 12, mshta.exe writing a launchable file) and 91001 (level 12,
+      UMWorkerProcess.exe writing nearly anything). 92214 (level 15, an Office
+      program writing a .lnk under AppData) is a fifth only for a name with
+      .lnk inside it, such as x.lnk.vbs. Each such event still alerts, under
+      the stock rule, and three cases pin 92211, 92212 and 92215. The other
+      stock rules that match these paths are level 6 to 9 (92200 and 92203
+      and their children 92201 and 92204 for a path under Users, 92225 for
+      the all-users Startup folder), below every pack rule here, so the pack
+      rule is final over them. Stock 92226 (level 14, powershell.exe writing a
+      launchable file into the all-users Startup folder) is not final over
+      100406 or 100407, though its level is higher. It is a child of 92203 and
+      92225,
+      both level 6, and Wazuh tries the rules under one parent in level order,
+      so the pack rule at 12 matches first and the event ends there without
+      reaching 92226. Such a write alerted at 14 before this pack and alerts at
+      12 under the pack rule now. A test case pins it for each rule
+
+  WARN: 100405 maps to ATT&CK T1546.011 (Application Shimming), where the
+  upstream Sigma rule is tagged T1547.009. The test that validates it (Atomic
+  Red Team T1546.011 test 2) is filed under T1546.011, and stock rule 92058
+  uses the same id. The YAML's tag is changed to match, and its header says so.
+
+  WARN: what the port does not carry. Nothing upstream is dropped from these
+  three rules. The one difference is the doubled-separator tolerance above.
+
+  Lint: bun tools/sigma-lint.ts. Tests: bun tools/logtest.ts.
+-->
+<group name="local,eid11_pack,">
+
+  <!--
+    SigmaHQ ee63c85c: a file under AppPatch\Custom or AppPatch\CustomSDB, where
+    a custom shim database is kept. Upstream tests no extension and no image,
+    so neither does the port: any process writing anything there alerts. The
+    colon in front of Windows is upstream's, so C:\Temp\Windows\apppatch\Custom
+    does not match.
+  -->
+  <rule id="100405" level="10">
+    <if_sid>61613, 92216</if_sid>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i):\\+Windows\\+apppatch\\+Custom(?:SDB)?\\+</field>
+    <description>EID 11 pack: a file was created in the AppPatch custom shim database folder.</description>
+    <mitre>
+      <id>T1546.011</id>
+    </mitre>
+  </rule>
+
+  <!--
+    SigmaHQ 28208707: a script or other launchable file written into a Start
+    Menu Startup folder, the user's or the all-users one. The seventeen
+    extensions are upstream's list. A .lnk is not on it; 100407 covers a .lnk
+    written by PowerShell.
+  -->
+  <rule id="100406" level="12">
+    <if_sid>61613, 92216</if_sid>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\+Windows\\+Start Menu\\+Programs\\+Startup\\+.*\.(?:bat|cmd|dll|hta|jar|jse?|msi|ps1|psd1|psm1|scr|url|vba|vbe|vbs|wsf)$</field>
+    <description>EID 11 pack: a script or executable file was created in a Startup folder.</description>
+    <mitre>
+      <id>T1204.002</id>
+      <id>T1547.001</id>
+    </mitre>
+  </rule>
+
+  <!--
+    SigmaHQ 92fa78e7: powershell.exe or pwsh.exe writing a .lnk into a Startup
+    folder. Upstream's folder text is lower case and the match ignores case.
+  -->
+  <rule id="100407" level="12">
+    <if_sid>61613, 92216</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(?:powershell|pwsh)\.exe$</field>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\+start menu\\+programs\\+startup\\+.*\.lnk$</field>
+    <description>EID 11 pack: PowerShell created a shortcut in a Startup folder.</description>
+    <mitre>
+      <id>T1547.001</id>
+    </mitre>
+  </rule>
+
+</group>

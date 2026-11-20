@@ -1,0 +1,57 @@
+# ******************************************************************************
+# *Title: 100405 shim database file*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ new custom shim database file rule.*
+# ******************************************************************************
+# Ported in full. The XML rule is 100405 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid11_pack.xml.
+#
+# Nothing is dropped, so nothing is lost. The port differs from upstream in two
+# ways. A path separator is written as one or more backslashes, because the
+# decoder doubles each one, so a path with a repeated separator matches where
+# Sigma would not. And the ATT&CK technique is changed: upstream tags this rule
+# attack.t1547.009 (Shortcut Modification), and this port tags and maps it as
+# T1546.011 (Application Shimming). That is the technique a shim database
+# belongs to: the Atomic Red Team test this rule cites is filed under
+# T1546.011, and stock Wazuh rule 92058 uses the same id. The tag below is
+# changed to match, so the YAML and the Wazuh rule name one technique.
+title: New Custom Shim Database Created
+id: c37128a2-0989-4a15-99b7-eff0a10ac374
+related:
+    - id: ee63c85c-6d51-4d12-ad09-04e25877a947
+      type: derived
+status: test
+description: |
+    Adversaries may establish persistence and/or elevate privileges by executing malicious content triggered by application shims.
+    The Microsoft Windows Application Compatibility Infrastructure/Framework (Application Shim) was created to allow for backward compatibility of software as the operating system codebase changes over time.
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/file/file_event/file_event_win_creation_new_shim_database.yml
+    - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1546.011/T1546.011.md#atomic-test-2---new-shim-database-files-created-in-the-default-shim-database-directory
+    - https://www.mandiant.com/resources/blog/fin7-shim-databases-persistence
+    - https://liberty-shell.com/sec/2020/02/25/shim-persistence/
+    - https://andreafortuna.org/2018/11/12/process-injection-and-persistence-using-application-shimming/
+author: frack113, Nasreddine Bencherchali (Nextron Systems), Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.privilege-escalation
+    - attack.persistence
+    - attack.t1546.011
+logsource:
+    product: windows
+    category: file_event
+detection:
+    selection:
+        TargetFilename|contains:
+            - ':\Windows\apppatch\Custom\'
+            - ':\Windows\apppatch\CustomSDB\'
+    condition: selection
+falsepositives:
+    - Legitimate custom SHIM installations will also trigger this rule
+level: medium
+custom:
+    wazuh:
+        id: 100405
+        if_sid: '61613, 92216'
+        level: 10
+        mitre:
+            - T1546.011

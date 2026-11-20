@@ -1,0 +1,54 @@
+# ******************************************************************************
+# *Title: 100411 whoami all*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ whoami /all rule.*
+# ******************************************************************************
+# Ported in part. The XML rule is 100411 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid1_pack.xml.
+#
+# Upstream's selection_main_img is Image OR OriginalFileName:
+#   - Image|endswith: '\whoami.exe'
+#   - OriginalFileName: 'whoami.exe'
+# One Wazuh rule holds no OR across fields, so the port keeps the Image branch
+# only. What that costs: a whoami.exe copied under another name runs unseen. No
+# stock rule covers a renamed whoami.exe. See phase-b-detection/CONSTRUCTS.md.
+#
+# |windash is ported in full: the flag may start with a hyphen, a slash, an en
+# dash, an em dash or a horizontal bar (U+2013, U+2014, U+2015).
+title: Enumerate All Information With Whoami.EXE
+id: 0c1e2077-dba4-49b3-9a1b-041741838552
+related:
+    - id: c248c896-e412-4279-8c15-1c558067b6fa
+      type: derived
+status: test
+description: Detects the execution of "whoami.exe" with the "/all" flag
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/process_creation/proc_creation_win_whoami_all_execution.yml
+    - https://brica.de/alerts/alert/public/1247926/agent-tesla-keylogger-delivered-inside-a-power-iso-daa-archive/
+    - https://app.any.run/tasks/7eaba74e-c1ea-400f-9c17-5e30eee89906/
+    - https://www.youtube.com/watch?v=DsJ9ByX84o4&t=6s
+author: Florian Roth (Nextron Systems), Nasreddine Bencherchali (Nextron Systems), Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.discovery
+    - attack.t1033
+    - car.2016-03-001
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_main_img:
+        Image|endswith: '\whoami.exe'
+    selection_main_cli:
+        CommandLine|contains|windash: ' -all'
+    condition: all of selection_main_*
+falsepositives:
+    - Unknown
+level: medium
+custom:
+    wazuh:
+        id: 100411
+        if_sid: '61603, 92025, 92028, 92042, 92069'
+        level: 10
+        mitre:
+            - T1033

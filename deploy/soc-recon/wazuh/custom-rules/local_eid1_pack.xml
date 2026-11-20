@@ -1,0 +1,110 @@
+<!--
+  B.3 EID-1 pack: children of stock rule 61603 (Sysmon event 1, a process
+  creation) and of its four level-0 children, hand-ported from the Sigma YAML
+  in phase-b-detection/sigma/. IDs 100408-100411.
+
+  How the port reads (each construct is in phase-b-detection/CONSTRUCTS.md):
+    - every matcher is pcre2 and case-insensitive, as a Sigma string match is
+    - |endswith on Image is \\name\.exe$, as in the EID-3 pack
+    - |contains on CommandLine is an unanchored pattern
+    - |windash is a character class in front of the flag: hyphen, slash, and
+      U+2013, U+2014 and U+2015 (en dash, em dash, horizontal bar). The
+      three code points need the pattern in UTF mode, so a windash field
+      starts (*UTF). Stock rules 92060 and 92064 start the same way
+    - several selections on one field, all required, is one field each.
+      Stock 92043 carries two positive CommandLine fields the same way
+    - "not 1 of filter_*" where every filter tests CommandLine is one negated
+      CommandLine field. contains|all inside a filter is a set of lookaheads
+      anchored at the start, (?=.*a)(?=.*b), so the order is free
+    - Image OR OriginalFileName in one selection is ported as Image only. One
+      rule holds no OR across fields and the pack has no room for a level-0
+      helper. A renamed binary is the cost; each rule says what it loses
+    - the decoder hands a rule each backslash doubled and each double quote
+      as \", so a separator inside a path is \\+ and a quote is \\?"
+    - a space that would end a pattern is written \x20, so no reader can
+      trim it off the end of the element text
+    - the group names nothing a stock if_group matches. 71 stock rules attach
+      to the sysmon_event1 group by if_group, and a pack rule in that group
+      would take them as children and could lose the final match to them
+    - every rule names five parents. Stock 92025 (originalFileName reg.EXE),
+      92028 (powershell.exe with a script extension on the command line),
+      92042 (netsh.EXE) and 92069 (parent WmiPrvSE.exe) are level-0 children
+      of 61603, and any of them would end the event with no alert. A pack rule
+      that hangs from them as well is tried as their child and takes the
+      final match. 92069 is the one a real attack meets: a process started
+      over WMI has WmiPrvSE.exe as its parent
+    - under one parent Wazuh tries the higher level first, and at the same
+      level the rule loaded first, and the first match is final. Stock files
+      load before this one, so a stock rule beside a pack rule wins a tie.
+      One tie matters: stock 92057 (level 12, a powershell.exe parent and an
+      encoded PowerShell flag on the command line) is final over 100409 when
+      PowerShell starts schtasks.exe to create a SYSTEM task that runs an
+      encoded PowerShell command. That event alerts at 12 under 92057 and
+      does not carry T1053.005. A case pins it
+
+  WARN: what the port drops. 100408, 100410 and 100411 keep the Image branch
+  of upstream's Image OR OriginalFileName, so a renamed binary is not seen by
+  them. For certutil.exe, stock 92016 (level 13) alerts on a renamed copy, so
+  that event still alerts, with one exception: started over WMI, the event
+  is taken by stock 92069 (level 0, parent WmiPrvSE.exe), nothing under 92069
+  matches a renamed certutil.exe, and 92016 is never reached. That event
+  raises no alert at all. Nothing covers a renamed cmdkey.exe or whoami.exe
+  on any route. 100409's upstream has no OriginalFileName branch.
+
+  Lint: bun tools/sigma-lint.ts. Tests: bun tools/logtest.ts (ISA ISC-130).
+-->
+<group name="local,eid1_pack,">
+
+  <!-- SigmaHQ e62a9f0c: certutil.exe encoding a file to base64. -->
+  <rule id="100408" level="10">
+    <if_sid>61603, 92025, 92028, 92042, 92069</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\certutil\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(*UTF)(?i)[-/\x{2013}\x{2014}\x{2015}]encode</field>
+    <description>EID 1 pack: certutil.exe run with -encode to base64-encode a file.</description>
+    <mitre>
+      <id>T1027</id>
+    </mitre>
+  </rule>
+
+  <!--
+    SigmaHQ 89ca78fd: schtasks.exe creating or changing a task that runs as
+    SYSTEM. One field per selection, all required. The negated field joins
+    the three filters: TeamViewer and Office are contains|all, Avira is any
+    one of three strings.
+  -->
+  <rule id="100409" level="12">
+    <if_sid>61603, 92025, 92028, 92042, 92069</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\schtasks\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i) /(?:change|create)\x20</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)/ru\x20</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(?:NT AUT| SYSTEM\x20)</field>
+    <field name="win.eventdata.commandLine" type="pcre2" negate="yes">(?is)^(?=.*/TN TVInstallRestore)(?=.*\\TeamViewer_\.exe)|^(?=.*Subscription Heartbeat)(?=.*\\HeartbeatConfig\.xml)(?=.*\\Microsoft Shared\\+OFFICE)|/Create /F /RU System /SC WEEKLY /TN AviraSystemSpeedupVerify /TR |:\\+Program Files \(x86\)\\+Avira\\+System Speedup\\+setup\\+avira_speedup_setup\.exe|/VERIFY /VERYSILENT /NOSTART /NODOTNET /NORESTART\\?" /RL HIGHEST</field>
+    <description>EID 1 pack: schtasks.exe created or changed a task that runs as SYSTEM.</description>
+    <mitre>
+      <id>T1053.005</id>
+    </mitre>
+  </rule>
+
+  <!-- SigmaHQ 07f8bdc2: cmdkey.exe listing cached credentials. -->
+  <rule id="100410" level="12">
+    <if_sid>61603, 92025, 92028, 92042, 92069</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\cmdkey\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(*UTF)(?i) [-/\x{2013}\x{2014}\x{2015}]l</field>
+    <description>EID 1 pack: cmdkey.exe run with /list to show cached credentials.</description>
+    <mitre>
+      <id>T1003.005</id>
+    </mitre>
+  </rule>
+
+  <!-- SigmaHQ c248c896: whoami.exe run with /all. -->
+  <rule id="100411" level="10">
+    <if_sid>61603, 92025, 92028, 92042, 92069</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\whoami\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(*UTF)(?i) [-/\x{2013}\x{2014}\x{2015}]all</field>
+    <description>EID 1 pack: whoami.exe run with /all to list the user, groups and privileges.</description>
+    <mitre>
+      <id>T1033</id>
+    </mitre>
+  </rule>
+
+</group>

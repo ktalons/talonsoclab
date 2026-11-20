@@ -1,0 +1,60 @@
+<!--
+  B.3 EID-22 pack: a child of stock rule 61650 (Sysmon event 22, a DNS query),
+  hand-ported from the Sigma YAML in phase-b-detection/sigma/. Phase B ISA F4.
+  ID 100412 here; the other B.3 rules sit in their own pack files.
+
+  How the port reads (each construct is in phase-b-detection/CONSTRUCTS.md):
+    - every matcher is pcre2 and case-insensitive, as a Sigma string match is
+    - a plain Sigma string is anchored at both ends, |contains is not
+    - a value list is one alternation, and a selection that is a list of two
+      maps (one exact, one |contains) is one alternation of the two forms
+    - "not 1 of filter_*" is a negated field. All twelve filters test Image and
+      nothing else, so they join into one negated Image pattern. A filter that
+      mixes |startswith and |endswith on Image (edge_2) is one ordered pattern
+    - the decoder hands a rule each backslash of a path doubled, so a separator
+      inside a path is written \\+ (one backslash or more)
+    - the group names nothing a stock if_group matches. On 4.14.9 no stock
+      rule attaches to sysmon_event_22 by if_group, so this is the idiom the
+      other packs need and costs nothing here
+    - the parent is 61650 alone. On 4.14.9 no stock rule has 61650 as a
+      parent and none attaches to its group, so there is no level-0 sibling to
+      name as a second parent
+
+  NOTE: no stock rule reads a Sysmon DNS event, so nothing upstream of this
+  pack names the event 22 fields. 100412 uses win.eventdata.queryName and
+  .image. The logtest run of 2026-11-20 decoded both from a real event 22 on
+  4.14.9. The names .queryStatus, .queryResults and .user follow the same
+  pattern and are not used here, so no case proves them.
+
+  WARN: a negated field does not match when the field is absent. 100412 is
+  silent on an event with no Image, where the Sigma rule would alert. Sysmon
+  writes Image on every event 22 the lab endpoint logged.
+
+  WARN: what the port drops. Nothing upstream is dropped. The one difference
+  is the doubled-separator tolerance above, which lets a path with a repeated
+  separator match a filter where Sigma would not.
+
+  Lint: bun tools/sigma-lint.ts. Tests: bun tools/logtest.ts.
+-->
+<group name="local,eid22_pack,">
+
+  <!--
+    SigmaHQ ec82e2a5: a DNS query for an IP lookup service from a process that
+    is not a known browser. Two names match whole (www.ip.cn, l2.io) and the
+    other forty-one match anywhere in the query name. The filters are the
+    browsers, by install path where upstream gives one and by file name where
+    it does not (brave, maxthon, opera, safari, seamonkey, vivaldi, whale), so
+    a browser started from any other folder is filtered by name and a binary
+    called chrome.exe in a temp folder is not.
+  -->
+  <rule id="100412" level="10">
+    <if_sid>61650</if_sid>
+    <field name="win.eventdata.queryName" type="pcre2">(?i)^(?:www\.ip\.cn|l2\.io)$|api\.2ip\.ua|api\.bigdatacloud\.net|api\.ipify\.org|bot\.whatismyipaddress\.com|canireachthe\.net|checkip\.amazonaws\.com|checkip\.dyndns\.org|curlmyip\.com|db-ip\.com|edns\.ip-api\.com|eth0\.me|freegeoip\.app|geoipy\.com|getip\.pro|icanhazip\.com|ident\.me|ifconfig\.io|ifconfig\.me|ip-api\.com|ip\.360\.cn|ip\.anysrc\.net|ip\.taobao\.com|ip\.tyk\.nu|ipaddressworld\.com|ipapi\.co|ipconfig\.io|ipecho\.net|ipinfo\.io|ipip\.net|ipof\.in|ipv4\.icanhazip\.com|ipv4bot\.whatismyipaddress\.com|ipv6-test\.com|ipwho\.is|jsonip\.com|myexternalip\.com|seeip\.org|wgetip\.com|whatismyip\.akamai\.com|whois\.pconline\.com\.cn|wtfismyip\.com</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)\\(?:brave|maxthon|opera|safari|seamonkey|vivaldi|whale)\.exe$|^C:\\+Program Files(?: \(x86\))?\\+Google\\+Chrome\\+Application\\+chrome\.exe$|^C:\\+Program Files(?: \(x86\))?\\+Mozilla Firefox\\+firefox\.exe$|^C:\\+Program Files(?: \(x86\))?\\+Internet Explorer\\+iexplore\.exe$|^C:\\+Program Files \(x86\)\\+Microsoft\\+EdgeWebView\\+Application\\+|\\+WindowsApps\\+MicrosoftEdge\.exe$|^C:\\+Program Files(?: \(x86\))?\\+Microsoft\\+Edge\\+Application\\+msedge\.exe$|^C:\\+Program Files(?: \(x86\))?\\+Microsoft\\+EdgeCore\\+(?:.*\\)?(?:msedge|msedgewebview2)\.exe$</field>
+    <description>EID 22 pack: a non-browser process looked up an IP lookup service.</description>
+    <mitre>
+      <id>T1590</id>
+    </mitre>
+  </rule>
+
+</group>

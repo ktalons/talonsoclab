@@ -1,0 +1,76 @@
+# ******************************************************************************
+# *Title: 100409 schtasks system*
+# *Author: Kyle Versluis*
+# *Description: Wazuh port of the SigmaHQ schtasks SYSTEM privileges rule.*
+# ******************************************************************************
+# Ported in full. The XML rule is 100409 in
+# deploy/soc-recon/wazuh/custom-rules/local_eid1_pack.xml.
+#
+# The three selections each test CommandLine and all are required, so the XML
+# carries three CommandLine fields. The three filters all test CommandLine too
+# and join into one negated CommandLine field. filter_optional_teamviewer also
+# tests Image, which selection_root already holds to schtasks.exe, so the XML
+# leaves that test out and loses nothing.
+#
+# Upstream gaps the port keeps as they are: ' SYSTEM ' needs a space on both
+# sides, so "/ru SYSTEM" at the very end of the command line, or "/ru "SYSTEM""
+# in quotes, does not match.
+title: Schtasks Creation Or Modification With SYSTEM Privileges
+id: 1ac16cf4-1c59-4d4f-b3b9-48171831d531
+related:
+    - id: 89ca78fd-b37c-4310-b3d3-81a023f83936
+      type: derived
+status: test
+description: Detects the creation or update of a scheduled task to run with "NT AUTHORITY\SYSTEM" privileges
+references:
+    - https://github.com/SigmaHQ/sigma/blob/53423dac8742ef6a44fb73f23f049e84594a66ce/rules/windows/process_creation/proc_creation_win_schtasks_system.yml
+    - https://www.elastic.co/security-labs/exploring-the-qbot-attack-pattern
+    - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks
+author: Nasreddine Bencherchali (Nextron Systems), Kyle Versluis (Wazuh port)
+date: 2026-11-20
+tags:
+    - attack.privilege-escalation
+    - attack.execution
+    - attack.persistence
+    - attack.t1053.005
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection_root:
+        Image|endswith: '\schtasks.exe'
+        CommandLine|contains:
+            - ' /change '
+            - ' /create '
+    selection_run:
+        CommandLine|contains: '/ru '
+    selection_user:
+        CommandLine|contains:
+            - 'NT AUT'
+            - ' SYSTEM '
+    filter_optional_teamviewer:
+        Image|endswith: '\schtasks.exe'
+        CommandLine|contains|all:
+            - '/TN TVInstallRestore'
+            - '\TeamViewer_.exe'
+    filter_optional_office:
+        CommandLine|contains|all:
+            - 'Subscription Heartbeat'
+            - '\HeartbeatConfig.xml'
+            - '\Microsoft Shared\OFFICE'
+    filter_optional_avira:
+        CommandLine|contains:
+            - '/Create /F /RU System /SC WEEKLY /TN AviraSystemSpeedupVerify /TR '
+            - ':\Program Files (x86)\Avira\System Speedup\setup\avira_speedup_setup.exe'
+            - '/VERIFY /VERYSILENT /NOSTART /NODOTNET /NORESTART" /RL HIGHEST'
+    condition: all of selection_* and not 1 of filter_optional_*
+falsepositives:
+    - Unknown
+level: high
+custom:
+    wazuh:
+        id: 100409
+        if_sid: '61603, 92025, 92028, 92042, 92069'
+        level: 12
+        mitre:
+            - T1053.005
