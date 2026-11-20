@@ -2,7 +2,7 @@
 # ******************************************************************************
 # *Title: pre-commit*
 # *Author: Kyle Versluis*
-# *Description: Block a commit whose staged content fails leakcheck.*
+# *Description: Block a commit that fails leakcheck or the agent.conf receipt.*
 # ******************************************************************************
 
 # *--- Configuration ---*
@@ -12,6 +12,8 @@
 # bypass the global dispatcher that calls the stub, so install.sh never sets one.
 set -euo pipefail
 
+shared="deploy/soc-recon/wazuh/shared/"
+
 # *--- Entry Point ---*
 
 root=$(git rev-parse --show-toplevel)
@@ -20,4 +22,15 @@ if ! command -v bun >/dev/null 2>&1; then
   echo "pre-commit: bun not found, so leakcheck cannot run. Commit blocked." >&2
   exit 1
 fi
-exec bun "$root/tools/leakcheck.ts" --staged
+bun "$root/tools/leakcheck.ts" --staged
+# ISA ISC-105: a commit that touches a shared agent group must carry a receipt from a
+# verify-agent-conf run on the box that matches the staged files and the pinned image.
+# SECURITY: fail closed. The listing's exit status is checked on its own, because a test
+# on its output alone reads a git failure as "nothing staged under the shared folder".
+if ! touched=$(git -C "$root" diff --cached --name-only -- "$shared"); then
+  echo "pre-commit: git could not list the staged paths, so the agent.conf receipt cannot be checked. Commit blocked." >&2
+  exit 1
+fi
+if [ -n "$touched" ]; then
+  exec bun "$root/tools/agentconf-check.ts" --offline --staged
+fi

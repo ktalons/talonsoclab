@@ -345,6 +345,110 @@ It cannot see a `COMPOSE_FILE` set in the box's `.env`, which profiles the kerne
 loaded, or what a running
 container is confined by: `docker inspect` and `aa-status` on the box answer that.
 
+## agentconf-check
+
+`agentconf-check.ts` runs every shared agent group config
+(`deploy/soc-recon/wazuh/shared/*/agent.conf`) through Wazuh's own parser,
+`verify-agent-conf`, before a commit that changes one (ISA ISC-105). On 2026-11-14 the
+Windows group shipped a `registry_ignore` whose text ended in a backslash. Wazuh's XML reader
+takes a backslash before `<` as an escape, so the element never closed and the agent rejected
+the whole file. Five review rounds read that line. None ran it through the parser.
+
+```bash
+bun tools/agentconf-check.ts                     # every group on the box; writes the receipt on a full pass
+bun tools/agentconf-check.ts --offline           # the receipt against the working tree, no network
+bun tools/agentconf-check.ts --offline --staged  # the same against the index (the pre-commit hook)
+bun tools/agentconf-check.ts --self-test         # proves on the box that the gate can fail
+bun tools/agentconf-check.ts --host <ssh alias>  # another box than talonsoc, with or without --self-test
+bun test tools/agentconf-check.test.ts           # every mode through a fake box
+```
+
+The full check needs no running stack. For each group it sends that one file over ssh as a
+tar stream, unpacks it into a fresh folder under the box account's home, and runs the checker
+in a throwaway container of the manager image the compose file pins (`docker run --rm --pull
+never --network none`, the folder mounted read-only at `/t`). The image is the default tag of
+`wazuh.manager` in `docker-compose.yml`, read the way `logtest.ts` reads it, so a
+`WAZUH_VERSION` override on the box is not seen. With `--pull never`, an image the box does
+not hold is a setup failure, not a download. The folder is removed whether the check passed or
+failed, and a removal that leaves it behind is a setup failure. Nothing from a config file
+reaches the shell: the box script carries its own constants, the image tag and a staged name
+the tool makes (`g0.conf`, `g1.conf` and so on), and the file itself goes on stdin. Docker gets
+`/dev/null` as stdin, since in an ssh one-liner it would otherwise read the stream.
+
+Each file gets one of three results, one line per group:
+
+- `PASS`: exit 0, exactly one `verify-agent-conf: OK` line, and nothing beside it but warning
+  lines, which are shown. The Linux group's `sca` warning that
+  `etc/shared/cis_ubuntu26-04.yml` is not found is expected: the policy sits beside the group
+  file, not where the checker looks for it.
+- `FAIL`: exit 1 and an `ERROR: (NNNN)` line naming the staged file. The line carries the
+  checker's error.
+- `SETUP`: anything else. A checker started without its `internal_options.conf` stops with
+  `CRITICAL: (2301)` for every file, and that reads as setup, never as a verdict on the file.
+  So do an ssh or docker failure, an exit code that disagrees with the output, and any line
+  the tool does not know. The checker opens every error and warning line with a
+  `YYYY/MM/DD HH:MM:SS` timestamp, and a level line without one counts as unknown. Anything on
+  stderr is setup as well: docker's stderr is merged into stdout on the box, so what arrives
+  there came from ssh or the box shell, and a verdict beside it is not a clean one. So is a
+  line that is not plain text. A line ends at LF or CRLF and only spaces and tabs are trimmed
+  from it, so a carriage return inside a line, a byte-order mark, a no-break space or any
+  control character other than tab makes the whole reply unknown.
+
+Output counts for a file only when it opens with the SHA-256 of that file as the box unpacked
+it, which the box script prints before docker runs. A reply meant for another call, or two
+calls' output run together, is a setup failure, so an OK is never credited to a file it was not
+run on. Exit 0 means every group passed, 1 that the parser rejected at least one file, and 2
+that some check could not run and none was rejected. A rejection outranks a setup failure in
+the exit code because it is a verdict on a file either way.
+
+On a full pass the tool writes `deploy/soc-recon/wazuh/shared/agentconf.verified`: the image,
+then the SHA-256 of each group's `agent.conf` in a fixed order, so a rerun on the same files
+writes the same bytes. It is tracked. It sits beside the group folders and never in one,
+because a file in a group folder ships to every agent in the group. On any failure the existing
+receipt is left as it was, and a file saved while the run is on the box stops the receipt too.
+A group folder with no `agent.conf`, a symlinked `agent.conf`, or a group name outside letters,
+digits, dot, dash and underscore stops the run before the box is touched. The tool never writes
+inside a group folder.
+
+`--offline` needs no network. It fails when the receipt is missing or cannot be read whole,
+names another image than the compose file pins, lacks a group, lists a group that is gone, or
+holds another hash for a group's `agent.conf`. Each message names the file and says to run the
+full check. A symlink directly under the shared folder fails too, from the working tree and
+from the index alike: the manager would read it as a group folder no run has checked.
+`--staged` reads the shared folder, the compose file and the receipt from the
+index, so an edit left unstaged cannot hide what the commit holds. The pre-commit hook runs
+`--offline --staged` after leakcheck whenever the commit touches a file under
+`deploy/soc-recon/wazuh/shared/`. It asks git for the staged paths there, and a git failure on
+that question blocks the commit instead of reading as "nothing staged". The order of work is: edit the config, run the full check,
+stage the config with the new receipt, commit. A commit that changes only the compose file does
+not trigger it; a receipt left on an old image is caught by the next commit to the shared
+folder.
+
+`--self-test` proves on the box that the gate can fail. It sends
+`tools/fixtures/agentconf/planted-backslash.conf`, the 2026-11-14 shape, which must come back
+`FAIL` with the XML error (`XMLERR: Element '...' not closed`); `clean.conf`, the corrected
+shape, which must pass; and `clean.conf` again with the `internal_options.conf` copy left out,
+which must come back `SETUP` with the 2301 error. It exits 0 only when all three do. A fixture
+edited out of its shape stops the self-test before the box is touched.
+
+What it does not catch:
+
+- The checker is the manager's Linux build. It proves the XML and the settings every platform
+  shares. It skips the content of Windows-only elements such as `registry_ignore`, so a pass
+  says nothing about those.
+- The receipt shows a run happened on these bytes, not who ran it. A hand-written receipt with
+  the right hashes passes the offline check, and `--no-verify` skips the hook as it skips
+  leakcheck. It is a guard against forgetting, not against someone who means to skip it.
+- It checks files before they ship. The check on the live manager after the recreate that
+  delivers them is the manual step in
+  [`deploy/soc-recon/wazuh/shared/README.md`](../deploy/soc-recon/wazuh/shared/README.md#verify).
+- The output shapes it accepts are the ones the box printed on 2026-11-15 from
+  `wazuh/wazuh-manager:4.14.9`. A new image that words them differently reads as a setup
+  failure until the patterns change, which fails closed.
+- A remote shell killed outright leaves its `~/.agentconf.*` folder on the box, holding the
+  one config it was sent. A pass, a failure, and a hangup, interrupt or terminate signal each
+  remove it; the tests prove the first two, not the signal trap.
+
 ## B.1 rule pipeline
 
 A pack rule goes Sigma YAML, then hand-ported XML, then logtest, then live. These four tools

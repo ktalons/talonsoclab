@@ -853,6 +853,11 @@ describe("packStage", () => {
       const raw = Buffer.from(packStage(dir)).toString("latin1");
       expect(raw).toContain("./custom-rules/selftest.xml");
       expect(raw.match(/\._[\w.-]+/g) ?? []).toEqual([]);
+      // Nor the attribute as a pax extended header. GNU tar on the box warns about each
+      // one on stderr ("Ignoring unknown extended header keyword"), which the agent.conf
+      // gate reads as a setup failure (first run with the stderr rule, 2026-11-20).
+      expect(raw.match(/(?:LIBARCHIVE|SCHILY)\.xattr\.[\w.-]+/g) ?? []).toEqual([]);
+      expect(raw).not.toContain("PaxHeader");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -69,3 +69,11 @@ agent then loads nothing from it, without a message. For the Windows group that 
 Sysmon. The 2026-11-14 registry ignore shipped that way: its pattern ended in a backslash,
 which Wazuh's XML reader takes as an escape for the closing tag. It was corrected the next
 day.
+
+So a file is checked before it is committed as well. Run `bun tools/agentconf-check.ts` from
+the repo root after changing any `agent.conf`: it runs this same checker on each group's file
+in a throwaway container of the pinned manager image on the box, and on a full pass writes
+`agentconf.verified` in this folder. The pre-commit hook blocks a commit to this folder when
+that receipt does not match the staged files. It does not replace the check above, which is
+the step after the recreate. Details and limits:
+[`tools/README.md`](../../../../tools/README.md#agentconf-check).

@@ -735,11 +735,15 @@ function stage(rulesDir: string, kit = resolve(ROOT, KIT)): string {
 // WARN: without COPYFILE_DISABLE, macOS tar adds a "._name" entry for every file with an
 // extended attribute. One of those in custom-rules is read as a rules file, analysisd
 // exits on it, and the logtest socket never opens.
+// WARN: COPYFILE_DISABLE alone still leaves each attribute in the stream as a pax
+// extended header (macOS puts com.apple.provenance on most files). GNU tar on the box
+// prints "Ignoring unknown extended header keyword" on stderr for every one, so
+// --no-xattrs keeps them out. Both macOS tar and GNU tar take the option.
 /** The staged folder as one tar stream for the box. */
 export function packStage(dir: string): Uint8Array {
   const env: Record<string, string | undefined> = { ...process.env, COPYFILE_DISABLE: "1" };
   for (const k of TAR_ENV) delete env[k];
-  const tar = Bun.spawnSync(["tar", "-C", dir, "-cf", "-", "."], { stdout: "pipe", stderr: "pipe", env });
+  const tar = Bun.spawnSync(["tar", "--no-xattrs", "-C", dir, "-cf", "-", "."], { stdout: "pipe", stderr: "pipe", env });
   if (tar.exitCode !== 0) throw new SetupError(`tar failed: ${tar.stderr.toString()}`);
   return tar.stdout;
 }
