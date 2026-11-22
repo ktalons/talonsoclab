@@ -3,4 +3,4 @@
 image wazuh/wazuh-manager:4.14.9
 6bb0fd2cde208f42a5c2ce0b18d85ffb7f52c2125d10c0e82090695a97bec7ae  phase-a-linux/agent.conf
 cd3e9ebf494a4689e166f7a28fe4413fb44e276d765291cf5e3ce6729a93eb4d  phase-a-macos/agent.conf
-06f88c036cf871735d1be8cd4cae7646a34638e38509d9bc2e3641ddba58873d  phase-a-windows/agent.conf
+cbf893430d2b07a540b278d11e786ce605c834f71d3179d04dac7ddf0495c303  phase-a-windows/agent.conf
