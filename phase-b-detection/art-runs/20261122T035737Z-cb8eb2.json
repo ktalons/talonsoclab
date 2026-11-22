@@ -1,0 +1,81 @@
+{
+  "format": "talonsoclab-art-session/1",
+  "session": "20261122T035737Z-cb8eb2",
+  "verdict": "pass",
+  "failures": [],
+  "timedOut": [],
+  "allowlistSha256": "46900ff2fbddfdfd72864212b4f1dcd3f17b85dbfa4291e61de92b05c8457502",
+  "manifestSha256": "559f19bbfb66a912ff92d598d2ca59bb2a1933ca3a9deaf28a746fb4c674ecf2",
+  "atomicsCommit": "a0e3f9bc69fed2fd711bd1f1aa87a40c33482fe6",
+  "module": {
+    "name": "Invoke-AtomicRedTeam",
+    "version": "2.3.0"
+  },
+  "timeoutSeconds": 120,
+  "gateUtc": "2026-11-22T03:57:40.2264869Z",
+  "defenderGate": {
+    "realTimeProtection": true,
+    "exclusionPath": [
+      "C:\\AtomicRedTeam"
+    ],
+    "pass": true
+  },
+  "restorePoint": {
+    "description": "talonsoclab-b4-20261122T035737Z-cb8eb2",
+    "createdUtc": "2026-11-22T03:57:42.4852930Z"
+  },
+  "tests": [
+    {
+      "guid": "d6042746-07d4-4c92-9ad8-e644c114a231",
+      "technique": "T1037.001",
+      "testNumber": 1,
+      "testName": "Logon Scripts",
+      "rules": [
+        100400
+      ],
+      "run": {
+        "startUtc": "2026-11-22T03:57:58.4539164Z",
+        "endUtc": "2026-11-22T03:57:59.3388743Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-22T03:58:01.7041649Z",
+        "endUtc": "2026-11-22T03:58:02.5406237Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "24e55612-85f6-4bd6-ae74-a73d02e3441d",
+      "technique": "T1547.001",
+      "testNumber": 7,
+      "testName": "Add Executable Shortcut Link to User Startup Folder",
+      "rules": [
+        100407
+      ],
+      "run": {
+        "startUtc": "2026-11-22T03:58:04.9006093Z",
+        "endUtc": "2026-11-22T03:58:06.5486920Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-22T03:58:08.7535809Z",
+        "endUtc": "2026-11-22T03:58:10.1456850Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    }
+  ],
+  "stateDiff": {
+    "verdict": "no-difference",
+    "items": []
+  },
+  "stagedAfter": {
+    "verdict": "unchanged",
+    "changed": 0,
+    "missing": 0,
+    "extra": 0
+  }
+}
