@@ -1074,3 +1074,239 @@ are not read, so a pack rule derived from a rule there is told its id is not a S
 that is deliberate. Relative paths on both refresh commands resolve against the repo root, and
 a label holding a line break is refused (exit 2), because it would write extra lines into the
 list.
+
+## art-harness
+
+`art-harness.ts` runs a fixed list of Atomic Red Team tests on the Dell over ssh, so that B.5
+can show which pack rules fired on a real run (ISA F5). It runs on the Mac and drives the Dell
+the way `winevt-capture.ts` does: one `powershell -NoProfile -NonInteractive -EncodedCommand`
+per step, through the same `sshArgv`. Its Dell-side scripts first ran on the Dell on
+2026-11-22; what that showed and what it did not is under Limits.
+
+```bash
+bun tools/art-harness.ts check-allowlist --atomics ~/code/atomic-red-team
+bun tools/art-harness.ts build-manifest --module <Invoke-AtomicRedTeam dir> [--module <powershell-yaml dir>] --atomics ~/code/atomic-red-team [--check]
+bun tools/art-harness.ts stage --module <dir> [--module <dir>] --atomics ~/code/atomic-red-team --out <new dir>
+bun tools/art-harness.ts check-prereqs --host <ssh alias> (--guid <guid>... | --all)
+bun tools/art-harness.ts run --host <ssh alias> (--guid <guid>... | --all) [--timeout <s>] [--allow-remote-code]
+bun tools/art-harness.ts --self-test       # every planted fault through a fake Dell, offline
+bun test tools/art-harness.test.ts         # the same and more, offline
+```
+
+Exit 0 is a pass. 1 is a failed check or a failed session (a test may have run), and for
+`check-prereqs` a test whose prerequisites are not met or could not be read. 2 is a setup
+failure: something on the Dell did not meet a gate, or a remote call failed, and no test was
+sent. 3 is a refusal: the input was not allowed and nothing was sent.
+
+A session's `pass` verdict means it met every gate and left the Dell as it found it: each test
+ran once and was cleaned up, and neither the state snapshot nor the staged tree changed. It says
+nothing about detection; whether a test fired its rule is B.5's question, read from the alert
+index against the record's windows. A test the module killed at `--timeout` is data, not a
+failure: the session goes on and can still pass, but the test is listed in the record's
+`timedOut` and printed as a `TIMEOUT` line, never hidden.
+
+### The two files it reads
+
+`atomics/allowlist.json` is the only source of test GUIDs. It records the atomics commit, the
+module version and, per test, the technique, the test number and name as the atomics YAML has
+them, the GUID, the executor, whether elevation is required, the input names whose defaults the
+test runs with, the URLs its defaults fetch, whether it runs what it fetches, and the pack rules
+it is meant to fire. Kyle's ruling of 2026-11-15 is GUID only, never `-InputArgs`, so every test
+runs with its defaults. Rule 100344 has no entry: its only test, `T1105 #18`, needs a
+non-default `curl_path`, so it is a classified miss in B.5 unless that ruling changes. The tool
+refuses to load an allowlist with a repeated GUID or test, a GUID, technique, rule ID or URL of
+the wrong shape, an unknown key, or a commit or module version other than the ones pinned in
+the tool. `check-allowlist` holds each entry to the checkout: the commit (`git -C <dir>
+rev-parse HEAD`), no uncommitted change under a named technique folder, the GUID at that test
+number and nowhere else in the file, the name, executor, elevation, Windows support, the input
+names, and every `url` input's default in `fetches`.
+
+`atomics/manifest.json` pins what is staged on the Dell under `C:\AtomicRedTeam`, by SHA-256 and
+size: every file of two modules (nupkg packaging left out: `_rels`, `package`,
+`[Content_Types].xml`, the `.nuspec`), `Invoke-AtomicRedTeam` 2.3.0 and the `powershell-yaml`
+0.4.12 it requires, both versions pinned in the tool; each allowlisted technique's YAML; and
+only the files one of the tests references. Nothing else from a technique folder is staged, so
+no `uacme.zip`, `GUP.exe` or unused DLL. Today that is 72 files, 1,895,184 bytes: 40 module
+files, 14 `powershell-yaml` files, 14 YAMLs and 4 referenced files. It carries the allowlist's
+hash, so an allowlist change needs a rebuild. `build-manifest --check` compares the file with
+what the sources give now. `stage` copies exactly the manifest's files into a new folder,
+checking every hash, for transport to the Dell.
+
+The referenced files are derived from the pinned YAML, never typed in. For each test the tool
+fills the default inputs into its command, cleanup command and each dependency's prerequisite
+and get-prerequisite command, then reads every `PathToAtomicsFolder` (with or without `$`, any
+case, as the module's `Merge-InputArgs` does) in those and in the defaults themselves. The
+manifest's `tests` list shows, per GUID, the files each one brought in and any reference that
+leaves the atomics folder (only `T1614 #1`'s get-prerequisite download into
+`..\ExternalPayloads`, which the harness never runs). `build-manifest` fails when a referenced
+file is missing from the checkout or is a link, and fails closed rather than staging a folder
+when a reference cannot be resolved for certain: a wildcard, a variable, a folder, the bare
+folder, an input whose default holds another input, or an input the test does not define. When
+loading a manifest, the tool refuses any atomics file that is neither a YAML nor in some test's
+list.
+
+| Test | Files it brings in |
+|---|---|
+| `T1547.010 #1` (100401) | `atomics/T1547.010/bin/PortMonitor.dll` |
+| `T1546.011 #2` (100405) | `atomics/T1546.011/bin/T1546.011CompatDatabase.sdb` |
+| `T1547.001 #6` (100406) | `atomics/T1547.001/src/batstartup.bat` |
+| `T1105 #26` (100343) | `atomics/T1105/src/T1105-download-file.vbs` |
+| the other 13 | none beyond their YAML |
+
+`powershell-yaml` 0.4.12 loads `lib/net47/YamlDotNet.dll` and `PowerShellYamlSerializer.dll`
+with `[Reflection.Assembly]::LoadFile` when it is imported under Windows PowerShell 5.1. At
+import it does nothing else: it defines an enum, compiles a regex and exports
+`ConvertFrom-Yaml` and `ConvertTo-Yaml` with their aliases. A DLL with a mark of the web can
+fail to load under .NET Framework; `scp` sets none.
+
+### A session
+
+1. **Refusals, before ssh.** A GUID not in the allowlist, a test that runs fetched code without
+   `--allow-remote-code`, a manifest that does not match the allowlist or still owes a module,
+   and a bad timeout each stop the run with exit 3 (ISC-152).
+2. **Gate.** The Dell lists every file under `C:\AtomicRedTeam` with its size and SHA-256, and
+   counts links and reparse points. One changed, missing or extra file, a link, or no folder
+   means no test is sent (ISC-155). Changed and missing files are named from the manifest; an
+   extra file is counted, never named, since its name came from the Dell. The same check refuses
+   a `privateConfig.ps1` in `C:\AtomicRedTeam`, which the module's `config.ps1` would otherwise
+   run. Defender must report real-time protection on, `ExclusionPath` exactly `C:\AtomicRedTeam`
+   (one entry, compared without regard to case), and no process, extension or address
+   exclusion; a null or empty entry counts as none, on the Dell and on the Mac, so PowerShell's
+   `@($null).Count` of 1 never passes as one exclusion (ISC-150). The ssh token must be elevated.
+3. **Restore point.** `Checkpoint-Computer` with a description unique to the session, then the
+   tool confirms exactly one restore point of that description exists and none did before. When
+   Windows skips it (a second one inside 24 hours, unless `SystemRestorePointCreationFrequency`
+   is 0) or the call fails, no test starts and the message says why and what the value is
+   (ISC-154, ISC-157).
+4. **Snapshot.** The Dell returns definitions in eight categories: services (start mode,
+   account, binary path, delayed start, type; never whether it runs), scheduled tasks (actions,
+   triggers, principal, enabled and hidden flags; never last or next run, state or result), Run
+   and RunOnce under HKLM and HKCU in both registry views, WMI filters, consumers and bindings in
+   `root\subscription`, local users (last logon left out), Administrators members by SID, every
+   Defender preference, and `watched`: the registry keys and folders the 17 tests write to
+   (`HKCU\Environment`, the print monitors, the two AppCompatFlags keys, the LanmanServer
+   parameters, `Policies\System`, both Startup folders and `apppatch\Custom`). The last
+   category is mine, beyond ISC-153's list, so a residue such as `EnableLUA` left at 0 fails the
+   session.
+5. **Per test.** A run step, then a cleanup step whatever the run step did: a timeout, a
+   refusal or a remote error included. Each step re-checks on the Dell, before the module
+   loads: the GUID against the allowed set the script carries, the elevated token, the staged
+   tree's digest against the manifest's, the Defender gate, and the session's restore point.
+   Then it imports `powershell-yaml` and the module from `C:\AtomicRedTeam` by path and checks
+   each one's loaded version (0.4.12 and 2.3.0) and folder, takes the UTC time from the Dell's clock, runs
+   `Invoke-AtomicTest <technique> -TestGuids <guid> -PathToAtomicsFolder C:\AtomicRedTeam\atomics
+   -TimeoutSeconds <n> -NoExecutionLog -Confirm:$false` (with `-Cleanup` for cleanup), and takes
+   the time again. The tool never passes `-GetPrereqs`, `-InputArgs` or `-PromptForInputArgs`.
+   A test counts as run when the module printed its `Executing test:` key once, naming that
+   test, and its `Done` key once; the exit code is the line before `Done`. A test that exits
+   non-zero, or that the module kills at the timeout, is a result, not a failure. A step that
+   did not run once, threw, was refused or failed remotely fails the session, its cleanup is
+   still sent, and no later test is sent. After the module returns, each step removes
+   `%TEMP%\art-out.txt` and `%TEMP%\art-err.txt` if present, the two capture files
+   `Invoke-ExecuteCommand` names, and nothing else. Module 2.3.0 keeps a test's output in memory
+   and never writes them (the file branch of `Invoke-Process` is only reached for an interactive
+   test, which the harness never asks for), so the removal is a guard against a later version
+   leaving account or credential listings on disk.
+6. **After.** A second snapshot, diffed on the Mac by a pure function, and the staged tree
+   listed again. Any difference in either fails the session.
+7. **Record.** One JSON file per session in `phase-b-detection/art-runs/<session>.json`: the
+   allowlist and manifest hashes, the atomics commit, the module version, the restore point's
+   description and creation time, the Defender gate, per GUID the UTC start and end and status of
+   each step with the run's exit code, the GUIDs whose run timed out (`timedOut`), the diff's
+   verdict with every item named, and the staged tree's verdict.
+
+`check-prereqs` runs the gate, then `Invoke-AtomicTest -CheckPrereqs` per test, with no restore
+point and no snapshot. It executes no test, but it does run each test's `prereq_command`; for
+the 17 tests those are `Test-Path` checks or nothing.
+
+### What the record never holds
+
+Diff items are named from the Dell, and a task or service name can hold a SID, a user name or an
+address. Before the record is written, every item name has each SID's machine part replaced
+(`S-1-5-21-<machine>-1001`), the Dell's computer, user and domain names (read in the gate)
+replaced with `<host>`, `<user>` and `<domain>`, the name of every other local account replaced
+with `<account>` (the gate lists them all but the well-known built-ins, RIDs 500, 501, 503 and
+504), private IPv4 and IPv6 addresses replaced, and control characters replaced. An item in the
+`users` category is an account name, so it never reaches the record at all: it is written as
+`<local-account>`. The finished JSON is then searched for those names, any
+`S-1-5-21-a-b-c`, and any private address, and is not written if one is found; a Dell name that
+also occurs in the record's own text (a computer named `AtomicRedTeam`) stops it the same way.
+Last, `leakcheck.ts --paths` runs on a scratch copy with the local denylist, and the file is
+written only if that passes. Raw remote output, every decoded answer, both snapshots and an
+unchecked copy of the record go to `Plans/b4-harness/runs/<session>/`, which is gitignored.
+Messages never print remote text: a failed ssh call says its exit code and where the output is
+saved.
+
+### How the payload gets there
+
+A step's script is larger than the 8,191-character Windows command line allows once encoded.
+The command line carries only a bootstrap of 1,546 characters encoded. The script goes on
+stdin as one line of base64. The bootstrap reads exactly that one line from the raw
+standard-input stream (`[Console]::OpenStandardInput()` through a `StreamReader`, with
+`ReadLineAsync()` and a 60-second `Wait`), checks that the bytes hash to the SHA-256 it was
+built with (exit 97 if not), and runs them. When no line arrives in time it exits 96 by itself,
+having run nothing. So a payload altered or cut short on the way is refused before any of it
+runs, and a payload that never arrives ends the remote process instead of leaving it behind.
+
+On the Mac, exit 96 means the payload did not reach the Dell and nothing ran, so that call, for
+any step, is sent once more and each attempt's raw output is kept under its own name
+(`NN-<step>` and `NN-<step>-attempt2`). A second miss is a setup failure before any test has run
+and a failed session after one, and the message says the payload did not arrive. Nothing else is
+ever retried: not an ssh timeout, not another non-zero exit, not a payload-hash mismatch, not an
+answer that cannot be read. Each of those may mean something ran.
+
+### Limits and what is not proven
+
+- Shown on the Dell as of 2026-11-22: `check-prereqs --all` (15 of 15 met), and one session of
+  two read-only tests, `T1003.005 #1` and `T1033 #8`. That session exercised the stdin
+  bootstrap, the gate, the restore point, both snapshots (744 items in eight categories, no
+  difference), run and cleanup for each test, and the record. Not shown there: a test that
+  changes state and its cleanup, the timeout path, and every refusal branch of the Dell-side
+  scripts. Those run only against the fake Dell in the tests, which prove the Mac side: what
+  is sent, how answers are read, and that every planted fault stops the session.
+- Staging is proven as of 2026-11-22: a plain `scp -r` of the `stage` folder to
+  `<dell-alias>:C:/AtomicRedTeam/` put all 72 files on the Dell, each matching the
+  manifest by SHA-256, none with a mark of the web.
+- What the module's output looks like was read from its 2.3.0 source and then matched live on
+  2026-11-22 for a run, a cleanup and a prerequisite check: the `Write-KeyValue` key segments
+  and `Exit code: <n>` before the `Done` key. The timeout line has not been seen live. Output
+  the harness cannot read as one run makes the step "did not run once" and the session fails
+  closed.
+- `Invoke-AtomicTest` 2.3.0 never prints the cleanup command's exit code, so a cleanup counts
+  as completed when the module ran it to its `Done` line without a timeout. The snapshot diff
+  is what proves the cleanup worked.
+- Two tests, `T1218.010 #2` (100341) and `T1218.011 #1` (100342), download a scriptlet from the
+  atomics repo's `master` branch at run time and execute it. The commit pin does not cover that
+  file, so they run only with `--allow-remote-code`, and `--all` leaves them out without it.
+  Three more fetch from the internet with their defaults and run nothing they fetch:
+  `T1614 #1` (ipinfo.io), and `T1105 #7` and `#26` (the repo's `LICENSE.txt`; `#26`'s URL sits
+  in its VBScript, not in an input, so `check-allowlist` cannot hold it to the YAML).
+- The snapshot does not see processes. Tests that start `calc.exe` or `notepad.exe` can leave
+  them running, and `T1218.011 #1`'s cleanup kills every `notepad.exe`, not only its own.
+- A diff item that only Windows changed (a maintenance task rewriting its triggers, a service
+  start mode toggled by servicing, a per-user service instance) fails the session. That is
+  deliberate: it errs toward reporting. The raw snapshots show which item it was.
+- The staged-tree check lists files only. It does not see an empty directory, and it hashes each
+  file's main data stream, so an alternate data stream added to a staged file is not seen.
+- Each step checks the tree's digest, then imports the module from the same files. Someone
+  with admin rights on the Dell could swap a file in that gap; such a person is out of scope,
+  since they could change the harness's own checks just as easily.
+- Only the module's information, error and output streams are captured. Its warning stream is
+  not, so a module warning is neither recorded nor reported.
+- Windows sshd keeps a child's stdin open after the ssh client is gone, so a remote reader that
+  waits for end of input outlives the harness. The first live run (2026-11-22) saw 2 of about 45
+  deliveries block for ever in `[Console]::In.ReadToEnd()`, left as orphan processes on the Dell.
+  The bootstrap must therefore never wait for end of input. `[Console]::In` cannot be given a time
+  limit either: it is a synchronized reader whose async methods run synchronously, which is why
+  the bootstrap reads the raw stream.
+- The 60-second read limit and the one retry cover only a payload that never arrives. A remote
+  script that hangs for any other reason, a step or a module call, still outlives the harness's
+  ssh timeout: the harness says so and cannot end it, and the process stays on the Dell until
+  someone kills it there.
+- The bootstrap sets `$ErrorActionPreference` to `Stop` globally, so it applies to module code
+  too: a non-terminating module error throws and the step reads as "threw". That fails safe,
+  but live it may show up as a false failure.
+- Each step is one ssh session, so a full run of 15 tests opens about 35 of them, and each
+  raises the stock PowerShell alerts noted on 2026-11-12 (92151, 92213). None is a pack rule.
+- The restore point check trusts `Get-ComputerRestorePoint`. That a restore point can actually
+  restore the Dell is not tested.

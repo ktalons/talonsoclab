@@ -1,0 +1,81 @@
+{
+  "format": "talonsoclab-art-session/1",
+  "session": "20261122T035219Z-95651d",
+  "verdict": "pass",
+  "failures": [],
+  "timedOut": [],
+  "allowlistSha256": "46900ff2fbddfdfd72864212b4f1dcd3f17b85dbfa4291e61de92b05c8457502",
+  "manifestSha256": "559f19bbfb66a912ff92d598d2ca59bb2a1933ca3a9deaf28a746fb4c674ecf2",
+  "atomicsCommit": "a0e3f9bc69fed2fd711bd1f1aa87a40c33482fe6",
+  "module": {
+    "name": "Invoke-AtomicRedTeam",
+    "version": "2.3.0"
+  },
+  "timeoutSeconds": 120,
+  "gateUtc": "2026-11-22T03:52:20.5765515Z",
+  "defenderGate": {
+    "realTimeProtection": true,
+    "exclusionPath": [
+      "C:\\AtomicRedTeam"
+    ],
+    "pass": true
+  },
+  "restorePoint": {
+    "description": "talonsoclab-b4-20261122T035219Z-95651d",
+    "createdUtc": "2026-11-22T03:52:22.6850120Z"
+  },
+  "tests": [
+    {
+      "guid": "56506854-89d6-46a3-9804-b7fde90791f9",
+      "technique": "T1003.005",
+      "testNumber": 1,
+      "testName": "Cached Credential Dump via Cmdkey",
+      "rules": [
+        100410
+      ],
+      "run": {
+        "startUtc": "2026-11-22T03:52:39.2612243Z",
+        "endUtc": "2026-11-22T03:52:40.0864581Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-22T03:52:42.4295992Z",
+        "endUtc": "2026-11-22T03:52:43.1882094Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "aab580c7-cc30-4a7c-b5a9-46a29066b022",
+      "technique": "T1033",
+      "testNumber": 8,
+      "testName": "User Discovery - whoami",
+      "rules": [
+        100411
+      ],
+      "run": {
+        "startUtc": "2026-11-22T03:52:45.5162035Z",
+        "endUtc": "2026-11-22T03:52:46.5268894Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-22T03:52:48.6919364Z",
+        "endUtc": "2026-11-22T03:52:49.5503126Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    }
+  ],
+  "stateDiff": {
+    "verdict": "no-difference",
+    "items": []
+  },
+  "stagedAfter": {
+    "verdict": "unchanged",
+    "changed": 0,
+    "missing": 0,
+    "extra": 0
+  }
+}

@@ -1,0 +1,516 @@
+{
+  "format": "talonsoclab-art-manifest/1",
+  "stagedRoot": "C:\\AtomicRedTeam",
+  "atomicsCommit": "a0e3f9bc69fed2fd711bd1f1aa87a40c33482fe6",
+  "allowlistSha256": "46900ff2fbddfdfd72864212b4f1dcd3f17b85dbfa4291e61de92b05c8457502",
+  "modules": [
+    {
+      "name": "Invoke-AtomicRedTeam",
+      "version": "2.3.0",
+      "root": "Invoke-AtomicRedTeam"
+    },
+    {
+      "name": "powershell-yaml",
+      "version": "0.4.12",
+      "root": "powershell-yaml"
+    }
+  ],
+  "atomicsRoot": "atomics",
+  "owed": [],
+  "tests": [
+    {
+      "guid": "d6042746-07d4-4c92-9ad8-e644c114a231",
+      "technique": "T1037.001",
+      "testNumber": 1,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "d34ef297-f178-4462-871e-9ce618d44e50",
+      "technique": "T1547.010",
+      "testNumber": 1,
+      "files": [
+        "atomics/T1547.010/bin/PortMonitor.dll"
+      ],
+      "outside": []
+    },
+    {
+      "guid": "9b6a06f9-ab5e-4e8d-8289-1df4289db02f",
+      "technique": "T1546.011",
+      "testNumber": 3,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "99c657aa-ebeb-4179-a665-69288fdd12b8",
+      "technique": "T1070.005",
+      "testNumber": 4,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "9e8af564-53ec-407e-aaa8-3cb20c3af7f9",
+      "technique": "T1548.002",
+      "testNumber": 8,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "aefd6866-d753-431f-a7a4-215ca7e3f13d",
+      "technique": "T1546.011",
+      "testNumber": 2,
+      "files": [
+        "atomics/T1546.011/bin/T1546.011CompatDatabase.sdb"
+      ],
+      "outside": []
+    },
+    {
+      "guid": "5b6768e4-44d2-44f0-89da-a01d1430fd5e",
+      "technique": "T1547.001",
+      "testNumber": 6,
+      "files": [
+        "atomics/T1547.001/src/batstartup.bat"
+      ],
+      "outside": []
+    },
+    {
+      "guid": "24e55612-85f6-4bd6-ae74-a73d02e3441d",
+      "technique": "T1547.001",
+      "testNumber": 7,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "dc6fe391-69e6-4506-bd06-ea5eeb4082f8",
+      "technique": "T1140",
+      "testNumber": 1,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "fec27f65-db86-4c2d-b66c-61945aee87c2",
+      "technique": "T1053.005",
+      "testNumber": 1,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "56506854-89d6-46a3-9804-b7fde90791f9",
+      "technique": "T1003.005",
+      "testNumber": 1,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "aab580c7-cc30-4a7c-b5a9-46a29066b022",
+      "technique": "T1033",
+      "testNumber": 8,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "fe53e878-10a3-477b-963e-4367348f5af5",
+      "technique": "T1614",
+      "testNumber": 1,
+      "files": [],
+      "outside": [
+        "../ExternalPayloads/",
+        "../ExternalPayloads/curl",
+        "../ExternalPayloads/curl.zip",
+        "../ExternalPayloads/curl/curl-8.4.0_6-win64-mingw/bin/curl.exe"
+      ]
+    },
+    {
+      "guid": "dd3b61dd-7bbc-48cd-ab51-49ad1a776df0",
+      "technique": "T1105",
+      "testNumber": 7,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "c9d0c4ef-8a96-4794-a75b-3d3a5e6f2a36",
+      "technique": "T1218.010",
+      "testNumber": 2,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "57ba4ce9-ee7a-4f27-9928-3c70c489b59d",
+      "technique": "T1218.011",
+      "testNumber": 1,
+      "files": [],
+      "outside": []
+    },
+    {
+      "guid": "97116a3f-efac-4b26-8336-b9cb18c45188",
+      "technique": "T1105",
+      "testNumber": 26,
+      "files": [
+        "atomics/T1105/src/T1105-download-file.vbs"
+      ],
+      "outside": []
+    }
+  ],
+  "files": [
+    {
+      "path": "Invoke-AtomicRedTeam/CODE_OF_CONDUCT.md",
+      "size": 3222,
+      "sha256": "f6ff96921867f34d69d952212e668c5bb65680dd9ea3a11f032eba167171a0b0"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Invoke-AtomicRedTeam.psd1",
+      "size": 3578,
+      "sha256": "18d1e26f09fa5be5842c15d82987f1062304d39393440aa67e00de3fa984c2c1"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Invoke-AtomicRedTeam.psm1",
+      "size": 847,
+      "sha256": "64470929fe88ccc8ea9b67885580b397290da9951103efbda00d68f51061ee73"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/LICENSE.txt",
+      "size": 1078,
+      "sha256": "65af6027045d23175366eab50e460ab3ee7790e591cb84cc32c78ac63a4c90e1"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/PSScriptAnalyzerSettings.psd1",
+      "size": 119,
+      "sha256": "b51c94158b3874beaf79c7ce67688c99e81971125ddf20eaa4515648b7077a05"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Private/AtomicClassSchema.ps1",
+      "size": 1266,
+      "sha256": "e6dbc105e16c5ebc1003439195bfc185a7b65f469aa5cbdcd768d8113e48c02f"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Private/Get-PrereqExecutor.ps1",
+      "size": 195,
+      "sha256": "98acfbd8a1632a347cdc49d65679d8510ec16bc563bbe84c9ae4b6364eb66db0"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Private/Get-TargetInfo.ps1",
+      "size": 1770,
+      "sha256": "32c68c0702e03c9b7ff3a5e655e94e0d437c7492677877fc6b0d0f0c88396b95"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Private/Invoke-CheckPrereqs.ps1",
+      "size": 1000,
+      "sha256": "6917f910fdeb90e50d9811bc83efd6aebb8ba021e0ca52f6b1d366bdea1c1448"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Private/Invoke-ExecuteCommand.ps1",
+      "size": 3552,
+      "sha256": "cdee2201a74668b71f79e661b99f60016b92dda69fbae08911ce6c6165b4b442"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Private/Invoke-Process.ps1",
+      "size": 7821,
+      "sha256": "68420369b15ce6e205a459a3a3064d909da01bad73e86156d9addca01610f118"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Private/Replace-InputArgs.ps1",
+      "size": 1945,
+      "sha256": "b387f58f0b9689b5e11f30f2afe3787abcb464782ea6c8c7d0bf4aa8f546be91"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Private/Show-Details.ps1",
+      "size": 3119,
+      "sha256": "d23609cfd768d7d86b1a520a6d18a87f105424ca7277a1ab825d0951a6b8667f"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Private/Write-KeyValue.ps1",
+      "size": 392,
+      "sha256": "c16403858fe3fb20353a4bc315365cd920033432f02873f6197d09ff6e89d501"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Private/Write-PrereqResults.ps1",
+      "size": 591,
+      "sha256": "858f10f812b48b223104a2771e0e55e5559c8301625445144f6f6571f0dc0d41"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/AtomicRunnerService.ps1",
+      "size": 58340,
+      "sha256": "ce46fa534dbfa5d292adf7974b0172aa0b84466474d6321057ad7e31e2c63c9c"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Attire-ExecutionLogger.psm1",
+      "size": 6031,
+      "sha256": "507dcc125b633df2583c3871ca08f1266e0180daa3eaf564a38e0d8306bb7665"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Default-ExecutionLogger.psm1",
+      "size": 1359,
+      "sha256": "e61aeb19ab8e34e592e1c30d50d8905b1c9133f7ef26e0e2cfbe2b89d8c47aa6"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Get-AtomicTechnique.ps1",
+      "size": 23484,
+      "sha256": "d60520b1c41cc124e0913cfd8f9ccbb5b384987252423d3b3ee223bdc8c59e19"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Get-PreferredIPAddress.ps1",
+      "size": 431,
+      "sha256": "d8f8f8d6334564f62049a5efe2c15b9bb0a54153fd9a616f1bf5c4aa9d97315d"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Invoke-AtomicRunner.ps1",
+      "size": 10164,
+      "sha256": "e01f4c76a75538cdbfe1264125f93e10a0bb425d9161c213d808106ee4a303c9"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Invoke-AtomicTest.ps1",
+      "size": 24258,
+      "sha256": "0f8b8565828285ad38e85b51ba3a7f10045552438e5b3c55e17a0305e7fafea4"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Invoke-FetchFromZip.ps1",
+      "size": 1791,
+      "sha256": "54e17c2f93e31af4d73f513ce5642dd764478a769f9daebc95373c7c73435f13"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Invoke-KickoffAtomicRunner.ps1",
+      "size": 3258,
+      "sha256": "46451cb3dd23017095507eedc040b16826fcf0a297691694faf9c29e2cecde47"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Invoke-KillProcessTree.ps1",
+      "size": 426,
+      "sha256": "72cdbc3883036c33ab08cbe19887ea7d3eeae9c5397b3a1ccb25e477f1a92114"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Invoke-RunnerScheduleMethods.ps1",
+      "size": 7135,
+      "sha256": "ead6d77064eb1bdb0eee0cc683c33b3b4c4bce88f15c9ab13496e29502d1304b"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Invoke-SetupAtomicRunner.ps1",
+      "size": 10460,
+      "sha256": "0041c503259267b2b438533eb7ecbc2b7039c9f34b5a784621a0ddc897d470f4"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Invoke-WebRequestVerifyHash.ps1",
+      "size": 1039,
+      "sha256": "1c5aed25ad2f561a4b92ce7fff2bc80d5156d11d2ec135663d5a9654d82dbac4"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/New-Atomic.ps1",
+      "size": 19452,
+      "sha256": "b5a9534611a9ac5ccbbb28e2feeea625e8e26b200afd1acbad0ab9034beae44f"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/Syslog-ExecutionLogger.psm1",
+      "size": 1699,
+      "sha256": "b077532b583605e931a2be9960cb4854d944aedc6d2de18b277384a2937aa183"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/WinEvent-ExecutionLogger.psm1",
+      "size": 1654,
+      "sha256": "a55f5692652ec7b78b3fca8ff7998e9f80eebe083e180d87fcaf8982917e8ab6"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/Public/config.ps1",
+      "size": 5396,
+      "sha256": "578eb20b98b410bd0b229c86911af75ec80e904ceb33948e5191903b077a8044"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/README.md",
+      "size": 1967,
+      "sha256": "0b05b609a7f36bb9e7874a36dd7f907d2e9f8968e50212448840d6e8ea646e00"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/docker/Dockerfile",
+      "size": 347,
+      "sha256": "74d547c8a84f923030ecfa4569ce7bd06595f05a0f94798be2db73c5fdce0796"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/docker/setup.ps1",
+      "size": 787,
+      "sha256": "14b00d60c186d611dd6960db89b226aaf5c8969ab18129c6500aeb0395a0142b"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/install-atomicredteam.ps1",
+      "size": 5111,
+      "sha256": "1a8e95b60b665f3b5cc2c679dbe944f4fb70c08185d0bddf9fc5b74a6266558c"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/install-atomicsfolder.ps1",
+      "size": 6449,
+      "sha256": "5de236897d3824434743819b36c676237ffcd72d51891eefd6942e2d1f0a0021"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/kubernetes/k8s-deployment.yaml",
+      "size": 541,
+      "sha256": "af9efb4f4ef18c68fa8665f7fc3194c306a431f9fa5c357aec3a156b407be33a"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/sandbox/art.wsb",
+      "size": 560,
+      "sha256": "48e7aae25e8d1a3acac406dfebea6d50d5cc5212c81d21ef02a496c21a245f83"
+    },
+    {
+      "path": "Invoke-AtomicRedTeam/sandbox/setupsandbox.ps1",
+      "size": 789,
+      "sha256": "1617221ddd51ce113569d26bfeef1aae522820ef17cfa3fc1a64ac83b3e6e568"
+    },
+    {
+      "path": "atomics/T1003.005/T1003.005.yaml",
+      "size": 769,
+      "sha256": "50dc8824f1c538e4858c86184537e16e475661cc852fd823261712d9ed538ba8"
+    },
+    {
+      "path": "atomics/T1033/T1033.yaml",
+      "size": 5740,
+      "sha256": "89984708eef6026a48025624cf7b90d0865c0b622c4c683c8c1956b87c29e410"
+    },
+    {
+      "path": "atomics/T1037.001/T1037.001.yaml",
+      "size": 1166,
+      "sha256": "9fb145de7eeac5e19f1b3f7a1bb38da077e6be64502cd4cc6a28af60765e5be3"
+    },
+    {
+      "path": "atomics/T1053.005/T1053.005.yaml",
+      "size": 20734,
+      "sha256": "4e21312a2b23bf4b5945ef2e4b71c7e470b50b71b121bd8faddf8239c44411de"
+    },
+    {
+      "path": "atomics/T1070.005/T1070.005.yaml",
+      "size": 3641,
+      "sha256": "a1c1ce8bfb067d158fb2530995e9a6f96440776c49e283174c4dd82a33ee1ae1"
+    },
+    {
+      "path": "atomics/T1105/T1105.yaml",
+      "size": 52194,
+      "sha256": "d640beaa6b6544f452d0f3dbf957f3138adb4a148b9d51df746197a781e519aa"
+    },
+    {
+      "path": "atomics/T1105/src/T1105-download-file.vbs",
+      "size": 401,
+      "sha256": "a6103113fbe5f28c4c9504d5644a6632435bc861c857089f02f3ce701dd1b92c"
+    },
+    {
+      "path": "atomics/T1140/T1140.yaml",
+      "size": 13767,
+      "sha256": "159fdc5c91bbf55c48407a017bdf21ad04e387d64dea661e7249af8c5e2c5e89"
+    },
+    {
+      "path": "atomics/T1218.010/T1218.010.yaml",
+      "size": 6377,
+      "sha256": "469218af45502bf478aa894a5ce237e55d637824fe66c1577a60d4bb39f34506"
+    },
+    {
+      "path": "atomics/T1218.011/T1218.011.yaml",
+      "size": 15725,
+      "sha256": "024c9aa5bf9221a211bc818ea6913206414b02a2a2d6a7e092bcef20ca9821da"
+    },
+    {
+      "path": "atomics/T1546.011/T1546.011.yaml",
+      "size": 4431,
+      "sha256": "97cf607764c0a4d872641a841a11c44707c40f44e9d070da48ed457c9cadac39"
+    },
+    {
+      "path": "atomics/T1546.011/bin/T1546.011CompatDatabase.sdb",
+      "size": 1414,
+      "sha256": "0cd3f57823938eaf3eacb46ea7759c48faa221446ef88c16c706a0bc50c26db7"
+    },
+    {
+      "path": "atomics/T1547.001/T1547.001.yaml",
+      "size": 25449,
+      "sha256": "d5a38b78011ec61c7a1ded7f52b8896f67f4e3488da83291214be721d3533bd2"
+    },
+    {
+      "path": "atomics/T1547.001/src/batstartup.bat",
+      "size": 34,
+      "sha256": "f7235de2940ed81a2202170af9873ddba606192e5809996360bbf3548855f1ce"
+    },
+    {
+      "path": "atomics/T1547.010/T1547.010.yaml",
+      "size": 1039,
+      "sha256": "245b2a2699be35b12dfd6b851da83ba5977b83e040d2e734b6fb1b856df8fe15"
+    },
+    {
+      "path": "atomics/T1547.010/bin/PortMonitor.dll",
+      "size": 105984,
+      "sha256": "630312dcac0d1eed75a5a6b5eb806c24e0e25ced998f7c5ab203abf9484fdeb4"
+    },
+    {
+      "path": "atomics/T1548.002/T1548.002.yaml",
+      "size": 34145,
+      "sha256": "7af3a5333ef26dc32e66e6b50c80daeb41ef1e9be89dcfff88e95751b840ffd6"
+    },
+    {
+      "path": "atomics/T1614/T1614.yaml",
+      "size": 2438,
+      "sha256": "a3f6f63198658ca25d356970070b93889733749e7a823bbc7a18a5fa3c4c35c3"
+    },
+    {
+      "path": "powershell-yaml/LICENSE",
+      "size": 11358,
+      "sha256": "929f1557083885c9ea16be5ef9112b55c415e6b3867279b996ed4abc5d93b271"
+    },
+    {
+      "path": "powershell-yaml/README.md",
+      "size": 8552,
+      "sha256": "d64f022a08cf7f406f38f6ce69f1dd0de2155ba393e39e1609772bbabd0831ef"
+    },
+    {
+      "path": "powershell-yaml/Tests/powershell-yaml.Tests.ps1",
+      "size": 41179,
+      "sha256": "29602f1e025ea0986c5286718e4e5f090f3b813bfd81a7876aefafcf943deabd"
+    },
+    {
+      "path": "powershell-yaml/build.ps1",
+      "size": 1000,
+      "sha256": "1b239ed96f566421b9ad8b49ef36b2586d3dad41d4555397b539c4691b729124"
+    },
+    {
+      "path": "powershell-yaml/lib/net47/LICENSE.txt",
+      "size": 1110,
+      "sha256": "daea8b7f1b2bab48ea12ad50b0ce91634669d99d7dd0cb64aed8dffeeef69ed3"
+    },
+    {
+      "path": "powershell-yaml/lib/net47/PowerShellYamlSerializer.dll",
+      "size": 11264,
+      "sha256": "a5bdd33675629ca88cf05cd08150a19a69bc20b21cbe1d1e5e55fe63a332062a"
+    },
+    {
+      "path": "powershell-yaml/lib/net47/YamlDotNet.dll",
+      "size": 288256,
+      "sha256": "d35c770d92632bd94bba4203db05eee5ebce6e6ea6d92e7ebe8997a942b5321c"
+    },
+    {
+      "path": "powershell-yaml/lib/net47/YamlDotNet.xml",
+      "size": 346105,
+      "sha256": "9a39a8c9122b6c146ad39ccc373f596f277f4b4b998bc2d4dfc18c8368a2f555"
+    },
+    {
+      "path": "powershell-yaml/lib/netstandard2.1/LICENSE.txt",
+      "size": 1110,
+      "sha256": "daea8b7f1b2bab48ea12ad50b0ce91634669d99d7dd0cb64aed8dffeeef69ed3"
+    },
+    {
+      "path": "powershell-yaml/lib/netstandard2.1/PowerShellYamlSerializer.dll",
+      "size": 11264,
+      "sha256": "c9193f2fb5afa40af61d908589fdd0929ab58472be215fc2afb692194d53210d"
+    },
+    {
+      "path": "powershell-yaml/lib/netstandard2.1/YamlDotNet.dll",
+      "size": 287232,
+      "sha256": "d7543a03a69f14ca1e302aa2bbb09777200b72e0c6db0d0eb7614593f5c33e0f"
+    },
+    {
+      "path": "powershell-yaml/lib/netstandard2.1/YamlDotNet.xml",
+      "size": 346105,
+      "sha256": "9a39a8c9122b6c146ad39ccc373f596f277f4b4b998bc2d4dfc18c8368a2f555"
+    },
+    {
+      "path": "powershell-yaml/powershell-yaml.psd1",
+      "size": 3481,
+      "sha256": "b17d30f63eee0fd5e5bb074043045c499e87b254c044ce5b1a5e71df2dd8c469"
+    },
+    {
+      "path": "powershell-yaml/powershell-yaml.psm1",
+      "size": 18297,
+      "sha256": "415b0de1b4d5af6980ec50316d3267fa19663b7dbf809d219783b41ed39b2e5d"
+    }
+  ]
+}
