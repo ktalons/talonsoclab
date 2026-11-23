@@ -1344,7 +1344,9 @@ pointed at one.
 The match is on the event time: the Sysmon `utcTime` when the alert has one, else the system
 time. The index time lags the event by about a second, so an alert indexed inside a window for
 an event that happened after it does not count, and an event inside a window that was indexed
-after it does. Times are compared as exact instants at the seven decimals the records carry.
+after it does. Times are compared as exact instants. The records carry seven decimals; a Sysmon event time
+carries three, so it stands for a whole millisecond, and that whole millisecond has to be inside
+the window for the alert to count.
 
 Everything else is listed in `coverage.json` with a reason: outside the run window (cleanup and
 gaps included), rule not in the test's `rules`, or session verdict not `pass`. A pack alert for

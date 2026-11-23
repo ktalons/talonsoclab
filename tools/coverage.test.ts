@@ -119,6 +119,8 @@ function fakeRemote(seen: string[] = []): Remote {
     seen.push(ndjson);
     const q = JSON.parse(ndjson.split("\n")[1]);
     const from = q.query.bool.filter[2].range.timestamp.gte as string;
+    // Only the two fixture sessions are known; any other span is a test set-up error, not EV2.
+    if (!from.startsWith("2026-11-22T03:51") && !from.startsWith("2026-11-22T03:56")) throw new Error(`fakeRemote has no fixture for a span from ${from}`);
     const session = from.startsWith("2026-11-22T03:51") ? EV1 : EV2;
     return { code: 0, out: answerFor(fixtureAlerts(session), 9), timedOut: false };
   };
@@ -216,7 +218,8 @@ describe("refresh-attack", () => {
   });
   test("the real bundle regenerates the checked-in list byte for byte", () => {
     const path = join(process.env.HOME ?? "", "code/attack-stix-data/enterprise-attack-19.2.json");
-    if (!existsSync(path)) return;
+    // A missing bundle fails here: a test that returns early would pass without checking anything.
+    expect(existsSync(path)).toBe(true);
     const text = buildAttackTsv(readFileSync(path), ATTACK_SHA256);
     expect(text).toBe(readFileSync(join(ROOT, "phase-b-detection/attack/enterprise-19.2-techniques.tsv"), "utf8"));
   });
@@ -349,9 +352,67 @@ describe("what counts as validated", () => {
     expect(s.validatedRules).toEqual(SECOND);
     expect(s.uncounted[0]).toMatchObject({ rule: 100411, reason: "rule-not-in-test-rules" });
   });
+  test("a record that says pass while it lists a failure is refused", () => {
+    const root = scratch();
+    editJson(root, recPath(EV1), (r) => r.failures.push("planted failure"));
+    rehash(root);
+    expect(refusal(["build", "--root", root]).code).toBe("record-verdict");
+  });
+  test("a millisecond event time counts only when the whole millisecond is inside the window", () => {
+    const root = scratch();
+    // The window's end is moved to fall inside the alert's own millisecond: .014 could be up to .014999999.
+    const ev = read(root, evPath(EV1));
+    const a = ev.alerts.find((x: { ruleId: number }) => x.ruleId === 100410);
+    const ms = a.eventTime.replace("Z", "");
+    editJson(root, recPath(EV1), (r) => {
+      const t = r.tests.find((x: { rules: number[] }) => x.rules.includes(100410));
+      t.run.endUtc = `${ms}5000Z`;
+      t.cleanup.startUtc = `${ms}6000Z`;
+    });
+    rehash(root);
+    build(root);
+    expect(summaryOf(root).validatedRules).toEqual([100400, 100407, 100411]);
+    // Seven decimals cannot reach the last nanosecond of that millisecond, so .0149999 still does not hold it.
+    editJson(root, recPath(EV1), (r) => {
+      const t = r.tests.find((x: { rules: number[] }) => x.rules.includes(100410));
+      t.run.endUtc = `${ms}9999Z`;
+      t.cleanup.startUtc = `${ms}9999Z`;
+    });
+    rehash(root);
+    build(root);
+    expect(summaryOf(root).validatedRules).toEqual([100400, 100407, 100411]);
+    // An end in the next millisecond holds all of it, and the alert counts.
+    const next = `${ms.slice(0, -3)}${String(Number(ms.slice(-3)) + 1).padStart(3, "0")}`;
+    editJson(root, recPath(EV1), (r) => {
+      const t = r.tests.find((x: { rules: number[] }) => x.rules.includes(100410));
+      t.run.endUtc = `${next}0000Z`;
+      t.cleanup.startUtc = `${next}0000Z`;
+    });
+    rehash(root);
+    build(root);
+    expect(summaryOf(root).validatedRules).toEqual(FOUR);
+  });
+  test("a pack rule with no mitre id is refused", () => {
+    const root = scratch();
+    const p = join(root, "deploy/soc-recon/wazuh/custom-rules/local_eid22_pack.xml");
+    const xml = readFileSync(p, "utf8");
+    const cut = xml.replace(/\s*<mitre>[\s\S]*?<\/mitre>/, "");
+    expect(cut).not.toBe(xml);
+    writeFileSync(p, cut);
+    expect(refusal(["build", "--root", root]).code).toBe("pack-rule-no-mitre");
+  });
+  test("a folder with a record's name is refused by name", () => {
+    const root = scratch();
+    mkdirSync(join(root, "phase-b-detection/art-runs/20261122T999999Z-aaaaaa.json"));
+    const r = refusal(["build", "--root", root]);
+    expect(r.item).toContain("20261122T999999Z-aaaaaa.json");
+  });
   test("a session whose verdict is fail counts nothing", () => {
     const root = scratch();
-    editJson(root, recPath(EV1), (r) => (r.verdict = "fail"));
+    editJson(root, recPath(EV1), (r) => {
+      r.verdict = "fail";
+      r.failures.push("planted failure");
+    });
     rehash(root);
     build(root);
     const s = summaryOf(root);
@@ -446,11 +507,68 @@ describe("misses", () => {
     missEntry(root, { rule: 100405, class: "blocked-by-defender", evidence: "x", session: EV1, test: T_PASSWORD, alertId: "FIXTUREDOCID00000001" });
     expect(refusal(["build", "--root", root]).code).toBe("misses-defender-evidence");
   });
-  test("a sensor-gap entry citing a test that lists the rule is accepted", () => {
+  test("a miss entry for a rule that is validated is refused", () => {
     const root = scratch();
     missEntry(root, { rule: 100410, class: "sensor-gap", evidence: "x", session: EV1, test: T_PASSWORD });
-    // 100410 is validated here, so it is the validated check that stops it.
     expect(refusal(["build", "--root", root]).code).toBe("misses-rule-validated");
+  });
+  test("a sensor-gap entry for a rule that did not validate, citing a test that ran and lists it, is accepted", () => {
+    const root = scratch();
+    editJson(root, recPath(EV1), (r) => r.tests[0].rules.push(100405));
+    rehash(root);
+    missEntry(root, { rule: 100405, class: "sensor-gap", evidence: "x", session: EV1, test: T_PASSWORD });
+    build(root);
+    const row = summaryOf(root).rules.find((r: { rule?: number; id?: number }) => (r.rule ?? r.id) === 100405);
+    expect(JSON.stringify(row)).toContain("sensor-gap");
+    expect(summaryOf(root).unclassified).not.toContain(100405);
+  });
+  test("an alert in an index named for another day than its timestamp is refused", () => {
+    const root = scratch();
+    editJson(root, evPath(EV1), (e) => (e.alerts[0].index = "wazuh-alerts-4.x-2026.99.99"));
+    expect(refusal(["build", "--root", root]).code).toBe("evidence-index");
+    const root2 = scratch();
+    editJson(root2, evPath(EV1), (e) => (e.alerts[0].index = "wazuh-alerts-4.x-2026.11.21"));
+    expect(refusal(["build", "--root", root2]).code).toBe("evidence-index");
+  });
+  test("a query that left out the rule of a test that was never sent is refused", () => {
+    const root = scratch();
+    editJson(root, recPath(EV1), (r) => {
+      r.tests.push({ ...r.tests[0], guid: "00000000-0000-4000-8000-000000000002", rules: [100412], run: { startUtc: null, endUtc: null, status: "not-sent", exitCode: null }, cleanup: { startUtc: null, endUtc: null, status: "not-sent", exitCode: null } });
+    });
+    rehash(root);
+    editJson(root, evPath(EV1), (e) => (e.query.rules = e.query.rules.filter((x: number) => x !== 100412)));
+    expect(refusal(["build", "--root", root]).code).toBe("evidence-query");
+  });
+  test("shard counts the index could not report are refused", () => {
+    const root = scratch();
+    editJson(root, evPath(EV1), (e) => (e.shards.alerts = { total: 1, successful: 1, skipped: 2, failed: 0 }));
+    expect(refusal(["build", "--root", root]).code).toBe("evidence-shards");
+  });
+  test("a miss that cites a test which was never sent is refused", () => {
+    const root = scratch();
+    editJson(root, recPath(EV1), (r) => {
+      r.tests.push({ ...r.tests[0], guid: "00000000-0000-4000-8000-000000000001", rules: [100405], run: { startUtc: null, endUtc: null, status: "not-sent", exitCode: null }, cleanup: { startUtc: null, endUtc: null, status: "not-sent", exitCode: null } });
+    });
+    rehash(root);
+    missEntry(root, { rule: 100405, class: "rule-gap", evidence: "x", session: EV1, test: "00000000-0000-4000-8000-000000000001" });
+    expect(refusal(["build", "--root", root]).code).toBe("misses-test-not-run");
+  });
+  test("a miss that cites a session with no evidence file is refused", () => {
+    const root = scratch();
+    editJson(root, recPath(EV1), (r) => r.tests[0].rules.push(100405));
+    rmSync(join(root, evPath(EV1)));
+    missEntry(root, { rule: 100405, class: "sensor-gap", evidence: "x", session: EV1, test: T_PASSWORD });
+    expect(refusal(["build", "--root", root]).code).toBe("misses-no-evidence");
+  });
+  test("a technique list edited so its counts still agree is refused by its content pin", () => {
+    const root = scratch();
+    const p = join(root, "phase-b-detection/attack/enterprise-19.2-techniques.tsv");
+    const text = readFileSync(p, "utf8");
+    // One revoked row made active and one active row made revoked: the header's counts still match.
+    const swapped = text.replace("T1013\trevoked\tT1547.010\t", "T1013\tactive\t\t").replace(/^T1001\tactive\t\t/m, "T1001\trevoked\tT1001.001\t");
+    expect(swapped).not.toBe(text);
+    writeFileSync(p, swapped);
+    expect(refusal(["build", "--root", root]).code).toBe("attack-tsv-pin");
   });
   test("a not-run entry carries no session and a sensor-gap entry may not carry a ruling", () => {
     const root = scratch();
@@ -705,6 +823,37 @@ describe("pack reading", () => {
   });
 });
 
+describe("overlapping fetches", () => {
+  test("an alert that counted in its own session is not listed as a miss in a neighbouring session's evidence", () => {
+    const root = scratch();
+    // EV2's fetch span is stretched back over EV1's windows and given a copy of EV1's two alerts.
+    const one = read(root, evPath(EV1));
+    editJson(root, evPath(EV2), (e) => {
+      e.query.fromUtc = one.query.fromUtc;
+      e.alerts = [...one.alerts, ...e.alerts];
+      e.control.agent001Alerts += one.alerts.length;
+    });
+    build(root);
+    const s = summaryOf(root);
+    expect(s.validatedRules).toEqual(FOUR);
+    expect(s.uncounted).toEqual([]);
+  });
+  test("an alert outside every window in two overlapping fetches is listed once", () => {
+    const root = scratch();
+    const stray = { ...read(root, evPath(EV1)).alerts[0], id: "STRAYxOUTSIDExWINDOW", eventTime: "2026-11-22T03:53:30.000Z", timestamp: "2026-11-22T03:53:31.000Z" };
+    editJson(root, evPath(EV1), (e) => e.alerts.push(stray));
+    editJson(root, evPath(EV2), (e) => {
+      e.query.fromUtc = read(root, evPath(EV1)).query.fromUtc;
+      e.alerts = [stray, ...e.alerts];
+    });
+    build(root);
+    const u = summaryOf(root).uncounted;
+    expect(u).toHaveLength(1);
+    expect(u[0].reason).toBe("outside-run-window");
+    expect(u[0].session).toBe(EV1);
+  });
+});
+
 describe("fetch", () => {
   test("evidence whose query never asked for a rule its session's tests list is refused", () => {
     const root = scratch();
@@ -802,6 +951,30 @@ describe("fetch", () => {
     const root = scratch(false);
     const remote: Remote = () => ({ code: 0, out: answerFor(fixtureAlerts(EV1).map((a: ReturnType<typeof alert>) => ({ ...a, agentId: "002" })), 9), timedOut: false });
     expect(() => fetchAll(layoutFor(root), remote, noScan)).toThrow(/agent/);
+  });
+  test("Sysmon's unknown-process image is kept as that one literal, and build reads it back", () => {
+    const root = scratch(false);
+    const withImage = (image: string): Remote => (nd, t) => {
+      const real = fakeRemote()(nd, t);
+      const doc = JSON.parse(real.out);
+      doc.responses[0].hits.hits[0]._source.data.win.eventdata.image = image;
+      return { ...real, out: JSON.stringify(doc) };
+    };
+    // The index holds the value HTML-escaped; that is the form seen live on event 22.
+    fetchAll(layoutFor(root), withImage("&lt;unknown process&gt;"), noScan);
+    expect(read(root, evPath(EV1)).alerts[0].image).toBe("<unknown process>");
+    build(root);
+    expect(summaryOf(root).validatedRules).toEqual(FOUR);
+    // An answer with no channel is refused; it is never written as the text "undefined".
+    const noChannel: Remote = (nd, t) => {
+      const real = fakeRemote()(nd, t);
+      const doc = JSON.parse(real.out);
+      delete doc.responses[0].hits.hits[0]._source.data.win.system.channel;
+      return { ...real, out: JSON.stringify(doc) };
+    };
+    expect(() => fetchAll(layoutFor(scratch(false)), noChannel, noScan)).toThrow(/channel/);
+    // Any other value with markup in it is still outside the pattern.
+    expect(() => fetchAll(layoutFor(scratch(false)), withImage("&lt;another value&gt;"), noScan)).toThrow(/image/);
   });
   test("the real leak scan stops a planted identifier and nothing is written", () => {
     const root = scratch(false);

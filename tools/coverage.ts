@@ -8,7 +8,7 @@
 // *--- Imports ---*
 
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { EXIT, type ExitCode, type SessionRecord, type TestRecord } from "./art-harness.ts";
@@ -43,6 +43,9 @@ const ATTACK_VERSION = "19.2";
 const ATTACK_MAJOR = "19";
 const ATTACK_URL = "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack-19.2.json";
 export const ATTACK_SHA256 = "dc1639caa5501d720e280cf1cbd8fbe009884a0c9b3e6e9ed9d0c25166c3d8f4";
+// The SHA-256 of the checked-in technique list itself. The header check alone compares the list
+// with counts taken from its own rows, so an edited row that keeps the counts would pass it.
+export const ATTACK_TSV_SHA256 = "b065979e96c053f4a576f8a83795bba352d00b229c8c5f3210b3e8f4b19e3b46";
 const ATTACK_COLLECTION = `enterprise-attack ${ATTACK_VERSION}`;
 const REGENERATE = `bun tools/coverage.ts refresh-attack <path to enterprise-attack-${ATTACK_VERSION}.json>`;
 
@@ -75,7 +78,12 @@ const SAFE_DOC_ID = /^[A-Za-z0-9_-]{16,64}$/;
 const SAFE_TEXT = /^[\x20-\x7e]{1,500}$/;
 const SAFE_CHANNEL = /^[\x20-\x7e]{1,128}$/;
 const SAFE_IMAGE = /^[A-Za-z0-9._ +()$-]{1,128}$/;
-const SAFE_TACTICS = /^[a-z]+(?:-[a-z]+)*(?:,[a-z]+(?:-[a-z]+)*)*$/;
+// Sysmon writes this in place of an image when the process was gone before the event was built
+// (seen live on event 22, 2026-11-23); the index holds it HTML-escaped. It is the one image value
+// outside SAFE_IMAGE that an evidence file may carry.
+export const UNKNOWN_IMAGE = "<unknown process>";
+const UNKNOWN_IMAGE_ESCAPED = "&lt;unknown process&gt;";
+const SAFE_TACTICS =/^[a-z]+(?:-[a-z]+)*(?:,[a-z]+(?:-[a-z]+)*)*$/;
 const SAFE_HEX64 = /^[0-9a-f]{64}$/;
 const ISO_UTC = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.(\d{1,9}))?Z$/;
 
@@ -330,7 +338,12 @@ function readJson(text: string, file: string): unknown {
 function listFiles(l: Layout, dir: string, pattern: RegExp, code: string): string[] {
   if (!existsSync(dir)) return setup("input-missing", rel(l, dir), `${rel(l, dir)} is missing`);
   const names = readdirSync(dir).sort(ordinal);
-  for (const n of names) if (n !== FINDER && !pattern.test(n)) refuse(code, `${rel(l, dir)}/${n}`, `${rel(l, dir)}/${n} is not a file this tool reads`);
+  for (const n of names) {
+    if (n === FINDER) continue;
+    if (!pattern.test(n)) refuse(code, `${rel(l, dir)}/${n}`, `${rel(l, dir)}/${n} is not a file this tool reads`);
+    // A folder or a link with a record's name would otherwise end as an untyped read error.
+    if (!statSync(join(dir, n)).isFile()) refuse(code, `${rel(l, dir)}/${n}`, `${rel(l, dir)}/${n} is not a regular file`);
+  }
   return names.filter((n) => n !== FINDER);
 }
 
@@ -345,6 +358,17 @@ export function parseInstant(s: unknown, code: string, item: string): bigint {
     back.getUTCFullYear() === y && back.getUTCMonth() === mo - 1 && back.getUTCDate() === d && back.getUTCHours() === h && back.getUTCMinutes() === mi && back.getUTCSeconds() === se;
   if (!same) return refuse(code, item, `${item} is not a real calendar time: ${s}`);
   return BigInt(ms) * 1_000_000n + BigInt((m[7] ?? "").padEnd(9, "0"));
+}
+
+/**
+ * The last instant an event time can stand for. Sysmon's utcTime is cut to the millisecond, so an
+ * event stamped .086 happened anywhere up to .086999999; a time with seven decimals is taken as exact.
+ * A window's end is compared with this, so a cut-off time can never count an event that came after it.
+ */
+export function latestInstant(iso: string, code: string, item: string): bigint {
+  const t = parseInstant(iso, code, item);
+  const digits = (ISO_UTC.exec(iso)?.[7] ?? "").length;
+  return digits >= 7 ? t : t + 10n ** BigInt(9 - digits) - 1n;
 }
 
 /** A time from the index in any form it uses, as ISO UTC with the fraction kept. */
@@ -366,12 +390,12 @@ const inScope = (id: number) => isPack(id) || DEFENDER_RULES.includes(id);
 // -- The pinned technique list --
 
 /** The comment block a technique list opens with, from the counts of its rows. */
-function attackHeader(counts: AttackList["counts"]): string {
+function attackHeader(counts: AttackList["counts"], bundleSha = ATTACK_SHA256): string {
   return [
     `# talonsoclab ATT&CK Enterprise ${ATTACK_VERSION} technique list`,
     `# format: ${TSV_FORMAT}`,
     `# source: ${ATTACK_URL}`,
-    `# sha256: ${ATTACK_SHA256}`,
+    `# sha256: ${bundleSha}`,
     `# collection: ${ATTACK_COLLECTION}`,
     `# counts: total=${counts.total} active=${counts.active} revoked=${counts.revoked} deprecated=${counts.deprecated}`,
     `# regenerate: ${REGENERATE}`,
@@ -490,7 +514,11 @@ export function buildAttackTsv(bundle: Uint8Array, expected: string): string {
   for (const r of rows) counts[r.status]++;
   const body = rows.map((r) => [r.id, r.status, r.successor, r.tactics.join(","), r.name].join("\t"));
   for (const line of body) if (line.split("\t").length !== 5) refuse("bundle-shape", line.split("\t")[0], "a technique name holds a tab");
-  const text = `${attackHeader(counts)}${body.join("\n")}\n`;
+  // The header names the bundle that was actually hashed, so a list cut from another bundle cannot wear the pin.
+  const text = `${attackHeader(counts, got)}${body.join("\n")}\n`;
+  if (expected === ATTACK_SHA256 && sha256(text) !== ATTACK_TSV_SHA256) {
+    refuse("attack-tsv-pin", "generated list", "the pinned bundle no longer produces the pinned technique list; the generator changed");
+  }
   // The generator has to read back what it wrote, so a bad row stops here, not in a build.
   if (expected === ATTACK_SHA256) parseAttackTsv(text, "generated list");
   return text;
@@ -538,6 +566,16 @@ export function parseCrosswalk(text: string, attack: AttackList, file = CROSSWAL
 
 // -- The pack --
 
+/** The pinned technique list a build or a fetch reads: its bytes must be the checked-in ones. */
+export function loadAttack(l: Layout): AttackList {
+  const text = readInput(l, l.attackTsv);
+  if (text.includes("wazuh_logtest[") || text.includes("Reply: {")) refuse("logtest-transcript", rel(l, l.attackTsv), `${rel(l, l.attackTsv)} is a logtest transcript`);
+  if (sha256(text) !== ATTACK_TSV_SHA256) {
+    refuse("attack-tsv-pin", rel(l, l.attackTsv), `${rel(l, l.attackTsv)} is not the pinned ${ATTACK_VERSION} technique list (its SHA-256 differs); regenerate it with refresh-attack`);
+  }
+  return parseAttackTsv(text, rel(l, l.attackTsv));
+}
+
 /** The pack rules from the rules folder, each with its ATT&CK ids as written and as 19.2. */
 export function loadPack(l: Layout, crosswalk: Map<string, CrosswalkEntry>): PackRule[] {
   if (!existsSync(l.rules)) setup("input-missing", rel(l, l.rules), `${rel(l, l.rules)} is missing`);
@@ -558,6 +596,8 @@ export function loadPack(l: Layout, crosswalk: Map<string, CrosswalkEntry>): Pac
   for (const r of [...pack].sort((a, b) => a.id - b.id)) {
     if (r.mitrePairs.length > 0) refuse("pack-rule-mitre-pairs", `rule ${r.id}`, `rule ${r.id} maps through tactic and technique pairs, which this tool does not read`);
     const written = [...new Set(r.mitre)].sort(ordinal);
+    // A rule with no ATT&CK id would count in the pack size and sit on no layer.
+    if (written.length === 0) refuse("pack-rule-no-mitre", `rule ${r.id}`, `rule ${r.id} carries no <mitre> id, so it cannot be placed on a layer`);
     const attack19 = new Set<string>();
     for (const id of written) {
       const entry = crosswalk.get(id);
@@ -579,6 +619,8 @@ export function parseRecord(file: string, text: string): Session {
   if (typeof doc.session !== "string" || !SAFE_SESSION.test(doc.session)) refuse("record-session", file, `${file} has no session id in the pattern`);
   if (doc.verdict !== "pass" && doc.verdict !== "fail") refuse("record-verdict", file, `${file} verdict must be pass or fail`);
   if (!Array.isArray(doc.failures) || !doc.failures.every((f) => typeof f === "string")) refuse("record-shape", file, `${file} failures must be a list of text`);
+  // A record that says pass while it lists a failure contradicts itself, and pass is what lets its alerts count.
+  if ((doc.verdict === "pass") !== (doc.failures.length === 0)) refuse("record-verdict", file, `${file} verdict ${String(doc.verdict)} does not agree with its ${doc.failures.length} listed failures`);
   if (!Array.isArray(doc.tests)) return refuse("record-tests", file, `${file} tests must be a list`);
   const windows: RunWindow[] = [];
   const starts: bigint[] = [];
@@ -647,6 +689,8 @@ function shardCounts(x: unknown, item: string): ShardCounts {
   const c = x as unknown as ShardCounts;
   if (c.failed !== 0) refuse("evidence-shards", item, `${item}: ${c.failed} shard(s) failed, so the answer may be partial`);
   if (c.successful !== c.total) refuse("evidence-shards", item, `${item}: ${c.successful} of ${c.total} shards answered`);
+  // Skipped shards are a part of the successful ones; more of them than shards is not an answer the index gives.
+  if (c.total === 0 || c.skipped > c.total) refuse("evidence-shards", item, `${item}: ${c.skipped} skipped of ${c.total} shards is not a count the index can report`);
   return c;
 }
 
@@ -671,7 +715,8 @@ export function parseEvidence(file: string, text: string, sessions: Map<string, 
   if (q.agent !== AGENT) refuse("evidence-agent", file, `${file} query is for agent ${String(q.agent)}, not ${AGENT}`);
   const queried = Array.isArray(q.rules) && q.rules.every((r) => isInt(r) && inScope(r)) ? (q.rules as number[]) : refuse("evidence-query", file, `${file} query rules must be pack ids and the Defender rules`);
   // A rule the query never asked for cannot be shown silent: every rule a test of the session lists, and both Defender rules, must be in it.
-  for (const need of [...(s as Session).windows.flatMap((w) => w.rules), ...DEFENDER_RULES]) {
+  // Every test in the record counts here, one that was never sent included: the record names its rule.
+  for (const need of [...(s as Session).record.tests.flatMap((t) => t.rules), ...DEFENDER_RULES]) {
     if (!queried.includes(need)) refuse("evidence-query", file, `${file} query did not ask for rule ${need}, which ${session} needs`);
   }
   const from = parseInstant(q.fromUtc, "evidence-time", `${file} query fromUtc`);
@@ -702,11 +747,16 @@ export function parseEvidence(file: string, text: string, sessions: Map<string, 
     if (!isInt(raw.ruleLevel) || raw.ruleLevel < 0 || raw.ruleLevel > 16) refuse("evidence-alerts", at, `${at} level must run 0 to 16`);
     if (!Array.isArray(raw.mitre) || !raw.mitre.every((m) => typeof m === "string" && /^[A-Za-z0-9.]{1,16}$/.test(m))) refuse("evidence-alerts", at, `${at} mitre must be a list of ids`);
     parseInstant(raw.timestamp, "evidence-time", `${at} timestamp`);
+    // A daily index is named for the UTC day of the alert's own timestamp, so the two must agree;
+    // that also rules out a name that matches the pattern and is no real day.
+    if ((raw.index as string).slice(-10) !== (raw.timestamp as string).slice(0, 10).replaceAll("-", ".")) {
+      refuse("evidence-index", at, `${at} sits in an index named for another day than its timestamp`);
+    }
     parseInstant(raw.eventTime, "evidence-time", `${at} eventTime`);
     if (raw.systemTime !== null) parseInstant(raw.systemTime, "evidence-time", `${at} systemTime`);
     if (raw.eventId !== null && !isNat(raw.eventId)) refuse("evidence-alerts", at, `${at} eventId must be a number or null`);
     if (typeof raw.channel !== "string" || !SAFE_CHANNEL.test(raw.channel)) refuse("evidence-alerts", at, `${at} channel is outside its pattern`);
-    if (raw.image !== null && (typeof raw.image !== "string" || !SAFE_IMAGE.test(raw.image))) refuse("evidence-alerts", at, `${at} image must be a bare file name or null`);
+    if (raw.image !== null && raw.image !== UNKNOWN_IMAGE && (typeof raw.image !== "string" || !SAFE_IMAGE.test(raw.image))) refuse("evidence-alerts", at, `${at} image must be a bare file name or null`);
     const key = `${raw.index}/${raw.id}`;
     if (seen.has(key)) refuse("evidence-duplicate", key, `${file} lists ${key} twice`);
     seen.add(key);
@@ -751,13 +801,17 @@ export function classify(sessions: Session[], evidence: Evidence[], pack: PackRu
   const bySession = new Map(sessions.map((s) => [s.record.session, s]));
   const candidates = new Map<number, { c: Counted; order: [string, number, bigint, string, string] }[]>();
   const uncounted: Uncounted[] = [];
+  // A fetch pads each session's span by a minute, so two sessions run close together both hold
+  // the same alert. One that counted in its own session is not a miss in the other.
+  const inAWindow = new Set<string>();
   for (const ev of evidence) {
     const s = bySession.get(ev.session) as Session;
     for (const a of ev.alerts) {
       if (!isPack(a.ruleId)) continue;
       // Matching is on the event time alone; the index time lags by about a second and is only recorded.
       const t = parseInstant(a.eventTime, "evidence-time", `alert ${a.id} eventTime`);
-      const inWindow = s.windows.filter((w) => w.start <= t && t <= w.end);
+      const late = latestInstant(a.eventTime, "evidence-time", `alert ${a.id} eventTime`);
+      const inWindow = s.windows.filter((w) => w.start <= t && late <= w.end);
       const note = (reason: string) => uncounted.push({ session: ev.session, index: a.index, id: a.id, rule: a.ruleId, eventTime: a.eventTime, indexTime: a.timestamp, reason });
       if (!inXml.has(a.ruleId)) {
         if (inWindow.length) refuse("validated-not-subset", `rule ${a.ruleId}`, `rule ${a.ruleId} raised alert ${a.id} inside a run window of ${ev.session} but is not in the pack XML`);
@@ -780,6 +834,7 @@ export function classify(sessions: Session[], evidence: Evidence[], pack: PackRu
       const w = [...listed].sort((x, y) => x.position - y.position)[0];
       const c: Counted = { rule: a.ruleId, session: ev.session, test: w.guid, art: `${w.technique} #${w.testNumber}`, index: a.index, id: a.id, eventTime: a.eventTime, indexTime: a.timestamp };
       const list = candidates.get(a.ruleId) ?? [];
+      inAWindow.add(`${a.index}/${a.id}`);
       list.push({ c, order: [ev.session, w.position, t, a.index, a.id] });
       candidates.set(a.ruleId, list);
     }
@@ -790,8 +845,17 @@ export function classify(sessions: Session[], evidence: Evidence[], pack: PackRu
     counted.set(rule, list[0].c);
     // Every counted alert past the first is still an alert that counted; only the first is the row's.
   }
-  uncounted.sort((x, y) => ordinal(x.session, y.session) || ordinal(x.eventTime, y.eventTime) || ordinal(x.id, y.id));
-  return { counted, uncounted };
+  const when = (u: Uncounted) => parseInstant(u.eventTime, "evidence-time", `alert ${u.id} eventTime`);
+  uncounted.sort((x, y) => ordinal(x.session, y.session) || cmpBig(when(x), when(y)) || ordinal(x.id, y.id));
+  // The same document outside every window in two overlapping fetches is listed once, under the earlier session.
+  const listed = new Set<string>();
+  const once = uncounted.filter((u) => {
+    const doc = `${u.index}/${u.id}`;
+    if (u.reason === "outside-run-window" && (inAWindow.has(doc) || listed.has(doc))) return false;
+    if (u.reason === "outside-run-window") listed.add(doc);
+    return true;
+  });
+  return { counted, uncounted: once };
 }
 
 /** The post-check the validated sets must pass: every validated rule and technique is in the exists set. */
@@ -841,13 +905,21 @@ export function parseMisses(text: string, file: string, pack: PackRule[], counte
       if (!s) refuse("misses-session", item, `${at} (${item}) cites a session that has no record`);
       const t = (s as Session).record.tests.find((x) => x.guid === raw.test);
       if (!t || !t.rules.includes(rule)) refuse("misses-test", item, `${at} (${item}) cites a test of ${(s as Session).record.session} that does not list ${item}`);
+      // A miss is a claim about a test that ran and an index that was asked: both must be on record.
+      if (!(s as Session).windows.some((x) => x.guid === raw.test)) {
+        refuse("misses-test-not-run", item, `${at} (${item}) cites a test that has no run window in ${(s as Session).record.session}; a test that was never sent shows nothing`);
+      }
+      if (!evBySession.has(raw.session as string)) {
+        refuse("misses-no-evidence", item, `${at} (${item}) cites ${String(raw.session)}, which has no evidence file; fetch it first`);
+      }
       miss.session = raw.session as string;
       miss.test = raw.test as string;
       if (cls === "blocked-by-defender") {
         const w = (s as Session).windows.find((x) => x.guid === raw.test);
         const a = evBySession.get(miss.session)?.alerts.find((x) => x.id === raw.alertId && DEFENDER_RULES.includes(x.ruleId));
         const at2 = a ? parseInstant(a.eventTime, "evidence-time", `alert ${a.id} eventTime`) : 0n;
-        if (!w || !a || at2 < w.start || at2 > w.end) {
+        const late2 = a ? latestInstant(a.eventTime, "evidence-time", `alert ${a.id} eventTime`) : 0n;
+        if (!w || !a || at2 < w.start || late2 > w.end) {
           refuse("misses-defender-evidence", item, `${at} (${item}): a blocked-by-defender entry must cite a rule 62123 or 62124 alert whose event time is inside the cited test's run window`);
         }
         miss.alertId = raw.alertId as string;
@@ -910,7 +982,7 @@ export function buildLayer(kind: "exists" | "validated", byTechnique: Map<string
 
 /** Everything build writes, from the inputs under one layout; nothing is written here. */
 export function buildAll(l: Layout): Built {
-  const attack = parseAttackTsv(readInput(l, l.attackTsv), rel(l, l.attackTsv));
+  const attack = loadAttack(l);
   const crosswalk = parseCrosswalk(readInput(l, l.crosswalk), attack, rel(l, l.crosswalk));
   const pack = loadPack(l, crosswalk);
   const sessions = loadRecords(l);
@@ -1099,8 +1171,8 @@ export function evidenceFromAnswer(s: Session, query: Evidence["query"], answer:
       eventTime,
       systemTime,
       eventId: eid === undefined ? null : Number(eid),
-      channel: String(dig("data", "win", "system", "channel")),
-      image: typeof image === "string" ? (image.split(/[\\/]/).pop() ?? null) : null,
+      channel: ((c) => (typeof c === "string" ? c : refuse("fetch-alert", at, `${at} has no channel`)))(dig("data", "win", "system", "channel")),
+      image: typeof image !== "string" ? null : image === UNKNOWN_IMAGE || image === UNKNOWN_IMAGE_ESCAPED ? UNKNOWN_IMAGE : (image.split(/[\\/]/).pop() ?? null),
     };
   });
   alerts.sort((a, b) => ordinal(a.timestamp, b.timestamp) || ordinal(a.index, b.index) || ordinal(a.id, b.id));
@@ -1121,8 +1193,8 @@ export const realLeakScan: LeakScan = (files) => {
 
 /** Ask the index for every record's evidence, check it all, scan it, then write it. */
 export function fetchAll(l: Layout, remote: Remote, scan: LeakScan = realLeakScan): string[] {
-  const attack = parseAttackTsv(readInput(l, l.attackTsv), rel(l, l.attackTsv));
-  const packIds = loadPack(l, parseCrosswalk(readInput(l, l.crosswalk), attack, rel(l, l.crosswalk))).map((r) => r.id);
+  const attack = loadAttack(l);
+  const packIds =loadPack(l, parseCrosswalk(readInput(l, l.crosswalk), attack, rel(l, l.crosswalk))).map((r) => r.id);
   const sessions = loadRecords(l);
   if (!sessions.length) setup("fetch-no-records", rel(l, l.records), `${rel(l, l.records)} holds no session record to fetch for`);
   const bySession = new Map(sessions.map((s) => [s.record.session, s]));
@@ -1186,10 +1258,13 @@ export function rehash(root: string): void {
 /** A scratch root with every input copied from the repo and the fixture evidence in place. */
 export function makeScratch(withEvidence: boolean): string {
   const dir = mkdtempSync(join(tmpdir(), "coverage-root-"));
-  for (const p of [RULES_DIR, "phase-b-detection/attack", RECORD_DIR]) {
+  for (const p of [RULES_DIR, "phase-b-detection/attack"]) {
     mkdirSync(dirname(join(dir, p)), { recursive: true });
     cpSync(join(ROOT, p), join(dir, p), { recursive: true });
   }
+  // Only the two sessions the fixtures were cut from: the scratch must not change as records are added.
+  mkdirSync(join(dir, RECORD_DIR), { recursive: true });
+  for (const s of [EV1, EV2]) cpSync(join(ROOT, RECORD_DIR, `${s}.json`), join(dir, RECORD_DIR, `${s}.json`));
   mkdirSync(join(dir, VALIDATION_DIR), { recursive: true });
   writeJsonFile(join(dir, MISSES), { format: MISSES_FORMAT, entries: [] });
   if (withEvidence) for (const s of [EV1, EV2]) cpSync(join(ROOT, FIXTURE_DIR, `${s}.alerts.json`), join(dir, evPath(s)));
@@ -1259,13 +1334,17 @@ export function selfTest(log: (line: string) => void): boolean {
       try {
         cpSync(control, root, { recursive: true });
         p.mutate(root);
+        const afterMutate = snapshot(root);
+        // A build plant runs over marker bytes: a build that wrote the same outputs and then refused would
+        // otherwise leave them byte-equal to the control's and pass for having written nothing.
+        if (!p.argv) for (const n of [OUT_EXISTS, OUT_VALIDATED, OUT_SUMMARY]) writeFileSync(join(root, COVERAGE_DIR, n), "self-test marker\n");
         const mid = snapshot(root);
         const r = run([...(p.argv ?? ["build"]), "--root", root], quiet);
         const same = snapshot(root) === mid;
         const good = r.exit === p.exit && r.error?.code === p.code && r.error?.item === p.item && same;
         if (!good) ok = false;
         log(`${good ? "OK  " : "FAIL"} ${p.name}: ${r.error ? `${r.error.code} (${r.error.item})` : `exit ${r.exit}, nothing refused`}${same ? "" : "; AN OUTPUT CHANGED"}`);
-        if (p.exit === EXIT.refused && !p.argv && mid !== before) ok = false;
+        if (p.exit === EXIT.refused && !p.argv && afterMutate !== before) ok = false;
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
@@ -1343,6 +1422,10 @@ function main(argv: string[], io: Io, deps: Deps): ExitCode {
     if (c.positional.length !== 1) refuse("usage", "refresh-attack", "refresh-attack needs one path to a STIX bundle");
     const bundlePath = resolve(c.positional[0]);
     if (!existsSync(bundlePath)) setup("input-missing", c.positional[0], `${c.positional[0]} is missing`);
+    // Another bundle may be turned into a list for inspection, but never over the checked-in one.
+    if ((c.sha ?? ATTACK_SHA256) !== ATTACK_SHA256 && !c.out) {
+      refuse("attack-tsv-pin", "--sha256", "a bundle other than the pinned one needs --out; it cannot replace the checked-in technique list");
+    }
     const text = buildAttackTsv(readFileSync(bundlePath), c.sha ?? ATTACK_SHA256);
     const dest = c.out ?? l.attackTsv;
     mkdirSync(dirname(dest), { recursive: true });

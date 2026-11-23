@@ -1,0 +1,60 @@
+{
+  "format": "talonsoclab-art-session/1",
+  "session": "20261123T051734Z-ecc234",
+  "verdict": "pass",
+  "failures": [],
+  "timedOut": [],
+  "allowlistSha256": "46900ff2fbddfdfd72864212b4f1dcd3f17b85dbfa4291e61de92b05c8457502",
+  "manifestSha256": "559f19bbfb66a912ff92d598d2ca59bb2a1933ca3a9deaf28a746fb4c674ecf2",
+  "atomicsCommit": "a0e3f9bc69fed2fd711bd1f1aa87a40c33482fe6",
+  "module": {
+    "name": "Invoke-AtomicRedTeam",
+    "version": "2.3.0"
+  },
+  "timeoutSeconds": 120,
+  "gateUtc": "2026-11-23T05:17:35.5782577Z",
+  "defenderGate": {
+    "realTimeProtection": true,
+    "exclusionPath": [
+      "C:\\AtomicRedTeam"
+    ],
+    "pass": true
+  },
+  "restorePoint": {
+    "description": "talonsoclab-b4-20261123T051734Z-ecc234",
+    "createdUtc": "2026-11-23T05:17:37.4370970Z"
+  },
+  "tests": [
+    {
+      "guid": "97116a3f-efac-4b26-8336-b9cb18c45188",
+      "technique": "T1105",
+      "testNumber": 26,
+      "testName": "Download a file using wscript",
+      "rules": [
+        100343
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:17:52.3731710Z",
+        "endUtc": "2026-11-23T05:17:54.4813124Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:17:59.1213111Z",
+        "endUtc": "2026-11-23T05:18:00.9730048Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    }
+  ],
+  "stateDiff": {
+    "verdict": "no-difference",
+    "items": []
+  },
+  "stagedAfter": {
+    "verdict": "unchanged",
+    "changed": 0,
+    "missing": 0,
+    "extra": 0
+  }
+}

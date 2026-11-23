@@ -1,4 +1,45 @@
 {
   "format": "talonsoclab-art-misses/1",
-  "entries": []
+  "entries": [
+    {
+      "rule": 100340,
+      "class": "blocked-by-defender",
+      "evidence": "Defender event 1116 (stock rule 62123) at 05:13:51.312Z, inside the run window of T1105 #7. The test step threw. The same command was blocked on 2026-11-12. This test is why the session's verdict is fail.",
+      "session": "20261123T051200Z-b4e336",
+      "test": "dd3b61dd-7bbc-48cd-ab51-49ad1a776df0",
+      "alertId": "yITTBqIBZHGlNvCLNEIl"
+    },
+    {
+      "rule": 100341,
+      "class": "not-run",
+      "evidence": "The only allowlisted test, T1218.010 #2, fetches a scriptlet from the atomics master branch at run time and runs it, outside the commit pin.",
+      "ruling": "Kyle, 2026-11-22: skip for now, plan for later with my assistance."
+    },
+    {
+      "rule": 100342,
+      "class": "not-run",
+      "evidence": "The only allowlisted test, T1218.011 #1, fetches a payload from the atomics master branch at run time and runs it, outside the commit pin.",
+      "ruling": "Kyle, 2026-11-22: skip for now, plan for later with my assistance."
+    },
+    {
+      "rule": 100343,
+      "class": "sensor-gap",
+      "evidence": "T1105 #26 exited 0. The Dell's Sysmon log holds the wscript.exe process start at 05:17:54.073Z and a DNS query for raw.githubusercontent.com from the same process id, and no event 3 for wscript.exe between 05:13:30Z and 05:18:10Z. The rule reads event 3. Whether the connection was made is not known.",
+      "session": "20261123T051734Z-ecc234",
+      "test": "97116a3f-efac-4b26-8336-b9cb18c45188"
+    },
+    {
+      "rule": 100344,
+      "class": "not-run",
+      "evidence": "No test in the pinned atomics runs a binary from a listed folder with its default inputs.",
+      "ruling": "Kyle, 2026-11-21: no input override for rule 100344, so it has no allowlisted test."
+    },
+    {
+      "rule": 100412,
+      "class": "sensor-gap",
+      "evidence": "The rule fired on the test's own DNS query (same process id as the test's curl.exe), but Sysmon stamped event 22 at 05:17:09.126Z, 5.4 s before curl.exe started at 05:17:14.554Z and 4.7 s before the run window opened. The same offset shows in session 20261123T051200Z-b4e336. An event time outside the window does not count.",
+      "session": "20261123T051536Z-245b00",
+      "test": "fe53e878-10a3-477b-963e-4367348f5af5"
+    }
+  ]
 }

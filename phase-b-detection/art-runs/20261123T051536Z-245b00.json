@@ -1,0 +1,312 @@
+{
+  "format": "talonsoclab-art-session/1",
+  "session": "20261123T051536Z-245b00",
+  "verdict": "pass",
+  "failures": [],
+  "timedOut": [],
+  "allowlistSha256": "46900ff2fbddfdfd72864212b4f1dcd3f17b85dbfa4291e61de92b05c8457502",
+  "manifestSha256": "559f19bbfb66a912ff92d598d2ca59bb2a1933ca3a9deaf28a746fb4c674ecf2",
+  "atomicsCommit": "a0e3f9bc69fed2fd711bd1f1aa87a40c33482fe6",
+  "module": {
+    "name": "Invoke-AtomicRedTeam",
+    "version": "2.3.0"
+  },
+  "timeoutSeconds": 120,
+  "gateUtc": "2026-11-23T05:15:37.5337191Z",
+  "defenderGate": {
+    "realTimeProtection": true,
+    "exclusionPath": [
+      "C:\\AtomicRedTeam"
+    ],
+    "pass": true
+  },
+  "restorePoint": {
+    "description": "talonsoclab-b4-20261123T051536Z-245b00",
+    "createdUtc": "2026-11-23T05:15:39.4252800Z"
+  },
+  "tests": [
+    {
+      "guid": "d6042746-07d4-4c92-9ad8-e644c114a231",
+      "technique": "T1037.001",
+      "testNumber": 1,
+      "testName": "Logon Scripts",
+      "rules": [
+        100400
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:15:55.2684371Z",
+        "endUtc": "2026-11-23T05:15:56.1142091Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:15:58.3761093Z",
+        "endUtc": "2026-11-23T05:15:59.2150828Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "d34ef297-f178-4462-871e-9ce618d44e50",
+      "technique": "T1547.010",
+      "testNumber": 1,
+      "testName": "Add Port Monitor persistence in Registry",
+      "rules": [
+        100401
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:16:01.5859820Z",
+        "endUtc": "2026-11-23T05:16:02.4243091Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:16:04.6722294Z",
+        "endUtc": "2026-11-23T05:16:05.4305001Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "9b6a06f9-ab5e-4e8d-8289-1df4289db02f",
+      "technique": "T1546.011",
+      "testNumber": 3,
+      "testName": "Registry key creation and/or modification events for SDB",
+      "rules": [
+        100402
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:16:07.6257290Z",
+        "endUtc": "2026-11-23T05:16:08.6958590Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:16:10.8621016Z",
+        "endUtc": "2026-11-23T05:16:11.9230399Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "99c657aa-ebeb-4179-a665-69288fdd12b8",
+      "technique": "T1070.005",
+      "testNumber": 4,
+      "testName": "Disable Administrative Share Creation at Startup",
+      "rules": [
+        100403
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:16:14.0842087Z",
+        "endUtc": "2026-11-23T05:16:14.9468866Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:16:17.1299544Z",
+        "endUtc": "2026-11-23T05:16:17.9845547Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "9e8af564-53ec-407e-aaa8-3cb20c3af7f9",
+      "technique": "T1548.002",
+      "testNumber": 8,
+      "testName": "Disable UAC using reg.exe",
+      "rules": [
+        100404
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:16:20.1729079Z",
+        "endUtc": "2026-11-23T05:16:21.3472033Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:16:23.5218141Z",
+        "endUtc": "2026-11-23T05:16:24.6876516Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "aefd6866-d753-431f-a7a4-215ca7e3f13d",
+      "technique": "T1546.011",
+      "testNumber": 2,
+      "testName": "New shim database files created in the default shim database directory",
+      "rules": [
+        100405
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:16:26.8703877Z",
+        "endUtc": "2026-11-23T05:16:27.9303764Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:16:30.1049304Z",
+        "endUtc": "2026-11-23T05:16:31.1511264Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "5b6768e4-44d2-44f0-89da-a01d1430fd5e",
+      "technique": "T1547.001",
+      "testNumber": 6,
+      "testName": "Suspicious bat file run from startup Folder",
+      "rules": [
+        100406
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:16:33.3566217Z",
+        "endUtc": "2026-11-23T05:16:34.8292505Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:16:36.9854831Z",
+        "endUtc": "2026-11-23T05:16:38.3512746Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "24e55612-85f6-4bd6-ae74-a73d02e3441d",
+      "technique": "T1547.001",
+      "testNumber": 7,
+      "testName": "Add Executable Shortcut Link to User Startup Folder",
+      "rules": [
+        100407
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:16:40.5415971Z",
+        "endUtc": "2026-11-23T05:16:41.9357962Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:16:44.1536849Z",
+        "endUtc": "2026-11-23T05:16:45.4995954Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "dc6fe391-69e6-4506-bd06-ea5eeb4082f8",
+      "technique": "T1140",
+      "testNumber": 1,
+      "testName": "Deobfuscate/Decode Files Or Information",
+      "rules": [
+        100408
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:16:47.7104347Z",
+        "endUtc": "2026-11-23T05:16:48.8400504Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:16:51.0057980Z",
+        "endUtc": "2026-11-23T05:16:52.0506030Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "fec27f65-db86-4c2d-b66c-61945aee87c2",
+      "technique": "T1053.005",
+      "testNumber": 1,
+      "testName": "Scheduled Task Startup Script",
+      "rules": [
+        100409
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:16:54.2410407Z",
+        "endUtc": "2026-11-23T05:16:56.1022840Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:16:58.2881100Z",
+        "endUtc": "2026-11-23T05:16:59.5882056Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "56506854-89d6-46a3-9804-b7fde90791f9",
+      "technique": "T1003.005",
+      "testNumber": 1,
+      "testName": "Cached Credential Dump via Cmdkey",
+      "rules": [
+        100410
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:17:01.7879506Z",
+        "endUtc": "2026-11-23T05:17:02.5293566Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:17:04.7225239Z",
+        "endUtc": "2026-11-23T05:17:05.4284611Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "aab580c7-cc30-4a7c-b5a9-46a29066b022",
+      "technique": "T1033",
+      "testNumber": 8,
+      "testName": "User Discovery - whoami",
+      "rules": [
+        100411
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:17:07.6094199Z",
+        "endUtc": "2026-11-23T05:17:08.5731176Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:17:10.7782224Z",
+        "endUtc": "2026-11-23T05:17:11.6316324Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "fe53e878-10a3-477b-963e-4367348f5af5",
+      "technique": "T1614",
+      "testNumber": 1,
+      "testName": "Get geolocation info through IP-Lookup services using curl Windows",
+      "rules": [
+        100412
+      ],
+      "run": {
+        "startUtc": "2026-11-23T05:17:13.8206351Z",
+        "endUtc": "2026-11-23T05:17:14.7227940Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T05:17:16.9476158Z",
+        "endUtc": "2026-11-23T05:17:17.6899408Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    }
+  ],
+  "stateDiff": {
+    "verdict": "no-difference",
+    "items": []
+  },
+  "stagedAfter": {
+    "verdict": "unchanged",
+    "changed": 0,
+    "missing": 0,
+    "extra": 0
+  }
+}

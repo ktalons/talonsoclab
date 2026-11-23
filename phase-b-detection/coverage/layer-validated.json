@@ -43,6 +43,24 @@
       "showSubtechniques": false
     },
     {
+      "techniqueID": "T1027",
+      "score": 1,
+      "comment": "validated rules: 100408; art:T1140 #1 20261123T051536Z-245b00",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100408"
+        },
+        {
+          "name": "art",
+          "value": "art:T1140 #1 20261123T051536Z-245b00"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1033",
       "score": 1,
       "comment": "validated rules: 100411; art:T1033 #8 20261122T035219Z-95651d",
@@ -84,23 +102,164 @@
       "showSubtechniques": false
     },
     {
+      "techniqueID": "T1053",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1053.005",
+      "score": 1,
+      "comment": "validated rules: 100409; art:T1053.005 #1 20261123T051536Z-245b00",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100409"
+        },
+        {
+          "name": "art",
+          "value": "art:T1053.005 #1 20261123T051536Z-245b00"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1070",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1070.005",
+      "score": 1,
+      "comment": "validated rules: 100403; art:T1070.005 #4 20261123T051536Z-245b00",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100403"
+        },
+        {
+          "name": "art",
+          "value": "art:T1070.005 #4 20261123T051536Z-245b00"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1204",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1204.002",
+      "score": 1,
+      "comment": "validated rules: 100406; art:T1547.001 #6 20261123T051536Z-245b00",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100406"
+        },
+        {
+          "name": "art",
+          "value": "art:T1547.001 #6 20261123T051536Z-245b00"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1546",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1546.011",
+      "score": 2,
+      "comment": "validated rules: 100402, 100405; art:T1546.011 #2 20261123T051536Z-245b00; art:T1546.011 #3 20261123T051536Z-245b00",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100402, 100405"
+        },
+        {
+          "name": "art",
+          "value": "art:T1546.011 #2 20261123T051536Z-245b00"
+        },
+        {
+          "name": "art",
+          "value": "art:T1546.011 #3 20261123T051536Z-245b00"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
       "techniqueID": "T1547",
       "enabled": true,
       "showSubtechniques": true
     },
     {
       "techniqueID": "T1547.001",
-      "score": 1,
-      "comment": "validated rules: 100407; art:T1547.001 #7 20261122T035737Z-cb8eb2",
+      "score": 2,
+      "comment": "validated rules: 100406, 100407; art:T1547.001 #6 20261123T051536Z-245b00; art:T1547.001 #7 20261122T035737Z-cb8eb2",
       "enabled": true,
       "metadata": [
         {
           "name": "rules",
-          "value": "100407"
+          "value": "100406, 100407"
+        },
+        {
+          "name": "art",
+          "value": "art:T1547.001 #6 20261123T051536Z-245b00"
         },
         {
           "name": "art",
           "value": "art:T1547.001 #7 20261122T035737Z-cb8eb2"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1547.010",
+      "score": 1,
+      "comment": "validated rules: 100401; art:T1547.010 #1 20261123T051536Z-245b00",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100401"
+        },
+        {
+          "name": "art",
+          "value": "art:T1547.010 #1 20261123T051536Z-245b00"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1548",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1548.002",
+      "score": 1,
+      "comment": "validated rules: 100404; art:T1548.002 #8 20261123T051536Z-245b00",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100404"
+        },
+        {
+          "name": "art",
+          "value": "art:T1548.002 #8 20261123T051536Z-245b00"
         }
       ],
       "links": [],
@@ -113,7 +272,7 @@
       "#66b1ff"
     ],
     "minValue": 0,
-    "maxValue": 1
+    "maxValue": 2
   },
   "legendItems": [],
   "metadata": [],
