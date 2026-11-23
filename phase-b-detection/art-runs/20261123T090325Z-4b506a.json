@@ -1,0 +1,81 @@
+{
+  "format": "talonsoclab-art-session/1",
+  "session": "20261123T090325Z-4b506a",
+  "verdict": "pass",
+  "failures": [],
+  "timedOut": [],
+  "allowlistSha256": "46900ff2fbddfdfd72864212b4f1dcd3f17b85dbfa4291e61de92b05c8457502",
+  "manifestSha256": "559f19bbfb66a912ff92d598d2ca59bb2a1933ca3a9deaf28a746fb4c674ecf2",
+  "atomicsCommit": "a0e3f9bc69fed2fd711bd1f1aa87a40c33482fe6",
+  "module": {
+    "name": "Invoke-AtomicRedTeam",
+    "version": "2.3.0"
+  },
+  "timeoutSeconds": 120,
+  "gateUtc": "2026-11-23T09:03:26.7848508Z",
+  "defenderGate": {
+    "realTimeProtection": true,
+    "exclusionPath": [
+      "C:\\AtomicRedTeam"
+    ],
+    "pass": true
+  },
+  "restorePoint": {
+    "description": "talonsoclab-b4-20261123T090325Z-4b506a",
+    "createdUtc": "2026-11-23T09:03:28.6454230Z"
+  },
+  "tests": [
+    {
+      "guid": "97116a3f-efac-4b26-8336-b9cb18c45188",
+      "technique": "T1105",
+      "testNumber": 26,
+      "testName": "Download a file using wscript",
+      "rules": [
+        100343
+      ],
+      "run": {
+        "startUtc": "2026-11-23T09:03:45.8047975Z",
+        "endUtc": "2026-11-23T09:03:47.7089921Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T09:03:50.1830491Z",
+        "endUtc": "2026-11-23T09:03:51.9689980Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "fe53e878-10a3-477b-963e-4367348f5af5",
+      "technique": "T1614",
+      "testNumber": 1,
+      "testName": "Get geolocation info through IP-Lookup services using curl Windows",
+      "rules": [
+        100412
+      ],
+      "run": {
+        "startUtc": "2026-11-23T09:03:54.3239870Z",
+        "endUtc": "2026-11-23T09:03:55.2400333Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T09:03:57.4159614Z",
+        "endUtc": "2026-11-23T09:03:58.1912134Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    }
+  ],
+  "stateDiff": {
+    "verdict": "no-difference",
+    "items": []
+  },
+  "stagedAfter": {
+    "verdict": "unchanged",
+    "changed": 0,
+    "missing": 0,
+    "extra": 0
+  }
+}

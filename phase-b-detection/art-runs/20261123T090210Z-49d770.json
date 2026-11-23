@@ -1,0 +1,89 @@
+{
+  "format": "talonsoclab-art-session/1",
+  "session": "20261123T090210Z-49d770",
+  "verdict": "fail",
+  "failures": [
+    "the Dell's state differs after cleanup: 1 item (ISC-153)"
+  ],
+  "timedOut": [],
+  "allowlistSha256": "46900ff2fbddfdfd72864212b4f1dcd3f17b85dbfa4291e61de92b05c8457502",
+  "manifestSha256": "559f19bbfb66a912ff92d598d2ca59bb2a1933ca3a9deaf28a746fb4c674ecf2",
+  "atomicsCommit": "a0e3f9bc69fed2fd711bd1f1aa87a40c33482fe6",
+  "module": {
+    "name": "Invoke-AtomicRedTeam",
+    "version": "2.3.0"
+  },
+  "timeoutSeconds": 120,
+  "gateUtc": "2026-11-23T09:02:14.5242953Z",
+  "defenderGate": {
+    "realTimeProtection": true,
+    "exclusionPath": [
+      "C:\\AtomicRedTeam"
+    ],
+    "pass": true
+  },
+  "restorePoint": {
+    "description": "talonsoclab-b4-20261123T090210Z-49d770",
+    "createdUtc": "2026-11-23T09:02:19.7937990Z"
+  },
+  "tests": [
+    {
+      "guid": "97116a3f-efac-4b26-8336-b9cb18c45188",
+      "technique": "T1105",
+      "testNumber": 26,
+      "testName": "Download a file using wscript",
+      "rules": [
+        100343
+      ],
+      "run": {
+        "startUtc": "2026-11-23T09:02:45.5845154Z",
+        "endUtc": "2026-11-23T09:02:48.0146159Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T09:02:50.4215751Z",
+        "endUtc": "2026-11-23T09:02:52.4400306Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "fe53e878-10a3-477b-963e-4367348f5af5",
+      "technique": "T1614",
+      "testNumber": 1,
+      "testName": "Get geolocation info through IP-Lookup services using curl Windows",
+      "rules": [
+        100412
+      ],
+      "run": {
+        "startUtc": "2026-11-23T09:02:54.9458040Z",
+        "endUtc": "2026-11-23T09:02:55.9279025Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-23T09:02:58.2433966Z",
+        "endUtc": "2026-11-23T09:02:59.0310642Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    }
+  ],
+  "stateDiff": {
+    "verdict": "different",
+    "items": [
+      {
+        "category": "services",
+        "change": "changed",
+        "item": "IsolationSession"
+      }
+    ]
+  },
+  "stagedAfter": {
+    "verdict": "unchanged",
+    "changed": 0,
+    "missing": 0,
+    "extra": 0
+  }
+}

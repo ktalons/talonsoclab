@@ -148,6 +148,24 @@
       "showSubtechniques": false
     },
     {
+      "techniqueID": "T1105",
+      "score": 1,
+      "comment": "validated rules: 100343; art:T1105 #26 20261123T090325Z-4b506a",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100343"
+        },
+        {
+          "name": "art",
+          "value": "art:T1105 #26 20261123T090325Z-4b506a"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
       "techniqueID": "T1204",
       "enabled": true,
       "showSubtechniques": true
@@ -264,6 +282,24 @@
       ],
       "links": [],
       "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1590",
+      "score": 1,
+      "comment": "validated rules: 100412; art:T1614 #1 20261123T090325Z-4b506a",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100412"
+        },
+        {
+          "name": "art",
+          "value": "art:T1614 #1 20261123T090325Z-4b506a"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": true
     }
   ],
   "gradient": {

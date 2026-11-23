@@ -3,6 +3,7 @@
   "attack": "19.2",
   "packSize": 18,
   "validatedRules": [
+    100343,
     100400,
     100401,
     100402,
@@ -14,10 +15,11 @@
     100408,
     100409,
     100410,
-    100411
+    100411,
+    100412
   ],
   "ratio": {
-    "validated": 12,
+    "validated": 14,
     "of": 18
   },
   "complete": true,
@@ -94,16 +96,17 @@
       "attack19": [
         "T1105"
       ],
-      "status": "not-validated",
-      "validation": null,
-      "miss": {
-        "class": "sensor-gap",
-        "evidence": "T1105 #26 exited 0. The Dell's Sysmon log holds the wscript.exe process start at 05:17:54.073Z and a DNS query for raw.githubusercontent.com from the same process id, and no event 3 for wscript.exe between 05:13:30Z and 05:18:10Z. The rule reads event 3. Whether the connection was made is not known.",
-        "session": "20261123T051734Z-ecc234",
+      "status": "validated",
+      "validation": {
+        "session": "20261123T090325Z-4b506a",
         "test": "97116a3f-efac-4b26-8336-b9cb18c45188",
-        "alertId": null,
-        "ruling": null
-      }
+        "art": "T1105 #26",
+        "alertIndex": "wazuh-alerts-4.x-2026.11.23",
+        "docId": "a4SlB6IBZHGlNvCLulVV",
+        "eventTime": "2026-11-23T09:03:47.572Z",
+        "indexTime": "2026-11-23T09:03:49.569Z"
+      },
+      "miss": null
     },
     {
       "rule": 100344,
@@ -388,16 +391,17 @@
       "attack19": [
         "T1590"
       ],
-      "status": "not-validated",
-      "validation": null,
-      "miss": {
-        "class": "sensor-gap",
-        "evidence": "The rule fired on the test's own DNS query (same process id as the test's curl.exe), but Sysmon stamped event 22 at 05:17:09.126Z, 5.4 s before curl.exe started at 05:17:14.554Z and 4.7 s before the run window opened. The same offset shows in session 20261123T051200Z-b4e336. An event time outside the window does not count.",
-        "session": "20261123T051536Z-245b00",
+      "status": "validated",
+      "validation": {
+        "session": "20261123T090325Z-4b506a",
         "test": "fe53e878-10a3-477b-963e-4367348f5af5",
-        "alertId": null,
-        "ruling": null
-      }
+        "art": "T1614 #1",
+        "alertIndex": "wazuh-alerts-4.x-2026.11.23",
+        "docId": "h4SlB6IBZHGlNvCL2VWY",
+        "eventTime": "2026-11-23T09:03:55.091Z",
+        "indexTime": "2026-11-23T09:03:58.022Z"
+      },
+      "miss": null
     }
   ],
   "sessions": [
@@ -429,6 +433,18 @@
       "session": "20261123T051734Z-ecc234",
       "verdict": "pass",
       "recordSha256": "86ddcf4a226978f44b09b7082966b0d294bb87eb032b5e96f2172ffe8d3f1ead",
+      "evidence": true
+    },
+    {
+      "session": "20261123T090210Z-49d770",
+      "verdict": "fail",
+      "recordSha256": "062f0d13b4b0da60be5b57a42e59e47c818dc7e966de894f638843623de7e892",
+      "evidence": true
+    },
+    {
+      "session": "20261123T090325Z-4b506a",
+      "verdict": "pass",
+      "recordSha256": "6d2b5e95b65865802f445a968e6b75ad2169eecec225faa45fa70ef77685dfd1",
       "evidence": true
     }
   ],
@@ -611,6 +627,60 @@
       "rule": 100412,
       "eventTime": "2026-11-23T05:17:09.126Z",
       "indexTime": "2026-11-23T05:17:17.573Z",
+      "reason": "outside-run-window"
+    },
+    {
+      "session": "20261123T090210Z-49d770",
+      "index": "wazuh-alerts-4.x-2026.11.23",
+      "id": "9ISlB6IBZHGlNvCLIVTx",
+      "rule": 100343,
+      "eventTime": "2026-11-23T09:02:47.651Z",
+      "indexTime": "2026-11-23T09:03:10.646Z",
+      "reason": "session-verdict-not-pass"
+    },
+    {
+      "session": "20261123T090210Z-49d770",
+      "index": "wazuh-alerts-4.x-2026.11.23",
+      "id": "E4SlB6IBZHGlNvCLMVWU",
+      "rule": 100412,
+      "eventTime": "2026-11-23T09:02:55.747Z",
+      "indexTime": "2026-11-23T09:03:14.548Z",
+      "reason": "session-verdict-not-pass"
+    },
+    {
+      "session": "20261123T090210Z-49d770",
+      "index": "wazuh-alerts-4.x-2026.11.23",
+      "id": "EoSlB6IBZHGlNvCLMVWU",
+      "rule": 100412,
+      "eventTime": "2026-11-23T09:02:55.747Z",
+      "indexTime": "2026-11-23T09:03:14.542Z",
+      "reason": "session-verdict-not-pass"
+    },
+    {
+      "session": "20261123T090325Z-4b506a",
+      "index": "wazuh-alerts-4.x-2026.11.23",
+      "id": "9ISlB6IBZHGlNvCLIVTx",
+      "rule": 100343,
+      "eventTime": "2026-11-23T09:02:47.651Z",
+      "indexTime": "2026-11-23T09:03:10.646Z",
+      "reason": "outside-run-window"
+    },
+    {
+      "session": "20261123T090325Z-4b506a",
+      "index": "wazuh-alerts-4.x-2026.11.23",
+      "id": "E4SlB6IBZHGlNvCLMVWU",
+      "rule": 100412,
+      "eventTime": "2026-11-23T09:02:55.747Z",
+      "indexTime": "2026-11-23T09:03:14.548Z",
+      "reason": "outside-run-window"
+    },
+    {
+      "session": "20261123T090325Z-4b506a",
+      "index": "wazuh-alerts-4.x-2026.11.23",
+      "id": "EoSlB6IBZHGlNvCLMVWU",
+      "rule": 100412,
+      "eventTime": "2026-11-23T09:02:55.747Z",
+      "indexTime": "2026-11-23T09:03:14.542Z",
       "reason": "outside-run-window"
     }
   ]
