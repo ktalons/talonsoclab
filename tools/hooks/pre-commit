@@ -2,7 +2,7 @@
 # ******************************************************************************
 # *Title: pre-commit*
 # *Author: Kyle Versluis*
-# *Description: Block a commit that fails leakcheck or the agent.conf receipt.*
+# *Description: Block a commit that fails leakcheck or a staged-content check.*
 # ******************************************************************************
 
 # *--- Configuration ---*
@@ -13,6 +13,14 @@
 set -euo pipefail
 
 shared="deploy/soc-recon/wazuh/shared/"
+# What tools/coverage.ts builds from, and the folder it writes.
+built=(
+  deploy/soc-recon/wazuh/custom-rules/
+  phase-b-detection/art-runs/
+  phase-b-detection/attack/
+  phase-b-detection/validation/
+  phase-b-detection/coverage/
+)
 
 # *--- Entry Point ---*
 
@@ -32,5 +40,25 @@ if ! touched=$(git -C "$root" diff --cached --name-only -- "$shared"); then
   exit 1
 fi
 if [ -n "$touched" ]; then
-  exec bun "$root/tools/agentconf-check.ts" --offline --staged
+  bun "$root/tools/agentconf-check.ts" --offline --staged
+fi
+# ISA ISC-169: a commit that touches a coverage input or output must hold outputs that
+# equal a rebuild of the inputs it holds.
+if ! changed=$(git -C "$root" diff --cached --name-only -- "${built[@]}"); then
+  echo "pre-commit: git could not list the staged paths, so the coverage outputs cannot be checked. Commit blocked." >&2
+  exit 1
+fi
+if [ -n "$changed" ]; then
+  if ! copy=$(mktemp -d); then
+    echo "pre-commit: no temp folder, so the coverage outputs cannot be checked. Commit blocked." >&2
+    exit 1
+  fi
+  trap 'rm -rf "$copy"' EXIT
+  # SECURITY: the check reads a copy of the index, never the working tree, with replace
+  # refs off, so it sees the bytes the commit will hold.
+  if ! git -C "$root" ls-files -z -- "${built[@]}" | GIT_NO_REPLACE_OBJECTS=1 git -C "$root" checkout-index -z --stdin --prefix="$copy/"; then
+    echo "pre-commit: git could not copy the index, so the coverage outputs cannot be checked. Commit blocked." >&2
+    exit 1
+  fi
+  bun "$root/tools/coverage.ts" check --root "$copy"
 fi

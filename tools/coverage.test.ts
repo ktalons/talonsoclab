@@ -6,8 +6,8 @@
 
 // *--- Imports ---*
 
-import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { EXIT } from "./art-harness.ts";
@@ -1074,5 +1074,147 @@ describe("self-test plants", () => {
     expect(p.exitCode).toBe(0);
     expect(lines.every((l) => l.startsWith("OK  "))).toBe(true);
     expect(lines).toHaveLength(PLANTS.length + 2);
+  });
+});
+
+// The hook end to end in a scratch repo (ISA ISC-169): the check reads the index, so the
+// working tree can neither hide a bad staged output nor block a good one.
+describe("pre-commit hook", () => {
+  const LAYER = `${COVERAGE}/layer-validated.json`;
+  const MATCH = "coverage: the checked-in outputs match the rebuild";
+  const DIFFERS = `coverage: ${LAYER} differs from the rebuild`;
+  let repo: string;
+  let home: string;
+  let env: Record<string, string>;
+  const git = (...args: string[]) => {
+    const r = Bun.spawnSync(["git", ...args], { cwd: repo, env, stdout: "pipe", stderr: "pipe" });
+    return { code: r.exitCode, out: `${r.stdout.toString()}${r.stderr.toString()}` };
+  };
+  const hook = (path: string) => {
+    const r = Bun.spawnSync(["bash", "tools/hooks/pre-commit"], { cwd: repo, env: { ...env, PATH: path }, stdout: "pipe", stderr: "pipe" });
+    return { code: r.exitCode, out: `${r.stdout.toString()}${r.stderr.toString()}` };
+  };
+  // One changed letter in the layer name; returns the good text.
+  const plant = () => {
+    const good = readFileSync(join(repo, LAYER), "utf8");
+    const bad = good.replace("validated by a live alert", "validated by a live alerT");
+    expect(bad).not.toBe(good);
+    writeFileSync(join(repo, LAYER), bad);
+    return good;
+  };
+  const notRun = (rule: number) => ({ rule, class: "not-run", evidence: "No test is run for this rule in the scratch repo.", ruling: "scratch, 2026-11-23: not run." });
+  // A git that fails for one subcommand when the call names the coverage folder or an export prefix.
+  const brokenGit = (name: string, sub: string) => {
+    const bin = join(home, name);
+    mkdirSync(bin, { recursive: true });
+    const real = Bun.which("git") ?? "";
+    expect(real).not.toBe("");
+    writeFileSync(join(bin, "git"), `#!/usr/bin/env bash\ncase " $* " in *" ${sub} "*) echo "fatal: injected" >&2; exit 128 ;; esac\nexec "${real}" "$@"\n`);
+    chmodSync(join(bin, "git"), 0o755);
+    return `${bin}:${env.PATH}`;
+  };
+
+  beforeAll(() => {
+    repo = scratch();
+    expect(build(repo).exit).toBe(EXIT.ok);
+    home = mkdtempSync(join(tmpdir(), "coverage-hook-"));
+    roots.push(home);
+    writeFileSync(join(home, "gitconfig"), "[user]\n\tname = hook test\n\temail = test@example.test\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n");
+    env = { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", GIT_CONFIG_GLOBAL: join(home, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1" };
+    // The hook and every tool it runs, kept untracked as in the leakcheck tests.
+    mkdirSync(join(repo, "tools"));
+    for (const f of readdirSync(resolve(ROOT, "tools"))) if (f.endsWith(".ts") && !f.endsWith(".test.ts")) cpSync(resolve(ROOT, "tools", f), join(repo, "tools", f));
+    cpSync(resolve(ROOT, "tools/hooks"), join(repo, "tools/hooks"), { recursive: true });
+    writeFileSync(join(repo, "tools/leak-denylist.txt"), "zq-scratch-only-literal\n");
+    expect(git("init", "-q").code).toBe(0);
+    const installed = Bun.spawnSync(["bash", "tools/hooks/install.sh"], { cwd: repo, env, stdout: "pipe", stderr: "pipe" });
+    expect(installed.exitCode).toBe(0);
+    writeFileSync(join(repo, ".gitignore"), "/tools/\n");
+    writeFileSync(join(repo, "README.md"), "# scratch\n");
+  });
+
+  test("a commit of a tree whose outputs match the rebuild runs the check and goes through", () => {
+    expect(git("add", "-A").code).toBe(0);
+    const r = git("commit", "-q", "-m", "initial");
+    expect(r.out).toContain("leakcheck: clean");
+    expect(r.out).toContain(MATCH);
+    expect(r.code).toBe(0);
+  });
+
+  test("a commit that touches nothing the build reads or writes does not run the check", () => {
+    writeFileSync(join(repo, "README.md"), "# scratch\n\nnotes\n");
+    expect(git("add", "-A").code).toBe(0);
+    const r = git("commit", "-q", "-m", "notes");
+    expect(r.out).toContain("leakcheck: clean");
+    expect(r.out).not.toContain("coverage:");
+    expect(r.code).toBe(0);
+  });
+
+  test("a one-byte change staged in a layer is blocked, even with the good file back in the working tree", () => {
+    const good = plant();
+    expect(git("add", LAYER).code).toBe(0);
+    writeFileSync(join(repo, LAYER), good);
+    const r = git("commit", "-q", "-m", "planted");
+    expect(r.out).toContain(DIFFERS);
+    expect(r.code).not.toBe(0);
+    expect(git("reset", "-q", "--", LAYER).code).toBe(0);
+  });
+
+  test("a staged input change is blocked until the rebuilt outputs are staged with it, whatever the working tree holds", () => {
+    editJson(repo, MISSES, (m) => m.entries.push(notRun(100344)));
+    expect(git("add", MISSES).code).toBe(0);
+    const stale = git("commit", "-q", "-m", "a miss class");
+    expect(stale.out).toContain(`coverage: ${COVERAGE}/coverage.json differs from the rebuild`);
+    expect(stale.code).not.toBe(0);
+    expect(build(repo).exit).toBe(EXIT.ok);
+    expect(git("add", "-A").code).toBe(0);
+    // A bad layer left unstaged must not block the commit: the index is what lands.
+    const good = plant();
+    try {
+      const r = git("commit", "-q", "-m", "a miss class");
+      expect(r.out).toContain(MATCH);
+      expect(r.code).toBe(0);
+    } finally {
+      writeFileSync(join(repo, LAYER), good);
+    }
+  });
+
+  test("a replace ref cannot pass off the staged layer as the committed one", () => {
+    const goodBlob = git("rev-parse", `HEAD:${LAYER}`).out.trim();
+    const good = plant();
+    expect(git("add", LAYER).code).toBe(0);
+    const plantedBlob = git("rev-parse", `:${LAYER}`).out.trim();
+    expect(git("replace", plantedBlob, goodBlob).code).toBe(0);
+    try {
+      expect(git("cat-file", "blob", plantedBlob).out).toBe(good);
+      const r = git("commit", "-q", "-m", "planted behind a replace ref");
+      expect(r.out).toContain(DIFFERS);
+      expect(r.code).not.toBe(0);
+    } finally {
+      expect(git("replace", "-d", plantedBlob).code).toBe(0);
+      expect(git("reset", "-q", "--", LAYER).code).toBe(0);
+      writeFileSync(join(repo, LAYER), good);
+    }
+  });
+
+  test("a git failure while listing or exporting the staged paths blocks the commit", () => {
+    const good = plant();
+    try {
+      expect(git("add", LAYER).code).toBe(0);
+      // With a working git the planted layer blocks it.
+      const ok = hook(env.PATH);
+      expect(ok.out).toContain(DIFFERS);
+      expect(ok.code).not.toBe(0);
+      const listing = hook(brokenGit("no-listing", `${COVERAGE}/`));
+      expect(listing.out).toContain("leakcheck: clean");
+      expect(listing.out).toContain("could not list the staged paths, so the coverage outputs cannot be checked");
+      expect(listing.code).not.toBe(0);
+      const exporting = hook(brokenGit("no-export", "checkout-index"));
+      expect(exporting.out).toContain("could not copy the index, so the coverage outputs cannot be checked");
+      expect(exporting.code).not.toBe(0);
+    } finally {
+      git("reset", "-q", "--", LAYER);
+      writeFileSync(join(repo, LAYER), good);
+    }
   });
 });

@@ -1387,7 +1387,12 @@ the bundle records.
 
 `phase-b-detection/coverage/` holds `layer-rule-exists.json`, `layer-validated.json` and
 `coverage.json`. They are deterministic: sorted, no wall-clock time, byte-identical on a rebuild,
-and `check` is the gate that says so. Each layer scores a technique by the number of pack rules
+and `check` is the gate that says so. The pre-commit hook runs it whenever a commit stages a
+change under the pack rules folder or under `art-runs/`, `attack/`, `validation/` or `coverage/`
+in `phase-b-detection/`. It runs on a copy of the index made with replace refs off, so a good
+file in the working tree cannot stand in for a stale one in the commit, and a failure to list or
+copy the index blocks the commit. The hook runs plain `check`; `--final` is for the ship. Each
+layer scores a technique by the number of pack rules
 (or validated pack rules) that map to it, with the rule IDs and `art:<technique> #<n> <session>`
 in the comment. A scored sub-technique also emits its parent with `showSubtechniques` on and no
 score, unless the parent is itself mapped. No entry names a tactic. `coverage.json` carries the
@@ -1420,8 +1425,12 @@ Every session is fetched and checked before the first file is written.
   shard. The fixtures under `tools/fixtures/coverage/` carry the same four alerts with
   placeholder document IDs; their control and shard counts are synthetic.
 - The Navigator app version in the layers is a named constant in `coverage.ts` (5.3.2, the hosted
-  app; the 4.5 layer spec requires at least 4.9.0). Neither layer has been opened in Navigator
-  yet, so that stays unconfirmed until both are.
+  app; the 4.5 layer spec requires at least 4.9.0). Both layers were opened in the hosted app on
+  2026-11-23, as committed in `d492869`: it reports v5.3.2, loads the ATT&CK 19.2 bundle from the
+  layer's `"attack": "19"` with no upgrade prompt, and colors every scored technique in each of
+  its tactics and nothing else (16 techniques in 22 cells, and 11 in 17). A rebuilt layer has not
+  been opened until someone opens it. The hosted app is a moving target: when it drops 19.2 or
+  changes version, this check is stale.
 - The tool does not check that a test's ART technique agrees with the `<mitre>` ID of the rule
   it is meant to fire.
 - An evidence file is tied to a record by the record's SHA-256, so any edit to a record makes its
