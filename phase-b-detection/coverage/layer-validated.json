@@ -1,0 +1,126 @@
+{
+  "name": "TalonSocLab detection pack: validated by a live alert",
+  "versions": {
+    "attack": "19",
+    "navigator": "5.3.2",
+    "layer": "4.5"
+  },
+  "domain": "enterprise-attack",
+  "description": "Score is the number of pack rules that raised a live alert from agent 001 inside an ART run window; logtest output never counts. ATT&CK 19.2.",
+  "sorting": 0,
+  "layout": {
+    "layout": "side",
+    "aggregateFunction": "average",
+    "showID": true,
+    "showName": true,
+    "showAggregatedTechniques": false,
+    "countUnscored": false,
+    "expandedSubtechniques": "annotated"
+  },
+  "hideDisabled": false,
+  "techniques": [
+    {
+      "techniqueID": "T1003",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1003.005",
+      "score": 1,
+      "comment": "validated rules: 100410; art:T1003.005 #1 20261122T035219Z-95651d",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100410"
+        },
+        {
+          "name": "art",
+          "value": "art:T1003.005 #1 20261122T035219Z-95651d"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1033",
+      "score": 1,
+      "comment": "validated rules: 100411; art:T1033 #8 20261122T035219Z-95651d",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100411"
+        },
+        {
+          "name": "art",
+          "value": "art:T1033 #8 20261122T035219Z-95651d"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1037",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1037.001",
+      "score": 1,
+      "comment": "validated rules: 100400; art:T1037.001 #1 20261122T035737Z-cb8eb2",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100400"
+        },
+        {
+          "name": "art",
+          "value": "art:T1037.001 #1 20261122T035737Z-cb8eb2"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1547",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1547.001",
+      "score": 1,
+      "comment": "validated rules: 100407; art:T1547.001 #7 20261122T035737Z-cb8eb2",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100407"
+        },
+        {
+          "name": "art",
+          "value": "art:T1547.001 #7 20261122T035737Z-cb8eb2"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    }
+  ],
+  "gradient": {
+    "colors": [
+      "#ffffff",
+      "#66b1ff"
+    ],
+    "minValue": 0,
+    "maxValue": 1
+  },
+  "legendItems": [],
+  "metadata": [],
+  "links": [],
+  "showTacticRowBackground": false,
+  "tacticRowBackground": "#dddddd",
+  "selectTechniquesAcrossTactics": true,
+  "selectSubtechniquesWithParent": false,
+  "selectVisibleTechniques": false
+}

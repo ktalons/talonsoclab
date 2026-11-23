@@ -1,0 +1,319 @@
+{
+  "format": "talonsoclab-coverage/1",
+  "attack": "19.2",
+  "packSize": 18,
+  "validatedRules": [
+    100400,
+    100407,
+    100410,
+    100411
+  ],
+  "ratio": {
+    "validated": 4,
+    "of": 18
+  },
+  "complete": false,
+  "unclassified": [
+    100340,
+    100341,
+    100342,
+    100343,
+    100344,
+    100401,
+    100402,
+    100403,
+    100404,
+    100405,
+    100406,
+    100408,
+    100409,
+    100412
+  ],
+  "rules": [
+    {
+      "rule": 100340,
+      "level": 12,
+      "attackAsWritten": [
+        "T1105"
+      ],
+      "attack19": [
+        "T1105"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100341,
+      "level": 10,
+      "attackAsWritten": [
+        "T1218.010",
+        "T1559.001"
+      ],
+      "attack19": [
+        "T1218.010",
+        "T1559.001"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100342,
+      "level": 10,
+      "attackAsWritten": [
+        "T1218.011"
+      ],
+      "attack19": [
+        "T1218.011"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100343,
+      "level": 12,
+      "attackAsWritten": [
+        "T1105"
+      ],
+      "attack19": [
+        "T1105"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100344,
+      "level": 12,
+      "attackAsWritten": [
+        "T1105"
+      ],
+      "attack19": [
+        "T1105"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100400,
+      "level": 10,
+      "attackAsWritten": [
+        "T1037.001"
+      ],
+      "attack19": [
+        "T1037.001"
+      ],
+      "status": "validated",
+      "validation": {
+        "session": "20261122T035737Z-cb8eb2",
+        "test": "d6042746-07d4-4c92-9ad8-e644c114a231",
+        "art": "T1037.001 #1",
+        "alertIndex": "wazuh-alerts-4.x-2026.11.22",
+        "docId": "WIRnAaIBZHGlNvCLYy1Z",
+        "eventTime": "2026-11-22T03:57:59.275Z",
+        "indexTime": "2026-11-22T03:58:00.546Z"
+      },
+      "miss": null
+    },
+    {
+      "rule": 100401,
+      "level": 10,
+      "attackAsWritten": [
+        "T1547.010"
+      ],
+      "attack19": [
+        "T1547.010"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100402,
+      "level": 10,
+      "attackAsWritten": [
+        "T1546.011"
+      ],
+      "attack19": [
+        "T1546.011"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100403,
+      "level": 10,
+      "attackAsWritten": [
+        "T1070.005"
+      ],
+      "attack19": [
+        "T1070.005"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100404,
+      "level": 10,
+      "attackAsWritten": [
+        "T1548.002"
+      ],
+      "attack19": [
+        "T1548.002"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100405,
+      "level": 10,
+      "attackAsWritten": [
+        "T1546.011"
+      ],
+      "attack19": [
+        "T1546.011"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100406,
+      "level": 12,
+      "attackAsWritten": [
+        "T1204.002",
+        "T1547.001"
+      ],
+      "attack19": [
+        "T1204.002",
+        "T1547.001"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100407,
+      "level": 12,
+      "attackAsWritten": [
+        "T1547.001"
+      ],
+      "attack19": [
+        "T1547.001"
+      ],
+      "status": "validated",
+      "validation": {
+        "session": "20261122T035737Z-cb8eb2",
+        "test": "24e55612-85f6-4bd6-ae74-a73d02e3441d",
+        "art": "T1547.001 #7",
+        "alertIndex": "wazuh-alerts-4.x-2026.11.22",
+        "docId": "coRnAaIBZHGlNvCLfi2w",
+        "eventTime": "2026-11-22T03:58:06.455Z",
+        "indexTime": "2026-11-22T03:58:07.536Z"
+      },
+      "miss": null
+    },
+    {
+      "rule": 100408,
+      "level": 10,
+      "attackAsWritten": [
+        "T1027"
+      ],
+      "attack19": [
+        "T1027"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100409,
+      "level": 12,
+      "attackAsWritten": [
+        "T1053.005"
+      ],
+      "attack19": [
+        "T1053.005"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    },
+    {
+      "rule": 100410,
+      "level": 12,
+      "attackAsWritten": [
+        "T1003.005"
+      ],
+      "attack19": [
+        "T1003.005"
+      ],
+      "status": "validated",
+      "validation": {
+        "session": "20261122T035219Z-95651d",
+        "test": "56506854-89d6-46a3-9804-b7fde90791f9",
+        "art": "T1003.005 #1",
+        "alertIndex": "wazuh-alerts-4.x-2026.11.22",
+        "docId": "1YRiAaIBZHGlNvCLhSsZ",
+        "eventTime": "2026-11-22T03:52:40.014Z",
+        "indexTime": "2026-11-22T03:52:41.255Z"
+      },
+      "miss": null
+    },
+    {
+      "rule": 100411,
+      "level": 10,
+      "attackAsWritten": [
+        "T1033"
+      ],
+      "attack19": [
+        "T1033"
+      ],
+      "status": "validated",
+      "validation": {
+        "session": "20261122T035219Z-95651d",
+        "test": "aab580c7-cc30-4a7c-b5a9-46a29066b022",
+        "art": "T1033 #8",
+        "alertIndex": "wazuh-alerts-4.x-2026.11.22",
+        "docId": "74RiAaIBZHGlNvCLnCuN",
+        "eventTime": "2026-11-22T03:52:46.400Z",
+        "indexTime": "2026-11-22T03:52:47.639Z"
+      },
+      "miss": null
+    },
+    {
+      "rule": 100412,
+      "level": 10,
+      "attackAsWritten": [
+        "T1590"
+      ],
+      "attack19": [
+        "T1590"
+      ],
+      "status": "not-validated",
+      "validation": null,
+      "miss": null
+    }
+  ],
+  "sessions": [
+    {
+      "session": "20261122T035219Z-95651d",
+      "verdict": "pass",
+      "recordSha256": "2827f647f1ca8a0a3a66138654671fe413576b82836d62dec339658d21a108f7",
+      "evidence": true
+    },
+    {
+      "session": "20261122T035737Z-cb8eb2",
+      "verdict": "pass",
+      "recordSha256": "794681936fa15fa6ba244e22077c1c7777a60fa466705ee039b2b8d0a272f0a8",
+      "evidence": true
+    }
+  ],
+  "uncounted": []
+}

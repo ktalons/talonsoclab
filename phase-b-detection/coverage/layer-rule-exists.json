@@ -1,0 +1,313 @@
+{
+  "name": "TalonSocLab detection pack: a rule exists",
+  "versions": {
+    "attack": "19",
+    "navigator": "5.3.2",
+    "layer": "4.5"
+  },
+  "domain": "enterprise-attack",
+  "description": "Score is the number of pack rules whose <mitre> ids map to the technique. ATT&CK 19.2.",
+  "sorting": 0,
+  "layout": {
+    "layout": "side",
+    "aggregateFunction": "average",
+    "showID": true,
+    "showName": true,
+    "showAggregatedTechniques": false,
+    "countUnscored": false,
+    "expandedSubtechniques": "annotated"
+  },
+  "hideDisabled": false,
+  "techniques": [
+    {
+      "techniqueID": "T1003",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1003.005",
+      "score": 1,
+      "comment": "pack rules: 100410",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100410"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1027",
+      "score": 1,
+      "comment": "pack rules: 100408",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100408"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1033",
+      "score": 1,
+      "comment": "pack rules: 100411",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100411"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1037",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1037.001",
+      "score": 1,
+      "comment": "pack rules: 100400",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100400"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1053",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1053.005",
+      "score": 1,
+      "comment": "pack rules: 100409",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100409"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1070",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1070.005",
+      "score": 1,
+      "comment": "pack rules: 100403",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100403"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1105",
+      "score": 3,
+      "comment": "pack rules: 100340, 100343, 100344",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100340, 100343, 100344"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1204",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1204.002",
+      "score": 1,
+      "comment": "pack rules: 100406",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100406"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1218",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1218.010",
+      "score": 1,
+      "comment": "pack rules: 100341",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100341"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1218.011",
+      "score": 1,
+      "comment": "pack rules: 100342",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100342"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1546",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1546.011",
+      "score": 2,
+      "comment": "pack rules: 100402, 100405",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100402, 100405"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1547",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1547.001",
+      "score": 2,
+      "comment": "pack rules: 100406, 100407",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100406, 100407"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1547.010",
+      "score": 1,
+      "comment": "pack rules: 100401",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100401"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1548",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1548.002",
+      "score": 1,
+      "comment": "pack rules: 100404",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100404"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1559",
+      "enabled": true,
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1559.001",
+      "score": 1,
+      "comment": "pack rules: 100341",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100341"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": false
+    },
+    {
+      "techniqueID": "T1590",
+      "score": 1,
+      "comment": "pack rules: 100412",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "100412"
+        }
+      ],
+      "links": [],
+      "showSubtechniques": true
+    }
+  ],
+  "gradient": {
+    "colors": [
+      "#ffffff",
+      "#66b1ff"
+    ],
+    "minValue": 0,
+    "maxValue": 3
+  },
+  "legendItems": [],
+  "metadata": [],
+  "links": [],
+  "showTacticRowBackground": false,
+  "tacticRowBackground": "#dddddd",
+  "selectTechniquesAcrossTactics": true,
+  "selectSubtechniquesWithParent": false,
+  "selectVisibleTechniques": false
+}

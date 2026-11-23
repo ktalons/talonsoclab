@@ -1,0 +1,84 @@
+{
+  "format": "talonsoclab-art-alerts/1",
+  "session": "20261122T035219Z-95651d",
+  "recordSha256": "2827f647f1ca8a0a3a66138654671fe413576b82836d62dec339658d21a108f7",
+  "query": {
+    "index": "wazuh-alerts-*",
+    "agent": "001",
+    "rules": [
+      62123,
+      62124,
+      100340,
+      100341,
+      100342,
+      100343,
+      100344,
+      100400,
+      100401,
+      100402,
+      100403,
+      100404,
+      100405,
+      100406,
+      100407,
+      100408,
+      100409,
+      100410,
+      100411,
+      100412
+    ],
+    "fromUtc": "2026-11-22T03:51:39.261Z",
+    "toUtc": "2026-11-22T03:53:49.550Z"
+  },
+  "shards": {
+    "alerts": {
+      "total": 135,
+      "successful": 135,
+      "skipped": 132,
+      "failed": 0
+    },
+    "control": {
+      "total": 135,
+      "successful": 135,
+      "skipped": 132,
+      "failed": 0
+    }
+  },
+  "control": {
+    "agent001Alerts": 142
+  },
+  "alerts": [
+    {
+      "index": "wazuh-alerts-4.x-2026.11.22",
+      "id": "1YRiAaIBZHGlNvCLhSsZ",
+      "ruleId": 100410,
+      "ruleLevel": 12,
+      "mitre": [
+        "T1003.005"
+      ],
+      "agentId": "001",
+      "timestamp": "2026-11-22T03:52:41.255Z",
+      "eventTime": "2026-11-22T03:52:40.014Z",
+      "systemTime": "2026-11-22T03:52:40.0187207Z",
+      "eventId": 1,
+      "channel": "Microsoft-Windows-Sysmon/Operational",
+      "image": "cmdkey.exe"
+    },
+    {
+      "index": "wazuh-alerts-4.x-2026.11.22",
+      "id": "74RiAaIBZHGlNvCLnCuN",
+      "ruleId": 100411,
+      "ruleLevel": 10,
+      "mitre": [
+        "T1033"
+      ],
+      "agentId": "001",
+      "timestamp": "2026-11-22T03:52:47.639Z",
+      "eventTime": "2026-11-22T03:52:46.400Z",
+      "systemTime": "2026-11-22T03:52:46.4050484Z",
+      "eventId": 1,
+      "channel": "Microsoft-Windows-Sysmon/Operational",
+      "image": "whoami.exe"
+    }
+  ]
+}

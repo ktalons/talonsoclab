@@ -1,0 +1,22 @@
+{
+  "format": "talonsoclab-attack-crosswalk/1",
+  "attack": "19.2",
+  "entries": [
+    { "from": "T1003.005", "to": "T1003.005", "how": "unchanged" },
+    { "from": "T1027", "to": "T1027", "how": "unchanged" },
+    { "from": "T1033", "to": "T1033", "how": "unchanged" },
+    { "from": "T1037.001", "to": "T1037.001", "how": "unchanged" },
+    { "from": "T1053.005", "to": "T1053.005", "how": "unchanged" },
+    { "from": "T1070.005", "to": "T1070.005", "how": "unchanged" },
+    { "from": "T1105", "to": "T1105", "how": "unchanged" },
+    { "from": "T1204.002", "to": "T1204.002", "how": "unchanged" },
+    { "from": "T1218.010", "to": "T1218.010", "how": "unchanged" },
+    { "from": "T1218.011", "to": "T1218.011", "how": "unchanged" },
+    { "from": "T1546.011", "to": "T1546.011", "how": "unchanged" },
+    { "from": "T1547.001", "to": "T1547.001", "how": "unchanged" },
+    { "from": "T1547.010", "to": "T1547.010", "how": "unchanged" },
+    { "from": "T1548.002", "to": "T1548.002", "how": "unchanged" },
+    { "from": "T1559.001", "to": "T1559.001", "how": "unchanged" },
+    { "from": "T1590", "to": "T1590", "how": "unchanged" }
+  ]
+}

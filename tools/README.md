@@ -1310,3 +1310,119 @@ answer that cannot be read. Each of those may mean something ran.
   raises the stock PowerShell alerts noted on 2026-11-12 (92151, 92213). None is a pack rule.
 - The restore point check trusts `Get-ComputerRestorePoint`. That a restore point can actually
   restore the Dell is not tested.
+
+## coverage
+
+`coverage.ts` turns the detection pack and the live-alert evidence into two ATT&CK Navigator
+layers and one summary file, for B.5. It runs offline on the Mac. The one command that touches
+the network is `fetch`, a read-only query of the alerts index. It first ran against the live
+index on 2026-11-23, for the two session records of 2026-11-22, and returned the four alerts
+those sessions raised.
+
+```bash
+bun tools/coverage.ts build                          # read everything, write the three outputs
+bun tools/coverage.ts check [--final]                # rebuild in memory; fail on any difference
+bun tools/coverage.ts fetch --host <ssh alias>       # write one evidence file per session record
+bun tools/coverage.ts refresh-attack <STIX bundle> [--sha256 <hex>] [--out <path>]
+bun tools/coverage.ts --self-test                    # each planted refusal, through the real entry points
+bun test tools/coverage.test.ts
+```
+
+Exit 0 is ok. 1 is a failed check (`check` found an output that differs). 2 is a setup problem: an
+input is missing, or ssh did not answer. 3 is a refusal. A refusal is always a thrown, typed
+error that names the offending item, a non-zero exit and no output file written or changed.
+
+### What it will not overstate
+
+The pack is the rules whose ID is in the pack ranges of `wazuh-rules.ts` (100340 to 100399 and
+100400 to 100499), read from `deploy/soc-recon/wazuh/custom-rules/`. Today that is 18 rules.
+A pack rule is **validated** when an alert it raised from agent `001` has an event time inside
+the run window of a test whose `rules` list names that rule, in a session whose verdict is
+`pass`. Logtest output never counts, and the tool refuses a logtest transcript wherever it is
+pointed at one.
+
+The match is on the event time: the Sysmon `utcTime` when the alert has one, else the system
+time. The index time lags the event by about a second, so an alert indexed inside a window for
+an event that happened after it does not count, and an event inside a window that was indexed
+after it does. Times are compared as exact instants at the seven decimals the records carry.
+
+Everything else is listed in `coverage.json` with a reason: outside the run window (cleanup and
+gaps included), rule not in the test's `rules`, or session verdict not `pass`. A pack alert for
+a pack-range rule that is not in the XML and fired inside a run window is a refusal.
+
+A not-validated rule is either classified in `phase-b-detection/validation/misses.json` or
+unclassified. An unclassified rule is not a refusal, but it keeps `complete` false, and `check
+--final` refuses while `complete` is false. A miss entry has a rule, a class, evidence text and,
+where the class needs them, a session and test:
+
+| class | needs | refused when |
+|---|---|---|
+| `blocked-by-defender` | session, test, `alertId` | the cited alert is not a rule 62123 or 62124 alert with an event time inside that test's run window |
+| `sensor-gap`, `rule-gap`, `prerequisite-failed` | session, test | the test does not list the rule |
+| `not-run` | `ruling` | the ruling is empty |
+
+An entry is also refused for a validated rule, a rule outside the pack, an unknown class, empty
+evidence, a second entry for one rule, or a field its class does not carry.
+
+### The inputs
+
+| file | what it is |
+|---|---|
+| `phase-b-detection/attack/enterprise-19.2-techniques.tsv` | every Enterprise 19.2 technique with its status, successor and tactics, written by `refresh-attack` from the pinned bundle |
+| `phase-b-detection/attack/crosswalk.json` | one entry for every ATT&CK ID a pack rule uses, mapping it to its 19.2 ID as `unchanged` or `revoked-by` |
+| `phase-b-detection/art-runs/*.json` | the session records of `art-harness.ts` |
+| `phase-b-detection/validation/<session>.alerts.json` | the evidence `fetch` writes, one file per session |
+| `phase-b-detection/validation/misses.json` | the hand-kept miss list |
+
+`refresh-attack` checks the bundle's SHA-256 against the pinned value
+(`dc1639caa5501d720e280cf1cbd8fbe009884a0c9b3e6e9ed9d0c25166c3d8f4`, the 19.2 file at
+`mitre-attack/attack-stix-data`) and refuses a mismatch. The crosswalk is refused when a pack
+rule's ID has no entry, when a target is absent, revoked or deprecated, when `unchanged` names an
+ID that is not active or maps elsewhere, or when `revoked-by` names anything but the successor
+the bundle records.
+
+### The outputs
+
+`phase-b-detection/coverage/` holds `layer-rule-exists.json`, `layer-validated.json` and
+`coverage.json`. They are deterministic: sorted, no wall-clock time, byte-identical on a rebuild,
+and `check` is the gate that says so. Each layer scores a technique by the number of pack rules
+(or validated pack rules) that map to it, with the rule IDs and `art:<technique> #<n> <session>`
+in the comment. A scored sub-technique also emits its parent with `showSubtechniques` on and no
+score, unless the parent is itself mapped. No entry names a tactic. `coverage.json` carries the
+pack size, the validated rule IDs, the ratio as two integers, `complete`, the unclassified rule
+IDs, one row per rule (level, ATT&CK IDs as written and as 19.2, status, the validating alert or
+the miss entry) and the pack alerts that did not count.
+
+### Fetch
+
+`fetch` sends one `_msearch` over `ssh -o BatchMode=yes <alias> 'cd ~/talonsoclab/deploy/soc-recon
+&& bin/idx "/_msearch" --data-binary @-'` per session record, with the NDJSON on stdin and the
+command as an argv array. The alias is held to a strict pattern first. The first query asks for
+agent `001` alerts of every pack rule and of Defender rules 62123 and 62124, by index time from
+60 seconds before the session's first run start to 60 seconds after its last cleanup end; the
+second counts all agent `001` alerts in the same span as a control. The padding is for fetch
+only, and matching never uses it. Each evidence file records the format, the session, the
+SHA-256 of the record file it was taken against, the query, the shard counts, the control count
+and, per alert, only the index name, document ID, rule ID and level, `rule.mitre.id`, agent,
+index time, event time, system time, event ID, channel and image file name. Fetch refuses to
+write when any shard failed, when the answer was truncated or a count is only a lower bound,
+and when the repo leak scan (`leakcheck.ts --paths`, as `art-harness.ts` runs it) flags the text.
+Every session is fetched and checked before the first file is written.
+
+### Limits
+
+- `fetch` has run against the live index once (2026-11-23, two sessions, four Sysmon alerts,
+  135 of 135 shards). That run confirmed the query's field names, the date `format` and the
+  document-ID pattern for Sysmon alerts. Not yet seen live: a Defender alert (rules 62123 and
+  62124, whose event time comes from `systemTime`), an alert that does not count, and a failed
+  shard. The fixtures under `tools/fixtures/coverage/` carry the same four alerts with
+  placeholder document IDs; their control and shard counts are synthetic.
+- The Navigator app version in the layers is a named constant in `coverage.ts` (5.3.2, the hosted
+  app; the 4.5 layer spec requires at least 4.9.0). Neither layer has been opened in Navigator
+  yet, so that stays unconfirmed until both are.
+- The tool does not check that a test's ART technique agrees with the `<mitre>` ID of the rule
+  it is meant to fire.
+- An evidence file is tied to a record by the record's SHA-256, so any edit to a record makes its
+  evidence stale until `fetch` is run again. The fixtures carry the SHA-256 of the two real
+  records, so they go stale the same way.
+- Rule 100344 has no allowlisted test, so 17 of 18 is the most a validation run can show.
