@@ -1314,21 +1314,22 @@ answer that cannot be read. Each of those may mean something ran.
 ## coverage
 
 `coverage.ts` turns the detection pack and the live-alert evidence into two ATT&CK Navigator
-layers and one summary file, for B.5. It runs offline on the Mac. The one command that touches
+layers, one summary file and the results section of the writeup, for B.5. It runs offline on the Mac. The one command that touches
 the network is `fetch`, a read-only query of the alerts index. It first ran against the live
 index on 2026-11-23, for the two session records of 2026-11-22, and returned the four alerts
 those sessions raised.
 
 ```bash
-bun tools/coverage.ts build                          # read everything, write the three outputs
+bun tools/coverage.ts build                          # read everything, write the four outputs
 bun tools/coverage.ts check [--final]                # rebuild in memory; fail on any difference
+bun tools/coverage.ts claims [--against <lab root>] <file.md>...   # refuse a typed count or percentage
 bun tools/coverage.ts fetch --host <ssh alias>       # write one evidence file per session record
 bun tools/coverage.ts refresh-attack <STIX bundle> [--sha256 <hex>] [--out <path>]
 bun tools/coverage.ts --self-test                    # each planted refusal, through the real entry points
 bun test tools/coverage.test.ts
 ```
 
-Exit 0 is ok. 1 is a failed check (`check` found an output that differs). 2 is a setup problem: an
+Exit 0 is ok. 1 is a failed check (`check` found an output or the results section that differs). 2 is a setup problem: an
 input is missing, or ssh did not answer. 3 is a refusal. A refusal is always a thrown, typed
 error that names the offending item, a non-zero exit and no output file written or changed.
 
@@ -1386,12 +1387,14 @@ the bundle records.
 ### The outputs
 
 `phase-b-detection/coverage/` holds `layer-rule-exists.json`, `layer-validated.json` and
-`coverage.json`. They are deterministic: sorted, no wall-clock time, byte-identical on a rebuild,
+`coverage.json`, and the writeup holds the results section (below). They are deterministic: sorted, no wall-clock time, byte-identical on a rebuild,
 and `check` is the gate that says so. The pre-commit hook runs it whenever a commit stages a
 change under the pack rules folder or under `art-runs/`, `attack/`, `validation/` or `coverage/`
 in `phase-b-detection/`. It runs on a copy of the index made with replace refs off, so a good
 file in the working tree cannot stand in for a stale one in the commit, and a failure to list or
-copy the index blocks the commit. The hook runs plain `check`; `--final` is for the ship. Each
+copy the index blocks the commit. The hook runs plain `check`; `--final` is for the ship. After `check` it runs `claims` on the
+writeup inside the same copy, with the literals list copied beside it, so a count typed outside
+the results section cannot land either. A commit that stages `phase-b-detection/README.md` runs it too. Each
 layer scores a technique by the number of pack rules
 (or validated pack rules) that map to it, with the rule IDs and `art:<technique> #<n> <session>`
 in the comment. A scored sub-technique also emits its parent with `showSubtechniques` on and no
@@ -1399,6 +1402,70 @@ score, unless the parent is itself mapped. No entry names a tactic. `coverage.js
 pack size, the validated rule IDs, the ratio as two integers, `complete`, the unclassified rule
 IDs, one row per rule (level, ATT&CK IDs as written and as 19.2, status, the validating alert or
 the miss entry) and the pack alerts that did not count.
+
+### The writeup number gate
+
+The fourth output is a section of `phase-b-detection/README.md`. It runs from the heading
+`## Validation results` to a last line of the form `Source: \`coverage.json\`, SHA-256 <64 hex>.`,
+and the hash is of the bytes of `coverage.json`. It holds the totals as sentences (validated over
+pack size with the percentage to one decimal, rounded to nearest in integer arithmetic so 12 of 18 reads 66.7 percent, the misses by class, how many techniques each layer scores) and
+one table row per pack rule, sorted by rule ID: level, ATT&CK IDs as mapped to 19.2, status, the
+ART test that validated it or its miss class, and the session. Every value comes from the same
+in-memory build that writes `coverage.json`. It is plain ASCII with no wall-clock time, so a
+rebuild is byte-identical. `build` replaces the section and leaves every byte outside it as it
+was; with no section in the file it appends one. `check` compares the section with the rebuild.
+A missing file is refused as `writeup-missing`, a missing section as `section-missing`, two as
+`section-duplicate` and one with no source line before the next heading as
+`section-unterminated`. A heading inside a fenced block is not a section. The pre-commit hook
+holds the staged writeup to the same rebuild.
+
+The prose around the section never types a number that counts something. `claims` takes any
+Markdown files and refuses every digit-bearing token outside the section that is not an
+identifier or a listed literal, naming file, line and token. A spelled-out ratio ("twelve of
+eighteen", "twelve out of eighteen") or percentage ("twelve percent") is refused too, as
+`claim-number-word`. Fenced and inline code are scanned like any other text. A file with no
+section is still checked as prose. A decimal digit outside ASCII (fullwidth, Arabic-Indic and
+the like) is refused as `claim-number`, because it reads as a number to a person and matches no
+pattern here. Digits inside an `http://` or `https://` URL, in a link destination or bare, are an
+address and are not refused; the text of a link is scanned like any prose, so `[13 of 18](https://example.org/)`
+is refused on the text. The URL ends at whitespace, and trailing punctuation and an unbalanced closing bracket are not
+part of it.
+
+```bash
+bun tools/coverage.ts claims phase-b-detection/README.md
+bun tools/coverage.ts claims --against <lab root> <post.md> <page.md>   # files in another repo
+```
+
+A copy of the section in another file, at any heading level, has to equal the lab's current
+section byte for byte, apart from the heading line; any other copy is refused as
+`claim-section-differs`. `--against` names the lab root whose pack, records and section the files
+are held to, and defaults to `--root`. The lab's own writeup is held to its section the same way.
+
+What counts as an identifier, by pattern, and where a registry exists the identifier has to be in it:
+
+| identifier | pattern | must be |
+|---|---|---|
+| rule ID | five or six digits in a pack range or one of the tool's Defender rules (62123, 62124) | a pack rule in the XML, else `claim-rule-unknown`; any other five or six digit number is a count |
+| technique ID | `T` and four digits, with an optional `.` and three | in the pinned 19.2 list, else `claim-technique-unknown` |
+| ART test | a technique ID, a space, `#` and digits | the technique in the pinned list |
+| session ID | `<date>T<time>Z-<six hex>` | a record under `phase-b-detection/art-runs/`, else `claim-session-unknown` |
+| date, clock time | ISO dates with an optional time, and `hh:mm` forms | a real day and a real time |
+| tactic ID | `TA` and four digits | by pattern only |
+| digest | 40 or 64 hex digits | by pattern only |
+| version | a `v` prefix, or exactly three dotted parts | by pattern only |
+| list marker | a number and `.` or `)` opening a list item | by pattern only |
+
+A bare `19.2` is a decimal number, not a version, so it needs a literal. Literals live in
+`phase-b-detection/claims-literals.json`, as `{"format": "talonsoclab-claims-literals/1",
+"literals": [{"text": "...", "source": "..."}]}`. Each literal is a phrase of single-spaced ASCII
+tokens ("event 3", "Sysmon 15.21", "level 12", "port 443", "ATT&CK 19.2"): one token is a word with a
+letter and no digit, and one has a digit in it. It is matched as a whole phrase at token boundaries, so only the
+digits inside a matched phrase are excused: with "event 3" listed, "Sysmon event 3 fired and 3 rules did not" is
+refused on the second 3. A literal that is only a number, or has no word, is `literals-shape`. Each carries a
+non-empty source. A literal with no source is `literal-source`, a repeat is
+`literal-duplicate`, a malformed file is `literals-shape`, and a literal no file used is
+`literal-unused`. Use is judged only when the lab's own writeup is among the files given, so a
+blog post checked alone cannot mark a literal unused.
 
 ### Fetch
 
@@ -1418,6 +1485,12 @@ Every session is fetched and checked before the first file is written.
 
 ### Limits
 
+- `claims` refuses a spelled-out ratio or percentage, but other number words ("three rules",
+  "a dozen") pass: no pattern separates a count from ordinary prose. A listed literal's source is
+  only checked to be non-empty, not to be true.
+- A count that happens to equal a known rule ID ("62123 alerts") passes as an identifier, because
+  the pattern cannot tell a rule from a count. A `v`-prefixed number passes by pattern, whatever
+  it counts.
 - `fetch` has run against the live index once (2026-11-23, two sessions, four Sysmon alerts,
   135 of 135 shards). That run confirmed the query's field names, the date `format` and the
   document-ID pattern for Sysmon alerts. Not yet seen live: a Defender alert (rules 62123 and

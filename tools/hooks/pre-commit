@@ -13,13 +13,16 @@
 set -euo pipefail
 
 shared="deploy/soc-recon/wazuh/shared/"
-# What tools/coverage.ts builds from, and the folder it writes.
+# What tools/coverage.ts builds from, the folder it writes, the writeup that holds the
+# generated results section, and the literals its prose may use.
 built=(
   deploy/soc-recon/wazuh/custom-rules/
   phase-b-detection/art-runs/
   phase-b-detection/attack/
   phase-b-detection/validation/
   phase-b-detection/coverage/
+  phase-b-detection/README.md
+  phase-b-detection/claims-literals.json
 )
 
 # *--- Entry Point ---*
@@ -42,8 +45,9 @@ fi
 if [ -n "$touched" ]; then
   bun "$root/tools/agentconf-check.ts" --offline --staged
 fi
-# ISA ISC-169: a commit that touches a coverage input or output must hold outputs that
-# equal a rebuild of the inputs it holds.
+# ISA ISC-169, ISC-188 and ISC-189: a commit that touches a coverage input or output, or
+# the writeup, must hold outputs and a results section that equal a rebuild of the inputs
+# it holds, and a writeup with no count typed outside that section.
 if ! changed=$(git -C "$root" diff --cached --name-only -- "${built[@]}"); then
   echo "pre-commit: git could not list the staged paths, so the coverage outputs cannot be checked. Commit blocked." >&2
   exit 1
@@ -61,4 +65,6 @@ if [ -n "$changed" ]; then
     exit 1
   fi
   bun "$root/tools/coverage.ts" check --root "$copy"
+  # The path is given inside the copy: claims reads a file where it is told, not under --root.
+  bun "$root/tools/coverage.ts" claims "$copy/phase-b-detection/README.md" --root "$copy"
 fi

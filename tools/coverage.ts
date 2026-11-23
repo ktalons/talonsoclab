@@ -10,7 +10,7 @@
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { EXIT, type ExitCode, type SessionRecord, type TestRecord } from "./art-harness.ts";
 import { isPack, readRulesDir, repeatedIds, RulesError } from "./wazuh-rules.ts";
 
@@ -27,6 +27,19 @@ const COVERAGE_DIR = "phase-b-detection/coverage";
 const OUT_EXISTS = "layer-rule-exists.json";
 const OUT_VALIDATED = "layer-validated.json";
 const OUT_SUMMARY = "coverage.json";
+// The writeup holds the fourth output: a results section that build writes and check compares.
+const WRITEUP = "phase-b-detection/README.md";
+const LITERALS = "phase-b-detection/claims-literals.json";
+const LITERALS_FORMAT = "talonsoclab-claims-literals/1";
+const SECTION_TITLE = "Validation results";
+const SECTION_HEADING = `## ${SECTION_TITLE}`;
+// The section's last line. The hash ties the section to the exact bytes of coverage.json.
+const SOURCE_LINE = /^Source: `coverage\.json`, SHA-256 [0-9a-f]{64}\.$/;
+// What a writeup holds before it has any numbers: scratch roots start from this.
+const SKELETON = `# Phase B detection writeup
+
+This writeup is in draft. Every number in it comes from the generated results section below.
+`;
 // Where the self-test finds the evidence the integration test and the control build read.
 const FIXTURE_DIR = "tools/fixtures/coverage";
 const LOGTEST_FIXTURE = "tools/fixtures/logtest/transcript-20261106.txt";
@@ -92,9 +105,13 @@ const USAGE = `usage: bun tools/coverage.ts <command> [options]
 commands
   build                        read the pack, the records and the evidence; write the two
                                layers and coverage.json under phase-b-detection/coverage/
-  check [--final]              rebuild in memory; fail if a checked-in output differs by a
-                               byte or is missing. --final also refuses while the coverage
-                               is not complete
+                               and the results section of phase-b-detection/README.md
+  check [--final]              rebuild in memory; fail if a checked-in output or the
+                               results section differs by a byte or is missing. --final
+                               also refuses while the coverage is not complete
+  claims [--against <lab root>] <file.md>...
+                               refuse any count or percentage typed outside the results
+                               section, and any copy of the section that is not the lab's
   fetch --host <ssh alias>     ask the live index for each session's agent ${AGENT} alerts and
                                write phase-b-detection/validation/<session>.alerts.json
   refresh-attack <bundle>      write the pinned technique list from a local STIX bundle
@@ -103,6 +120,8 @@ commands
 
 options
   --root <dir>                 treat <dir> as the repo root (the self-test and the tests)
+  --against <dir>              claims only: the lab root whose pack, records and section
+                               the files are held to (default: --root)
 
 exit 0 ok, 1 failed, 2 setup problem, 3 refused
 `;
@@ -130,6 +149,8 @@ export interface Layout {
   validation: string;
   misses: string;
   coverage: string;
+  writeup: string;
+  literals: string;
 }
 
 export interface Technique {
@@ -241,8 +262,19 @@ export interface Miss {
   ruling: string | null;
 }
 
+/** What an identifier in prose must be a member of: the pack and Defender rules, the pinned techniques, the recorded sessions. */
+export interface Registry {
+  rules: Set<number>;
+  techniques: Set<string>;
+  sessions: Set<string>;
+}
+
 export interface Built {
+  // The three outputs under phase-b-detection/coverage/.
   files: Map<string, string>;
+  // The fourth output: the results section of the writeup, without a trailing newline.
+  section: string;
+  registry: Registry;
   packSize: number;
   validated: number[];
   unclassified: number[];
@@ -311,6 +343,8 @@ export function layoutFor(root: string): Layout {
     validation: join(r, VALIDATION_DIR),
     misses: join(r, MISSES),
     coverage: join(r, COVERAGE_DIR),
+    writeup: join(r, WRITEUP),
+    literals: join(r, LITERALS),
   };
 }
 
@@ -980,6 +1014,68 @@ export function buildLayer(kind: "exists" | "validated", byTechnique: Map<string
   return jsonText(layer);
 }
 
+const MISS_LABEL: Record<MissClass, string> = {
+  "blocked-by-defender": "blocked by Defender",
+  "sensor-gap": "sensor gap",
+  "rule-gap": "rule gap",
+  "prerequisite-failed": "prerequisite failed",
+  "not-run": "not run",
+};
+
+interface SectionRow {
+  rule: number;
+  level: number;
+  attack19: string[];
+  status: string;
+  validation: { session: string; art: string } | null;
+  miss: { class: MissClass; session: string | null } | null;
+}
+
+interface SectionFacts {
+  rows: SectionRow[];
+  packSize: number;
+  validated: number;
+  unclassified: number;
+  // How many techniques each layer scores, taken from the maps the layers are built from.
+  existsTechniques: number;
+  validatedTechniques: number;
+  // The bytes coverage.json is written from.
+  summaryText: string;
+}
+
+/**
+ * The results section of the writeup, from the same in-memory build that writes coverage.json.
+ * It holds no clock time, and plain ASCII only, so a rebuild is byte-identical.
+ */
+export function buildSection(f: SectionFacts): string {
+  // One decimal, rounded to nearest with halves up, in integer arithmetic: a whole-number round can cross the public bar.
+  const tenths = f.packSize > 0 ? Math.floor((2000 * f.validated + f.packSize) / (2 * f.packSize)) : 0;
+  const percent = `${Math.floor(tenths / 10)}.${tenths % 10}`;
+  const byClass = MISS_CLASSES.map((c) => ({ c, n: f.rows.filter((r) => r.miss?.class === c).length })).filter((x) => x.n > 0);
+  const lines = [
+    SECTION_HEADING,
+    "",
+    `${f.validated} of ${f.packSize} pack rules are validated (${percent} percent) by a live alert from an ART test run.`,
+    "",
+    byClass.length ? `Misses by class: ${byClass.map((x) => `${x.n} ${MISS_LABEL[x.c]}`).join(", ")}.` : "Misses by class: none.",
+    "",
+    f.unclassified ? `${plural(f.unclassified, "rule")} ${f.unclassified === 1 ? "has" : "have"} no miss class yet.` : "Every rule that is not validated has a miss class.",
+    "",
+    `The rule-exists layer scores ${plural(f.existsTechniques, "technique")} and the validated layer scores ${plural(f.validatedTechniques, "technique")}.`,
+    "",
+    "| Rule | Level | ATT&CK 19.2 | Status | ART test or miss class | Session |",
+    "|---|---|---|---|---|---|",
+  ];
+  for (const r of f.rows) {
+    const validated = r.status === "validated";
+    const what = r.validation ? r.validation.art : r.miss ? r.miss.class : "unclassified";
+    const session = r.validation ? r.validation.session : (r.miss?.session ?? "none");
+    lines.push(`| ${r.rule} | ${r.level} | ${r.attack19.join(", ")} | ${validated ? "validated" : "not validated"} | ${what} | ${session} |`);
+  }
+  lines.push("", `Source: \`coverage.json\`, SHA-256 ${sha256(f.summaryText)}.`);
+  return lines.join("\n");
+}
+
 /** Everything build writes, from the inputs under one layout; nothing is written here. */
 export function buildAll(l: Layout): Built {
   const attack = loadAttack(l);
@@ -1038,28 +1134,49 @@ export function buildAll(l: Layout): Built {
     sessions: sessions.map((s) => ({ session: s.record.session, verdict: s.record.verdict, recordSha256: s.sha256, evidence: evidence.some((e) => e.session === s.record.session) })),
     uncounted,
   };
+  const summaryText = jsonText(summary);
   const files = new Map<string, string>([
     [OUT_EXISTS, buildLayer("exists", existsMap, attack)],
     [OUT_VALIDATED, buildLayer("validated", validatedMap, attack)],
-    [OUT_SUMMARY, jsonText(summary)],
+    [OUT_SUMMARY, summaryText],
   ]);
-  return { files, packSize: pack.length, validated, unclassified, complete };
+  const section = buildSection({
+    rows: rows as SectionRow[],
+    packSize: pack.length,
+    validated: validated.length,
+    unclassified: unclassified.length,
+    existsTechniques: existsMap.size,
+    validatedTechniques: validatedMap.size,
+    summaryText,
+  });
+  const registry: Registry = {
+    rules: new Set([...pack.map((r) => r.id), ...DEFENDER_RULES]),
+    techniques: new Set(attack.byId.keys()),
+    sessions: new Set(sessions.map((s) => s.record.session)),
+  };
+  return { files, section, registry, packSize: pack.length, validated, unclassified, complete };
 }
 
-/** Write files into a folder through temp names, so a failure leaves each old file whole. */
-function writeAll(dir: string, files: Map<string, string>): void {
-  mkdirSync(dir, { recursive: true });
+/** Write files (path to text) through temp names, so a failure leaves each old file whole. */
+function writeSet(files: [string, string][]): void {
   const staged: [string, string][] = [];
   try {
-    for (const [name, text] of files) {
-      const tmp = join(dir, `.${name}.${process.pid}.tmp`);
+    for (const [dest, text] of files) {
+      mkdirSync(dirname(dest), { recursive: true });
+      const tmp = join(dirname(dest), `.${basename(dest)}.${process.pid}.tmp`);
       writeFileSync(tmp, text);
-      staged.push([tmp, join(dir, name)]);
+      staged.push([tmp, dest]);
     }
     for (const [tmp, dest] of staged) renameSync(tmp, dest);
   } finally {
     for (const [tmp] of staged) rmSync(tmp, { force: true });
   }
+}
+
+/** Write files into a folder through temp names, so a failure leaves each old file whole. */
+function writeAll(dir: string, files: Map<string, string>): void {
+  mkdirSync(dir, { recursive: true });
+  writeSet([...files].map(([name, text]) => [join(dir, name), text]));
 }
 
 /** The outputs that differ from the rebuild, or are missing, as one line each. */
@@ -1071,6 +1188,68 @@ export function diffOutputs(l: Layout, files: Map<string, string>): string[] {
     else if (readFileSync(path, "utf8") !== text) bad.push(`${rel(l, path)} differs from the rebuild`);
   }
   return bad;
+}
+
+// -- The writeup section --
+
+interface Found {
+  lines: string[];
+  // Line indexes of the heading and of the source line; the section is both and what lies between.
+  start: number;
+  end: number;
+}
+
+// A fenced block can show a heading or a source line as an example; neither counts there.
+function fencedLines(lines: string[]): boolean[] {
+  let open: string | null = null;
+  return lines.map((line) => {
+    const m = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (open === null) {
+      if (m) open = m[1][0];
+      return m !== null;
+    }
+    if (m && m[1][0] === open) open = null;
+    return true;
+  });
+}
+
+/**
+ * The results section of a text, or null when it has none. Two headings, or a section that meets
+ * another heading or the end of the file before its source line, are refused.
+ */
+export function findSection(text: string, file: string, anyLevel: boolean): Found | null {
+  const lines = text.split("\n");
+  const fenced = fencedLines(lines);
+  const isHeading = (i: number) => !fenced[i] && /^#{1,6} \S/.test(lines[i]);
+  const heads = lines.map((_, i) => i).filter((i) => !fenced[i] && (anyLevel ? new RegExp(`^#{1,6} ${SECTION_TITLE}$`) : new RegExp(`^${SECTION_HEADING}$`)).test(lines[i]));
+  if (heads.length === 0) return null;
+  if (heads.length > 1) refuse("section-duplicate", `${file}:${heads[1] + 1} ${SECTION_TITLE}`, `${file} holds the results section twice`);
+  const start = heads[0];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (fenced[i]) continue;
+    if (SOURCE_LINE.test(lines[i])) return { lines, start, end: i };
+    if (isHeading(i)) break;
+  }
+  return refuse("section-unterminated", `${file}:${start + 1} ${SECTION_TITLE}`, `the results section in ${file} has no source line before the next heading or the end of the file`);
+}
+
+/** The writeup with its results section replaced, or appended when it has none; every other byte is kept. */
+function spliceWriteup(l: Layout, section: string): string {
+  const file = rel(l, l.writeup);
+  if (!existsSync(l.writeup)) refuse("writeup-missing", file, `${file} is missing; it holds the results section`);
+  const text = readFileSync(l.writeup, "utf8");
+  const found = findSection(text, file, false);
+  if (!found) return `${text}${text.endsWith("\n") ? "" : "\n"}\n${section}\n`;
+  return [...found.lines.slice(0, found.start), ...section.split("\n"), ...found.lines.slice(found.end + 1)].join("\n");
+}
+
+/** The writeup's section against the rebuild: one line when it differs, none when it matches; a missing or malformed one is refused. */
+export function diffWriteup(l: Layout, section: string): string[] {
+  const file = rel(l, l.writeup);
+  if (!existsSync(l.writeup)) return refuse("writeup-missing", file, `${file} is missing; it holds the results section`);
+  const found = findSection(readFileSync(l.writeup, "utf8"), file, false);
+  if (!found) return refuse("section-missing", file, `${file} has no "${SECTION_HEADING}" section`);
+  return found.lines.slice(found.start, found.end + 1).join("\n") === section ? [] : [`${file} differs from the rebuild`];
 }
 
 // -- Fetching the evidence --
@@ -1216,6 +1395,199 @@ export function fetchAll(l: Layout, remote: Remote, scan: LeakScan = realLeakSca
   return [...files.keys()].map((n) => `${rel(l, l.validation)}/${n}`);
 }
 
+// -- Claims --
+
+const ONES = "one|two|three|four|five|six|seven|eight|nine";
+const COUNT_WORD = `(?:(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[- ](?:${ONES})|zero|${ONES}|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)`;
+const COUNT = `(?:\\d+|${COUNT_WORD})`;
+// A ratio ("13 of 18", "twelve out of eighteen") or a percentage ("70%", "twelve percent") is a claim
+// whichever way it is written. Other number words are a stated limit: they pass.
+const RATIO = new RegExp(`\\b${COUNT}\\s+(?:out\\s+of|of)\\s+${COUNT}\\b`, "gi");
+const PERCENT = new RegExp(`(?:\\b\\d+(?:\\.\\d+)?\\s?%|\\b${COUNT}\\s+(?:percent|per\\s+cent)\\b)`, "gi");
+const LIST_MARKER = /^(\s*(?:[-*+>]\s+)*)(\d+[.)])(?=\s)/;
+const ART_REF = /(?<![A-Za-z0-9_])T\d{4}(?:\.\d{3})? #\d+(?![A-Za-z0-9_])/g;
+const SESSION_ID = /(?<![A-Za-z0-9_])\d{8}T\d{6}Z-[0-9a-f]{6}(?![A-Za-z0-9_])/g;
+const ISO_STAMP = /(?<![A-Za-z0-9_])(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?(?![A-Za-z0-9_]|[.,]\d)/g;
+const CLOCK = /(?<![A-Za-z0-9_:.])(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?Z?(?![A-Za-z0-9_]|:\d|[.,]\d)/g;
+const DIGEST = /(?<![A-Za-z0-9_])(?:[0-9a-f]{64}|[0-9a-f]{40})(?![A-Za-z0-9_])/g;
+const TACTIC_ID = /(?<![A-Za-z0-9_])TA\d{4}(?![A-Za-z0-9_])/g;
+const TECHNIQUE_ID = /(?<![A-Za-z0-9_])T\d{4}(?:\.\d{3})?(?![A-Za-z0-9_]|\.\d)/g;
+// Exactly three parts, or a v prefix: a bare "19.2" is a decimal number and needs a listed literal.
+const VERSION = /(?<![A-Za-z0-9_.])(?:v\d+(?:\.\d+){1,3}|\d+\.\d+\.\d+)(?![A-Za-z0-9_]|\.\d)/g;
+const RULE_ID = /(?<![A-Za-z0-9_]|\d[.,])\d{5,6}(?![A-Za-z0-9_]|[.,]\d)/g;
+// What is left once every identifier is masked: a run of word characters and number punctuation.
+const NUMBER_TOKEN = /[A-Za-z0-9][A-Za-z0-9._,/-]*/g;
+// A literal is a phrase of single-spaced printable ASCII tokens, so what it excuses is tied to the words around it.
+const LITERAL_SHAPE = /^[\x21-\x7e]+(?: [\x21-\x7e]+)*$/;
+// A decimal digit outside ASCII reads as a number to a person and as no number to the patterns above.
+const ANY_DIGITS = /\p{Nd}+/gu;
+// A URL is an address. The scheme must open a token, and the end is trimmed to leave out the punctuation around it.
+const URL_RE = /(?<![A-Za-z0-9])https?:\/\/[^\s<>"'`]+/gi;
+
+interface Problem {
+  code: string;
+  item: string;
+}
+
+interface Phrase {
+  text: string;
+  re: RegExp;
+}
+
+/** One listed phrase as a pattern: its tokens in order, at token boundaries, so only its own digits are excused. */
+function phraseOf(text: string): Phrase {
+  const body = text.split(" ").map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(" +");
+  return { text, re: new RegExp(`(?<![A-Za-z0-9_&./,-])${body}(?![A-Za-z0-9_&/-]|[.,][A-Za-z0-9])`, "g") };
+}
+
+/** The end of a URL match: trailing punctuation and any bracket the URL does not open are not part of it. */
+function urlEnd(url: string): string {
+  for (;;) {
+    const cut = url.replace(/[.,;:!?*_]+$/, "");
+    const open = (c: string) => cut.split(c).length - 1;
+    if (cut.endsWith(")") && open(")") > open("(")) url = cut.slice(0, -1);
+    else if (cut.endsWith("]") && open("]") > open("[")) url = cut.slice(0, -1);
+    else if (cut === url) return url;
+    else url = cut;
+  }
+}
+
+/** The listed literals (phrase to source), after the file's own checks: shape, a real source, no repeat. */
+function loadLiterals(l: Layout): Map<string, string> {
+  const file = rel(l, l.literals);
+  const doc = readJson(readInput(l, l.literals), file);
+  if (!isObject(doc) || doc.format !== LITERALS_FORMAT || !Array.isArray(doc.literals)) return refuse("literals-shape", file, `${file} must be an object with format ${LITERALS_FORMAT} and a literals list`);
+  exactKeys(doc, ["format", "literals"], "literals-shape", file);
+  const out = new Map<string, string>();
+  for (const [i, raw] of doc.literals.entries()) {
+    const at = `${file} literal ${i + 1}`;
+    if (!isObject(raw)) return refuse("literals-shape", at, `${at} must be an object`);
+    exactKeys(raw, ["text", "source"], "literals-shape", at);
+    // A bare number would excuse that number anywhere, so a phrase needs a word to anchor it: a token with a letter
+    // and no digit, and a token with a digit.
+    const words = typeof raw.text === "string" ? raw.text.split(" ") : [];
+    if (typeof raw.text !== "string" || !LITERAL_SHAPE.test(raw.text) || words.length < 2 || !words.some((w) => /[A-Za-z]/.test(w) && !/\d/.test(w)) || !words.some((w) => /\d/.test(w))) {
+      refuse("literals-shape", at, `${at} text must be a phrase: single-spaced ASCII tokens, one a word with a letter and no digit, one with a digit in it`);
+    }
+    if (typeof raw.source !== "string") refuse("literals-shape", at, `${at} source must be text`);
+    const item = `${file} ${raw.text}`;
+    // The source is only checked to be there; whether it is true is for the person who lists the literal.
+    if ((raw.source as string).trim() === "") refuse("literal-source", item, `the literal ${raw.text} has no source`);
+    if (out.has(raw.text as string)) refuse("literal-duplicate", item, `the literal ${raw.text} is listed twice`);
+    out.set(raw.text as string, raw.source as string);
+  }
+  return out;
+}
+
+/** The problems on one line of prose: every digit-bearing token that is neither an identifier in its registry nor a listed literal. */
+function scanLine(line: string, reg: Registry, phrases: Phrase[], used: Set<string>): { at: number; code: string; token: string }[] {
+  const out: { at: number; code: string; token: string }[] = [];
+  // UTF-16 units, so an index into the joined text is an index into this array even past the first plane.
+  const chars = line.split("");
+  const bad = (at: number, code: string, token: string) => out.push({ at, code, token });
+  // A handler returns false to leave the match for a later pass. Masked text cannot match again.
+  const mask = (re: RegExp, handler: (m: RegExpMatchArray, at: number) => boolean | void) => {
+    for (const m of chars.join("").matchAll(re)) {
+      const at = m.index as number;
+      if (handler(m, at) === false) continue;
+      for (let k = 0; k < m[0].length; k++) chars[at + k] = " ";
+    }
+  };
+  const marker = LIST_MARKER.exec(line);
+  if (marker) for (let k = marker[1].length; k < marker[1].length + marker[2].length; k++) chars[k] = " ";
+  const numeric = (m: RegExpMatchArray, at: number) => bad(at, /\d/.test(m[0]) ? "claim-number" : "claim-number-word", m[0]);
+  for (const m of line.matchAll(URL_RE)) {
+    const url = urlEnd(m[0]);
+    const at = m.index as number;
+    for (let k = 0; k < url.length; k++) chars[at + k] = " ";
+  }
+  mask(ANY_DIGITS, (m, at) => {
+    if (/^[0-9]+$/.test(m[0])) return false;
+    bad(at, "claim-number", m[0]);
+  });
+  mask(RATIO, numeric);
+  mask(PERCENT, numeric);
+  // Only after the ratio and percent forms, so a phrase cannot hide the "of 18" that follows it.
+  for (const ph of phrases) mask(ph.re, () => void used.add(ph.text));
+  mask(ART_REF, (m, at) => {
+    if (!reg.techniques.has(m[0].split(" ")[0])) bad(at, "claim-technique-unknown", m[0]);
+  });
+  mask(SESSION_ID, (m, at) => {
+    if (!reg.sessions.has(m[0])) bad(at, "claim-session-unknown", m[0]);
+  });
+  mask(ISO_STAMP, (m, at) => {
+    const [y, mo, d, h, mi, se] = m.slice(1, 7).map((x) => (x === undefined ? null : Number(x)));
+    const day = new Date(Date.UTC(y as number, (mo as number) - 1, d as number));
+    const real = day.getUTCFullYear() === y && day.getUTCMonth() === (mo as number) - 1 && day.getUTCDate() === d;
+    const clock = (h === null || (h < 24 && (mi as number) < 60)) && (se === null || se < 60);
+    if (!real || !clock) bad(at, "claim-number", m[0]);
+  });
+  mask(CLOCK, (m, at) => {
+    const [h, mi, se] = m.slice(1, 4).map((x) => (x === undefined ? 0 : Number(x)));
+    if (h > 23 || mi > 59 || se > 59) bad(at, "claim-number", m[0]);
+  });
+  mask(DIGEST, () => {});
+  mask(TACTIC_ID, () => {});
+  mask(TECHNIQUE_ID, (m, at) => {
+    if (!reg.techniques.has(m[0])) bad(at, "claim-technique-unknown", m[0]);
+  });
+  mask(VERSION, () => {});
+  mask(RULE_ID, (m, at) => {
+    const id = Number(m[0]);
+    // A number outside the pack ranges and the Defender rules is not a rule id: it is a count.
+    if (!inScope(id)) return false;
+    if (!reg.rules.has(id)) bad(at, "claim-rule-unknown", m[0]);
+  });
+  mask(NUMBER_TOKEN, (m, at) => {
+    const token = m[0].replace(/[._,/-]+$/, "");
+    if (!/\d/.test(token)) return false;
+    bad(at, "claim-number", token);
+  });
+  return out.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * Hold Markdown files to the numbers the build owns. A count or percentage typed outside the
+ * results section is refused, and so is a copy of the section that is not the lab's current one.
+ * Every problem is printed; the first one is the refusal.
+ */
+export function checkClaims(files: string[], lab: Layout, shown: Layout, io: Io): number {
+  if (files.length === 0) refuse("usage", "claims", "claims needs at least one Markdown file");
+  const built = buildAll(lab);
+  const literals = loadLiterals(lab);
+  const phrases = [...literals.keys()].map(phraseOf);
+  const used = new Set<string>();
+  const problems: Problem[] = [];
+  let labWriteup = false;
+  for (const given of files) {
+    const path = resolve(given);
+    const inside = !relative(shown.root, path).startsWith("..");
+    const name = inside ? relative(shown.root, path) : given;
+    if (!name.endsWith(".md")) refuse("claims-file", name, `${name} is not a Markdown file`);
+    if (!existsSync(path)) setup("input-missing", name, `${name} is missing`);
+    const isLab = path === lab.writeup;
+    labWriteup ||= isLab;
+    const text = readFileSync(path, "utf8");
+    const found = findSection(text, name, !isLab);
+    if (isLab && !found) refuse("section-missing", name, `${name} has no "${SECTION_HEADING}" section`);
+    const lines = text.split("\n");
+    if (found) {
+      // A copy may sit at any heading level; its heading line is the only part that can differ.
+      const copy = [SECTION_HEADING, ...found.lines.slice(found.start + 1, found.end + 1)].join("\n");
+      if (copy !== built.section) problems.push({ code: "claim-section-differs", item: `${name}:${found.start + 1} ${SECTION_TITLE}` });
+    }
+    for (const [i, line] of lines.entries()) {
+      if (found && i >= found.start && i <= found.end) continue;
+      for (const p of scanLine(line, built.registry, phrases, used)) problems.push({ code: p.code, item: `${name}:${i + 1} ${p.token}` });
+    }
+  }
+  // Use is judged only when the lab writeup is among the files, so a blog post alone cannot mark one unused.
+  if (labWriteup) for (const text of literals.keys()) if (!used.has(text)) problems.push({ code: "literal-unused", item: `${rel(lab, lab.literals)} ${text}` });
+  for (const p of problems) io.err(`coverage: ${p.code}: ${p.item}`);
+  if (problems.length) refuse(problems[0].code, problems[0].item, `${plural(problems.length, "problem")} found in the files given; each is listed above`);
+  return files.length;
+}
+
 // -- Self-test --
 
 export interface Plant {
@@ -1223,6 +1595,8 @@ export interface Plant {
   // Applied to a temp copy of the control root.
   mutate: (root: string) => void;
   argv?: string[];
+  // The arguments when they name a file of the copy; wins over argv.
+  args?: (root: string) => string[];
   exit: ExitCode;
   code: string;
   item: string;
@@ -1267,9 +1641,32 @@ export function makeScratch(withEvidence: boolean): string {
   for (const s of [EV1, EV2]) cpSync(join(ROOT, RECORD_DIR, `${s}.json`), join(dir, RECORD_DIR, `${s}.json`));
   mkdirSync(join(dir, VALIDATION_DIR), { recursive: true });
   writeJsonFile(join(dir, MISSES), { format: MISSES_FORMAT, entries: [] });
+  // The writeup and its literals list start empty of numbers, so build adds the section and claims has something to read.
+  writeFileSync(join(dir, WRITEUP), SKELETON);
+  writeJsonFile(join(dir, LITERALS), { format: LITERALS_FORMAT, literals: [] });
   if (withEvidence) for (const s of [EV1, EV2]) cpSync(join(ROOT, FIXTURE_DIR, `${s}.alerts.json`), join(dir, evPath(s)));
   return dir;
 }
+
+const NOTES = "phase-b-detection/notes.md";
+const COPY = "phase-b-detection/copy.md";
+const writeText = (root: string, path: string, text: string) => writeFileSync(join(root, path), text);
+const claimsOf = (path: string) => (root: string) => ["claims", join(root, path)];
+// A plant that types one claim into a file of its own, so the refusal names that file and line.
+const claimPlant = (name: string, body: string, code: string, token: string): Plant => ({
+  name,
+  mutate: (r) => writeText(r, NOTES, body),
+  args: claimsOf(NOTES),
+  exit: EXIT.refused,
+  code,
+  item: `${NOTES}:1 ${token}`,
+});
+// The text of the control's section, read the way a copy in another file would carry it.
+const controlSection = (root: string) => {
+  const lines = readFileSync(join(root, WRITEUP), "utf8").split("\n");
+  const a = lines.indexOf(SECTION_HEADING);
+  return lines.slice(a, lines.findIndex((x, i) => i > a && SOURCE_LINE.test(x)) + 1).join("\n");
+};
 
 const missEntry = (e: Record<string, unknown>) => (root: string) => editJson(root, MISSES, (m) => m.entries.push(e));
 
@@ -1310,6 +1707,24 @@ export const PLANTS: Plant[] = [
   { name: "check on a missing output", mutate: (r) => rmSync(join(r, COVERAGE_DIR, OUT_SUMMARY)), argv: ["check"], exit: EXIT.failed, code: "output-differs", item: `${COVERAGE_DIR}/${OUT_SUMMARY}` },
   { name: "check on an output that differs by one byte", mutate: (r) => writeFileSync(join(r, COVERAGE_DIR, OUT_EXISTS), `${readFileSync(join(r, COVERAGE_DIR, OUT_EXISTS), "utf8")} `), argv: ["check"], exit: EXIT.failed, code: "output-differs", item: `${COVERAGE_DIR}/${OUT_EXISTS}` },
   { name: "check --final while the coverage is not complete", mutate: () => {}, argv: ["check", "--final"], exit: EXIT.refused, code: "not-complete", item: "coverage" },
+  { name: "check on a results section with one digit changed", mutate: (r) => writeText(r, WRITEUP, readFileSync(join(r, WRITEUP), "utf8").replace(/\((\d+\.\d) percent\)/, (_m, n) => `(${(Number(n) + 1).toFixed(1)} percent)`)), argv: ["check"], exit: EXIT.failed, code: "output-differs", item: WRITEUP },
+  { name: "check with no writeup", mutate: (r) => rmSync(join(r, WRITEUP)), argv: ["check"], exit: EXIT.refused, code: "writeup-missing", item: WRITEUP },
+  { name: "check on a writeup with no results section", mutate: (r) => writeText(r, WRITEUP, SKELETON), argv: ["check"], exit: EXIT.refused, code: "section-missing", item: WRITEUP },
+  { name: "check on a writeup with two results sections", mutate: (r) => writeText(r, WRITEUP, `${SKELETON}\n${SECTION_HEADING}\n\nfirst\n\n${SECTION_HEADING}\n\nsecond\n`), argv: ["check"], exit: EXIT.refused, code: "section-duplicate", item: `${WRITEUP}:9 ${SECTION_TITLE}` },
+  { name: "build with no writeup", mutate: (r) => rmSync(join(r, WRITEUP)), exit: EXIT.refused, code: "writeup-missing", item: WRITEUP },
+  claimPlant("a ratio typed in prose", "Rules validated: 13 of 18 so far.\n", "claim-number", "13 of 18"),
+  claimPlant("a percentage typed in prose", "About 70% were caught.\n", "claim-number", "70%"),
+  claimPlant("a spelled-out ratio typed in prose", "We validated twelve of eighteen rules.\n", "claim-number-word", "twelve of eighteen"),
+  claimPlant("a pack rule id that is not in the pack", "Rule 100499 fired.\n", "claim-rule-unknown", "100499"),
+  claimPlant("a technique id that is not in the pinned list", "See T9999 for the mapping.\n", "claim-technique-unknown", "T9999"),
+  claimPlant("a session id with no record", "Run 20261122T000000Z-000000 passed.\n", "claim-session-unknown", "20261122T000000Z-000000"),
+  { name: "a copy of the results section from an older build", mutate: (r) => writeText(r, COPY, `### Validation results\n${controlSection(r).split("\n").slice(1).join("\n").replace(/\((\d+\.\d) percent\)/, (_m, n) => `(${(Number(n) + 1).toFixed(1)} percent)`)}\n`), args: claimsOf(COPY), exit: EXIT.refused, code: "claim-section-differs", item: `${COPY}:1 ${SECTION_TITLE}` },
+  { name: "a listed literal with no source", mutate: (r) => editJson(r, LITERALS, (x) => x.literals.push({ text: "ATT&CK 19.2", source: " " })), args: claimsOf(WRITEUP), exit: EXIT.refused, code: "literal-source", item: `${LITERALS} ATT&CK 19.2` },
+  { name: "a listed literal that no file uses", mutate: (r) => editJson(r, LITERALS, (x) => x.literals.push({ text: "ATT&CK 19.2", source: "the pinned ATT&CK release" })), args: claimsOf(WRITEUP), exit: EXIT.refused, code: "literal-unused", item: `${LITERALS} ATT&CK 19.2` },
+  { name: "a literal that is only a number", mutate: (r) => editJson(r, LITERALS, (x) => x.literals.push({ text: "3", source: "Sysmon event ID" })), args: claimsOf(WRITEUP), exit: EXIT.refused, code: "literals-shape", item: `${LITERALS} literal 1` },
+  { name: "a count typed beside a listed phrase", mutate: (r) => { editJson(r, LITERALS, (x) => x.literals.push({ text: "event 3", source: "Sysmon event ID" })); writeText(r, NOTES, "Sysmon event 3 fired and 3 rules did not.\n"); }, args: claimsOf(NOTES), exit: EXIT.refused, code: "claim-number", item: `${NOTES}:1 3` },
+  claimPlant("a decimal digit outside ASCII", "Only \uff11\uff12 rules fired.\n", "claim-number", "\uff11\uff12"),
+  claimPlant("link text with a count over a URL", "[13 of 18](https://example.org/)\n", "claim-number", "13 of 18"),
 ];
 
 /** Run each plant through the real entry point on a copy; one line each, true only if every plant is refused and the control builds. */
@@ -1324,27 +1739,33 @@ export function selfTest(log: (line: string) => void): boolean {
     const right = summary && JSON.stringify(summary.validatedRules) === JSON.stringify([100400, 100407, 100410, 100411]) && summary.packSize === 18;
     log(`${right ? "OK  " : "FAIL"} control builds: ${summary ? `${summary.ratio.validated} of ${summary.ratio.of} validated, complete ${summary.complete}` : `exit ${built.exit}`}`);
     if (!right) return false;
-    const snapshot = (root: string) => [OUT_EXISTS, OUT_VALIDATED, OUT_SUMMARY].map((n) => (existsSync(join(root, COVERAGE_DIR, n)) ? sha256(readFileSync(join(root, COVERAGE_DIR, n))) : "absent")).join();
-    const before = snapshot(control);
+    // The writeup is an input of build as well as its fourth output, so a plant may remove it: the
+    // mutation check reads the three files under coverage/ only, and the unchanged-after-refusal check reads all four.
+    const snapshot = (root: string, withWriteup = true) => [...[OUT_EXISTS, OUT_VALIDATED, OUT_SUMMARY].map((n) => join(COVERAGE_DIR, n)), ...(withWriteup ? [WRITEUP] : [])].map((n) => (existsSync(join(root, n)) ? sha256(readFileSync(join(root, n))) : "absent")).join();
+    const before = snapshot(control, false);
     const again = run(["check", "--root", control], quiet);
     log(`${again.exit === EXIT.ok ? "OK  " : "FAIL"} control check passes`);
     ok = again.exit === EXIT.ok;
+    const clean = run(["claims", join(control, WRITEUP), "--root", control], quiet);
+    log(`${clean.exit === EXIT.ok ? "OK  " : "FAIL"} control writeup passes claims`);
+    if (clean.exit !== EXIT.ok) ok = false;
     for (const p of PLANTS) {
       const root = mkdtempSync(join(tmpdir(), "coverage-plant-"));
       try {
         cpSync(control, root, { recursive: true });
         p.mutate(root);
-        const afterMutate = snapshot(root);
+        const afterMutate = snapshot(root, false);
         // A build plant runs over marker bytes: a build that wrote the same outputs and then refused would
         // otherwise leave them byte-equal to the control's and pass for having written nothing.
-        if (!p.argv) for (const n of [OUT_EXISTS, OUT_VALIDATED, OUT_SUMMARY]) writeFileSync(join(root, COVERAGE_DIR, n), "self-test marker\n");
+        // A plant that removed the writeup keeps it removed: the marker only overwrites what is there.
+        if (!p.argv && !p.args) for (const n of [...[OUT_EXISTS, OUT_VALIDATED, OUT_SUMMARY].map((x) => join(COVERAGE_DIR, x)), WRITEUP]) if (existsSync(join(root, n))) writeFileSync(join(root, n), "self-test marker\n");
         const mid = snapshot(root);
-        const r = run([...(p.argv ?? ["build"]), "--root", root], quiet);
+        const r = run([...(p.args ? p.args(root) : (p.argv ?? ["build"])), "--root", root], quiet);
         const same = snapshot(root) === mid;
         const good = r.exit === p.exit && r.error?.code === p.code && r.error?.item === p.item && same;
         if (!good) ok = false;
         log(`${good ? "OK  " : "FAIL"} ${p.name}: ${r.error ? `${r.error.code} (${r.error.item})` : `exit ${r.exit}, nothing refused`}${same ? "" : "; AN OUTPUT CHANGED"}`);
-        if (p.exit === EXIT.refused && !p.argv && afterMutate !== before) ok = false;
+        if (p.exit === EXIT.refused && !p.argv && !p.args && afterMutate !== before) ok = false;
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
@@ -1364,6 +1785,7 @@ interface Cli {
   sha?: string;
   out?: string;
   final: boolean;
+  against?: string;
   positional: string[];
 }
 
@@ -1381,6 +1803,7 @@ function parseCli(argv: string[]): Cli {
     else if (a === "--sha256") c.sha = value();
     else if (a === "--out") c.out = resolve(value());
     else if (a === "--final") c.final = true;
+    else if (a === "--against") c.against = resolve(value());
     else if (a.startsWith("--")) refuse("usage", a, `unknown argument: ${a}`);
     else c.positional.push(a);
   }
@@ -1395,21 +1818,30 @@ function main(argv: string[], io: Io, deps: Deps): ExitCode {
   if (argv[0] === "--self-test") return selfTest(io.log) ? EXIT.ok : EXIT.failed;
   const c = parseCli(argv);
   const l = layoutFor(c.root);
-  if (c.positional.length && c.cmd !== "refresh-attack") refuse("usage", c.positional[0], `unexpected argument: ${c.positional[0]}`);
+  if (c.against !== undefined && c.cmd !== "claims") refuse("usage", "--against", "--against belongs to claims");
+  if (c.positional.length && c.cmd !== "refresh-attack" && c.cmd !== "claims") refuse("usage", c.positional[0], `unexpected argument: ${c.positional[0]}`);
   if (c.cmd === "build") {
     const b = buildAll(l);
-    writeAll(l.coverage, b.files);
-    io.log(`coverage: wrote ${plural(b.files.size, "file")} under ${rel(l, l.coverage)}`);
+    // The writeup is spliced before anything is written, so a refusal leaves every output as it was.
+    const writeup = spliceWriteup(l, b.section);
+    mkdirSync(l.coverage, { recursive: true });
+    writeSet([...[...b.files].map(([name, text]): [string, string] => [join(l.coverage, name), text]), [l.writeup, writeup]]);
+    io.log(`coverage: wrote ${plural(b.files.size, "file")} under ${rel(l, l.coverage)} and the results section of ${rel(l, l.writeup)}`);
     io.log(`coverage: ${b.validated.length} of ${b.packSize} pack rules validated; ${plural(b.unclassified.length, "rule")} unclassified; complete ${b.complete}`);
     return EXIT.ok;
   }
   if (c.cmd === "check") {
     const b = buildAll(l);
-    const bad = diffOutputs(l, b.files);
+    const bad = [...diffOutputs(l, b.files), ...diffWriteup(l, b.section)];
     for (const line of bad) io.err(`coverage: ${line}`);
     if (bad.length) failed("output-differs", bad[0].split(" ")[0], `${plural(bad.length, "checked-in output")} differ from the rebuild; run build`);
     if (c.final && !b.complete) refuse("not-complete", "coverage", `the coverage is not complete: ${plural(b.unclassified.length, "rule")} neither validated nor classified (${b.unclassified.join(", ")})`);
     io.log(`coverage: the checked-in outputs match the rebuild; ${b.validated.length} of ${b.packSize} validated; complete ${b.complete}`);
+    return EXIT.ok;
+  }
+  if (c.cmd === "claims") {
+    const n = checkClaims(c.positional, layoutFor(c.against ?? c.root), l, io);
+    io.log(`coverage: claims: ${plural(n, "file")} checked; no number outside the results section that the build does not own`);
     return EXIT.ok;
   }
   if (c.cmd === "fetch") {

@@ -22,6 +22,7 @@ import {
   msearchBody,
   NAVIGATOR_VERSION,
   PLANTS,
+  buildSection,
   parseAttackTsv,
   parseInstant,
   parseRecord,
@@ -41,6 +42,8 @@ const COVERAGE = "phase-b-detection/coverage";
 const VALIDATION = "phase-b-detection/validation";
 const RECORDS = "phase-b-detection/art-runs";
 const MISSES = `${VALIDATION}/misses.json`;
+const WRITEUP = "phase-b-detection/README.md";
+const LITERALS = "phase-b-detection/claims-literals.json";
 const FOUR = [100400, 100407, 100410, 100411];
 // The rules the second session's fixture evidence validates; edits to the first session leave them.
 const SECOND = [100400, 100407];
@@ -1059,13 +1062,13 @@ describe("self-test plants", () => {
       roots.push(root);
       cpSync(control, root, { recursive: true });
       plant.mutate(root);
-      const before = ["layer-rule-exists.json", "layer-validated.json", "coverage.json"].map((n) => (existsSync(join(root, COVERAGE, n)) ? readFileSync(join(root, COVERAGE, n), "utf8") : null));
-      const r = run([...(plant.argv ?? ["build"]), "--root", root], quiet);
+      const outputs = () => [...["layer-rule-exists.json", "layer-validated.json", "coverage.json"].map((n) => join(COVERAGE, n)), WRITEUP].map((n) => (existsSync(join(root, n)) ? readFileSync(join(root, n), "utf8") : null));
+      const before = outputs();
+      const r = run([...(plant.args ? plant.args(root) : (plant.argv ?? ["build"])), "--root", root], quiet);
       expect(r.exit).toBe(plant.exit);
       expect(r.error?.code).toBe(plant.code);
       expect(r.error?.item).toBe(plant.item);
-      const after = ["layer-rule-exists.json", "layer-validated.json", "coverage.json"].map((n) => (existsSync(join(root, COVERAGE, n)) ? readFileSync(join(root, COVERAGE, n), "utf8") : null));
-      expect(after).toEqual(before);
+      expect(outputs()).toEqual(before);
     });
   }
   test("the self-test command exits 0 and prints one OK line per plant", () => {
@@ -1073,7 +1076,536 @@ describe("self-test plants", () => {
     const lines = p.stdout.toString().trim().split("\n");
     expect(p.exitCode).toBe(0);
     expect(lines.every((l) => l.startsWith("OK  "))).toBe(true);
-    expect(lines).toHaveLength(PLANTS.length + 2);
+    expect(lines).toHaveLength(PLANTS.length + 3);
+  });
+});
+
+// *--- The writeup number gate ---*
+
+const HEADING = "## Validation results";
+const SOURCE = /^Source: `coverage\.json`, SHA-256 [0-9a-f]{64}\.$/;
+const readText = (root: string, p: string) => readFileSync(join(root, p), "utf8");
+
+/** The results section of a text, found independently of the tool: its lines, bounds and the text around it. */
+function sectionOf(text: string, heading = HEADING) {
+  const lines = text.split("\n");
+  const a = lines.indexOf(heading);
+  const b = lines.findIndex((l, i) => i > a && SOURCE.test(l));
+  return { lines, a, b, section: lines.slice(a, b + 1).join("\n"), before: lines.slice(0, a).join("\n"), after: lines.slice(b + 1).join("\n") };
+}
+
+/** The sentences and the table of one built section, read back as data. */
+function readSection(root: string) {
+  const s = sectionOf(readText(root, WRITEUP));
+  const rows = s.lines.filter((l) => /^\| 100\d{3} \|/.test(l)).map((l) => l.split("|").slice(1, -1).map((c) => c.trim()));
+  return { ...s, rows };
+}
+
+function capture() {
+  const errs: string[] = [];
+  const logs: string[] = [];
+  return { io: { log: (l: string) => logs.push(l), err: (l: string) => errs.push(l) }, errs, logs };
+}
+
+const mdFile = (root: string, name: string, body: string) => {
+  writeFileSync(join(root, "phase-b-detection", name), body);
+  return `phase-b-detection/${name}`;
+};
+const claimsRun = (root: string, files: string[], extra: string[] = []) => {
+  const c = capture();
+  const r = run(["claims", ...extra, "--root", root, ...files.map((f) => join(root, f))], c.io);
+  return { ...r, errs: c.errs, logs: c.logs };
+};
+// The percentage in the section is one decimal, so a test that plants a one-digit change moves that decimal.
+const bumpPercent = (text: string) => text.replace(/\((\d+\.\d) percent\)/, (_m, n) => `(${(Number(n) + 1).toFixed(1)} percent)`);
+const tenths = (v: number, of: number) => Math.floor((2000 * v + of) / (2 * of));
+const addLiteral = (root: string, text: string, source: string) => editJson(root, LITERALS, (x) => x.literals.push({ text, source }));
+
+// ISC-185: the results section is a fourth output, built from the same data as coverage.json.
+describe("results section", () => {
+  test("build writes the section, its sentences and one table row per pack rule", () => {
+    const root = scratch();
+    expect(build(root).exit).toBe(EXIT.ok);
+    const s = readSection(root);
+    const sum = summaryOf(root);
+    expect(s.a).toBeGreaterThanOrEqual(0);
+    expect(s.b).toBeGreaterThan(s.a);
+    expect(s.section).toContain(`${sum.ratio.validated} of ${sum.ratio.of} pack rules are validated (${Math.floor(tenths(sum.ratio.validated, sum.ratio.of) / 10)}.${tenths(sum.ratio.validated, sum.ratio.of) % 10} percent)`);
+    expect(s.rows).toHaveLength(18);
+    expect(s.rows.map((r) => Number(r[0]))).toEqual(sum.rules.map((r: any) => r.rule));
+    for (const [i, r] of s.rows.entries()) {
+      const row = sum.rules[i];
+      expect(r[1]).toBe(String(row.level));
+      expect(r[2]).toBe(row.attack19.join(", "));
+      expect(r[3]).toBe(row.status === "validated" ? "validated" : "not validated");
+      expect(r[4]).toBe(row.validation ? row.validation.art : row.miss ? row.miss.class : "unclassified");
+      expect(r[5]).toBe(row.validation ? row.validation.session : (row.miss?.session ?? "none"));
+    }
+  });
+
+  test("the section ends with the SHA-256 of coverage.json, as the bytes stand", () => {
+    const root = scratch();
+    build(root);
+    const s = readSection(root);
+    const hash = new Bun.CryptoHasher("sha256").update(readFileSync(join(root, COVERAGE, "coverage.json"))).digest("hex");
+    expect(s.lines[s.b]).toBe(`Source: \`coverage.json\`, SHA-256 ${hash}.`);
+  });
+
+  test("the section is plain ASCII with no wall-clock time, and a rebuild is byte-identical", () => {
+    const root = scratch();
+    build(root);
+    const first = readText(root, WRITEUP);
+    expect(/^[\x20-\x7e\n]*$/.test(readSection(root).section)).toBe(true);
+    build(root);
+    expect(readText(root, WRITEUP)).toBe(first);
+  });
+
+  test("the three existing outputs keep the bytes they had before the section existed", () => {
+    const real = [`${COVERAGE}/layer-rule-exists.json`, `${COVERAGE}/layer-validated.json`].map((p) => new Bun.CryptoHasher("sha256").update(readFileSync(join(ROOT, p))).digest("hex"));
+    expect(real[0].startsWith("9aafa1cf")).toBe(true);
+    expect(real[1].startsWith("33443c6a")).toBe(true);
+  });
+
+  test("build changes only the section and leaves every byte outside it", () => {
+    const root = scratch();
+    build(root);
+    const first = readText(root, WRITEUP);
+    const parts = sectionOf(first);
+    const edited = `# Edited title\n\nProse before the section.\n\n${parts.section}\n\nProse after the section.\n\n- a list\n`;
+    writeFileSync(join(root, WRITEUP), edited);
+    // A new miss entry changes the totals, so the section has to change.
+    missEntry(root, { rule: 100344, class: "not-run", evidence: "x", ruling: "x" });
+    expect(build(root).exit).toBe(EXIT.ok);
+    const now = sectionOf(readText(root, WRITEUP));
+    expect(now.section).not.toBe(parts.section);
+    expect(now.before).toBe("# Edited title\n\nProse before the section.\n");
+    expect(now.after).toBe("\nProse after the section.\n\n- a list\n");
+  });
+
+  test("build appends the section to a writeup that has none, keeping what was there", () => {
+    const root = scratch();
+    writeFileSync(join(root, WRITEUP), "# Title\n\nDraft prose.\n");
+    expect(build(root).exit).toBe(EXIT.ok);
+    const text = readText(root, WRITEUP);
+    expect(text.startsWith("# Title\n\nDraft prose.\n\n## Validation results\n")).toBe(true);
+    expect(text.endsWith("\n")).toBe(true);
+    expect(run(["check", "--root", root], quiet).exit).toBe(EXIT.ok);
+  });
+
+  test("the miss classes are counted by class in a sentence, and an unclassified rule is named", () => {
+    const root = scratch();
+    missEntry(root, { rule: 100344, class: "not-run", evidence: "x", ruling: "x" });
+    missEntry(root, { rule: 100343, class: "not-run", evidence: "x", ruling: "x" });
+    build(root);
+    const s = readSection(root).section;
+    expect(s).toContain("2 not run");
+    expect(s).toMatch(/12 rules have no miss class yet/);
+  });
+
+  test("check passes when the section matches and fails on one digit changed", () => {
+    const root = scratch();
+    build(root);
+    expect(run(["check", "--root", root], quiet).exit).toBe(EXIT.ok);
+    const text = readText(root, WRITEUP);
+    writeFileSync(join(root, WRITEUP), bumpPercent(text));
+    const r = run(["check", "--root", root], quiet);
+    expect(r.exit).toBe(EXIT.failed);
+    expect(r.error?.code).toBe("output-differs");
+    expect(r.error?.item).toBe(WRITEUP);
+  });
+
+  test("check passes when only the prose outside the section changes", () => {
+    const root = scratch();
+    build(root);
+    writeFileSync(join(root, WRITEUP), `${readText(root, WRITEUP)}\nMore prose after.\n`);
+    expect(run(["check", "--root", root], quiet).exit).toBe(EXIT.ok);
+  });
+
+  test("a missing writeup, a missing section, two sections and an unterminated section are refused", () => {
+    const root = scratch();
+    build(root);
+    const good = readText(root, WRITEUP);
+    const sec = sectionOf(good).section;
+    const want = (text: string | null, code: string) => {
+      if (text === null) rmSync(join(root, WRITEUP));
+      else writeFileSync(join(root, WRITEUP), text);
+      for (const cmd of [["check"], ["claims", join(root, WRITEUP)]]) {
+        // claims needs a file; a missing one is its own setup problem
+        if (text === null && cmd[0] === "claims") continue;
+        const r = run([...cmd, "--root", root], quiet);
+        expect(r.exit).toBe(EXIT.refused);
+        expect(r.error?.code).toBe(code);
+      }
+    };
+    want(null, "writeup-missing");
+    want("# Title\n", "section-missing");
+    want(`${good}\n${sec}\n`, "section-duplicate");
+    want(`# Title\n\n${HEADING}\n\nNo source line here.\n`, "section-unterminated");
+    want(`# Title\n\n${HEADING}\n\nText.\n\n## Another heading\n\nSource: \`coverage.json\`, SHA-256 ${"0".repeat(64)}.\n`, "section-unterminated");
+  });
+
+  test("a refused build writes neither the layers nor the writeup", () => {
+    const root = scratch();
+    build(root);
+    const before = [readText(root, WRITEUP), readText(root, `${COVERAGE}/coverage.json`)];
+    writeFileSync(join(root, WRITEUP), `${before[0]}\n${sectionOf(before[0]).section}\n`);
+    const bad = readText(root, WRITEUP);
+    editJson(root, "phase-b-detection/attack/crosswalk.json", (c) => (c.entries = c.entries.filter((e: any) => e.from !== "T1027")));
+    expect(build(root).exit).toBe(EXIT.refused);
+    expect(readText(root, WRITEUP)).toBe(bad);
+    // The duplicate is refused on its own, too, with a good crosswalk.
+    const again = scratch();
+    build(again);
+    writeFileSync(join(again, WRITEUP), bad);
+    const r = run(["build", "--root", again], quiet);
+    expect(r.error?.code).toBe("section-duplicate");
+    expect(readText(again, WRITEUP)).toBe(bad);
+  });
+
+  test("a heading inside a code fence is not a section", () => {
+    const root = scratch();
+    writeFileSync(join(root, WRITEUP), `# Title\n\n\`\`\`\n${HEADING}\n\`\`\`\n`);
+    expect(build(root).exit).toBe(EXIT.ok);
+    expect(readText(root, WRITEUP)).toContain(`\`\`\`\n${HEADING}\n\`\`\`\n\n${HEADING}\n`);
+  });
+
+  test("the writeup in the repo holds its section, and it is the rebuild", () => {
+    const s = sectionOf(readFileSync(join(ROOT, WRITEUP), "utf8"));
+    expect(s.a).toBeGreaterThanOrEqual(0);
+    expect(run(["check"], quiet).exit).toBe(EXIT.ok);
+    expect(s.before).toContain("draft");
+    expect(s.section).toContain("12 of 18 pack rules are validated (66.7 percent)");
+  });
+
+  // The public bar is 60 percent, and a whole-number round can cross it: the figure keeps one decimal, rounded
+  // to nearest (halves up) with integer arithmetic.
+  test("the percentage carries one decimal, rounded to nearest", () => {
+    const facts = (validated: number, packSize: number) => ({ rows: [], packSize, validated, unclassified: 0, existsTechniques: 0, validatedTechniques: 0, summaryText: "x" });
+    const read = (v: number, p: number) => /\((\S+) percent\)/.exec(buildSection(facts(v, p)))?.[1];
+    expect(read(12, 18)).toBe("66.7");
+    expect(read(1, 3)).toBe("33.3");
+    expect(read(2, 3)).toBe("66.7");
+    expect(read(0, 18)).toBe("0.0");
+    expect(read(18, 18)).toBe("100.0");
+    expect(read(1, 8)).toBe("12.5");
+    expect(read(1, 16)).toBe("6.3");
+    expect(read(1, 6)).toBe("16.7");
+    expect(read(11, 18)).toBe("61.1");
+  });
+});
+
+// ISC-186: any number outside the section must be an identifier or a listed literal.
+describe("claims: numbers in prose", () => {
+  const PROSE = "phase-b-detection/notes.md";
+  const planted = (root: string, line: string) => {
+    mdFile(root, "notes.md", `# Notes\n\n${line}\n`);
+    return claimsRun(root, [PROSE]);
+  };
+  for (const [token, code, line] of [
+    ["13 of 18", "claim-number", "The pack validated 13 of 18 rules."],
+    ["70%", "claim-number", "Coverage is 70% overall."],
+    ["twelve of eighteen", "claim-number-word", "We validated twelve of eighteen rules."],
+    ["twelve percent", "claim-number-word", "About twelve percent were blocked."],
+    ["12 out of 18", "claim-number", "Only 12 out of 18 fired."],
+    ["19", "claim-number", "There were 19 attempts."],
+    ["19.2", "claim-number", "ATT&CK 19.2 is pinned."],
+    ["1,000", "claim-number", "About 1,000 events."],
+  ] as const) {
+    test(`${token} typed in prose is refused, naming file, line and token`, () => {
+      const root = scratch();
+      build(root);
+      const r = planted(root, line);
+      expect(r.exit).toBe(EXIT.refused);
+      expect(r.error?.code).toBe(code);
+      expect(r.error?.item).toBe(`${PROSE}:3 ${token}`);
+      expect(r.errs.join("\n")).toContain(`${PROSE}:3 ${token}`);
+    });
+  }
+
+  test("every refused token is reported, not only the first", () => {
+    const root = scratch();
+    build(root);
+    mdFile(root, "notes.md", "# Notes\n\nA 13 of 18 and a 70% and twelve of eighteen.\n\nAnd 5 more.\n");
+    const r = claimsRun(root, [PROSE]);
+    const items = r.errs.filter((l) => l.includes("claim-")).join("\n");
+    for (const token of ["13 of 18", "70%", "twelve of eighteen", "5"]) expect(items).toContain(token);
+  });
+
+  test("identifiers pass: pack rule IDs, Defender rule IDs, ATT&CK IDs, session IDs, dates, times, digests, list markers", () => {
+    const root = scratch();
+    build(root);
+    const digest = "a".repeat(64);
+    const body = [
+      "# Notes",
+      "",
+      "1. Rule 100410 and rule 100411 fired, and Defender rule 62123 blocked one.",
+      "2. T1105 #26 sits under T1105, T1218.010 and TA0011.",
+      `3. Session ${EV1} ran on 2026-11-22 at 03:52:39.123Z.`,
+      "4. The stamp 2026-11-22T03:52:39.0000000Z and 2026-11-22T03:52:39-07:00 are exact.",
+      `5. The digest ${digest} and a commit ${"b".repeat(40)} are named.`,
+      "6. Versions v19.2.1 and 4.14.9 are named.",
+      "",
+    ].join("\n");
+    mdFile(root, "notes.md", body);
+    const r = claimsRun(root, [PROSE]);
+    expect(r.errs).toEqual([]);
+    expect(r.exit).toBe(EXIT.ok);
+  });
+
+  test("an identifier must be in its registry", () => {
+    for (const [line, code, token] of [
+      ["Rule 100499 fired.", "claim-rule-unknown", "100499"],
+      ["Rule 100339 fired.", "claim-number", "100339"],
+      ["The technique T9999 maps.", "claim-technique-unknown", "T9999"],
+      ["The test T9999 #4 ran.", "claim-technique-unknown", "T9999 #4"],
+      ["Session 20261122T000000Z-000000 ran.", "claim-session-unknown", "20261122T000000Z-000000"],
+      ["Rule 62125 fired.", "claim-number", "62125"],
+    ] as const) {
+      const root = scratch();
+      build(root);
+      const r = planted(root, line);
+      expect(r.exit).toBe(EXIT.refused);
+      expect(r.error?.code).toBe(code);
+      expect(r.error?.item).toBe(`${PROSE}:3 ${token}`);
+    }
+  });
+
+  test("a date that is not a real day, a time that is not a clock time and an address are refused", () => {
+    for (const [line, token] of [
+      ["Seen on 2026-13-45.", "2026-13-45"],
+      ["Seen at 25:99.", "25:99"],
+      ["Seen at 203.0.113.7.", "203.0.113.7"],
+    ] as const) {
+      const root = scratch();
+      build(root);
+      const r = planted(root, line);
+      expect(r.exit).toBe(EXIT.refused);
+      expect(r.error?.item).toBe(`${PROSE}:3 ${token}`);
+    }
+  });
+
+  test("fenced code and inline code are not exempt", () => {
+    const root = scratch();
+    build(root);
+    mdFile(root, "notes.md", "# Notes\n\n```\nvalidated 13 of 18\n```\n\nand `70%` inline.\n");
+    const r = claimsRun(root, [PROSE]);
+    expect(r.errs.join("\n")).toContain(`${PROSE}:4 13 of 18`);
+    expect(r.errs.join("\n")).toContain(`${PROSE}:7 70%`);
+  });
+
+  test("number words other than the refused ratio forms pass, as stated in the limits", () => {
+    const root = scratch();
+    build(root);
+    expect(planted(root, "We ran twelve tests and fixed three rules.").exit).toBe(EXIT.ok);
+  });
+
+  test("a file with no section is still prose-checked, and the lab writeup passes", () => {
+    const root = scratch();
+    build(root);
+    expect(claimsRun(root, [WRITEUP]).exit).toBe(EXIT.ok);
+    expect(run(["claims", join(ROOT, WRITEUP)], quiet).exit).toBe(EXIT.ok);
+    const r = claimsRun(root, [WRITEUP]);
+    expect(r.logs.join("\n")).toMatch(/claims/);
+  });
+
+  test("a number typed into the lab writeup outside the section is refused", () => {
+    const root = scratch();
+    build(root);
+    writeFileSync(join(root, WRITEUP), `${readText(root, WRITEUP)}\nWe got 13 of 18.\n`);
+    const r = claimsRun(root, [WRITEUP]);
+    expect(r.exit).toBe(EXIT.refused);
+    expect(r.error?.code).toBe("claim-number");
+  });
+
+  test("a number inside the generated section is not prose", () => {
+    const root = scratch();
+    build(root);
+    expect(sectionOf(readText(root, WRITEUP)).section).toMatch(/\d+ of 18/);
+    expect(claimsRun(root, [WRITEUP]).exit).toBe(EXIT.ok);
+  });
+
+  test("a claims run with no file, or a file that is not Markdown, is refused", () => {
+    const root = scratch();
+    build(root);
+    expect(run(["claims", "--root", root], quiet).error?.code).toBe("usage");
+    writeFileSync(join(root, "phase-b-detection", "notes.txt"), "x\n");
+    expect(claimsRun(root, ["phase-b-detection/notes.txt"]).error?.code).toBe("claims-file");
+    expect(claimsRun(root, ["phase-b-detection/missing.md"]).error?.code).toBe("input-missing");
+  });
+
+  // A URL is an address, not a claim: digits in its destination are not refused. The text of a link is prose.
+  test("digits inside a URL are not claims, in a link destination or bare, and link text is still scanned", () => {
+    const root = scratch();
+    build(root);
+    mdFile(root, "notes.md", [
+      "# Notes",
+      "",
+      "[the technique](https://attack.mitre.org/techniques/T1547/001/) and https://example.org/post-2026/a1, then (http://example.net/x7).",
+      "<https://example.net/p9> and [wiki](https://en.wikipedia.org/wiki/Foo_(bar2)).",
+      "",
+    ].join("\n"));
+    const ok = claimsRun(root, [PROSE]);
+    expect(ok.errs).toEqual([]);
+    expect(ok.exit).toBe(EXIT.ok);
+    const r = planted(root, "[13 of 18](https://example.org/)");
+    expect(r.error).toMatchObject({ code: "claim-number", item: `${PROSE}:3 13 of 18` });
+    // A number just after the URL is not part of it.
+    expect(planted(root, "See https://example.org/a1 and 5 rules.").error?.item).toBe(`${PROSE}:3 5`);
+    // Without a scheme the destination is prose.
+    expect(planted(root, "[page](post-2026.md)").error?.code).toBe("claim-number");
+  });
+
+  test("a decimal digit outside ASCII is refused, whatever script it is written in", () => {
+    const root = scratch();
+    build(root);
+    const r = planted(root, "Only \uff11\uff12 of \uff11\uff18 fired.");
+    expect(r.exit).toBe(EXIT.refused);
+    expect(r.error).toMatchObject({ code: "claim-number", item: `${PROSE}:3 \uff11\uff12` });
+    expect(r.errs.join("\n")).toContain(`${PROSE}:3 \uff11\uff18`);
+    for (const line of ["Arabic-Indic \u0661\u0662 here.", "Devanagari \u0967\u0968 here.", "Mixed 1\uff12 here.", "Astral \u{1d7d0} here."]) {
+      expect(planted(root, line).error?.code, line).toBe("claim-number");
+    }
+  });
+
+  describe("the literals file", () => {
+    const withLiteral = (text: string, source: string) => {
+      const root = scratch();
+      build(root);
+      addLiteral(root, text, source);
+      return root;
+    };
+
+    test("a listed phrase passes where it is used, and a number next to it still fails", () => {
+      const root = withLiteral("ATT&CK 19.2", "ATTACK_VERSION in tools/coverage.ts");
+      mdFile(root, "notes.md", "# Notes\n\nATT&CK 19.2 is pinned.\n");
+      expect(claimsRun(root, [PROSE]).exit).toBe(EXIT.ok);
+      mdFile(root, "notes.md", "# Notes\n\nATT&CK 19.2 is pinned, and 5 rules.\n");
+      expect(claimsRun(root, [PROSE]).error?.item).toBe(`${PROSE}:3 5`);
+      mdFile(root, "notes.md", "# Notes\n\nATT&CK 119.25 is not it.\n");
+      expect(claimsRun(root, [PROSE]).error?.code).toBe("claim-number");
+    });
+
+    // A literal excuses the digits inside the phrase as written and nothing else: listing "event 3" must not let
+    // "3 rules fired" through.
+    test("only the digits inside a matched phrase are excused", () => {
+      const root = withLiteral("event 3", "Sysmon event ID for a network connection");
+      mdFile(root, "notes.md", "# Notes\n\nSysmon event 3 fired and 3 rules did not.\n");
+      const r = claimsRun(root, [PROSE]);
+      expect(r.error).toMatchObject({ code: "claim-number", item: `${PROSE}:3 3` });
+      expect(r.errs.filter((l) => l.includes("claim-number:") && l.includes(PROSE))).toHaveLength(1);
+      mdFile(root, "notes.md", "# Notes\n\nSysmon event 3 fired. A second event 3 followed (event 3).\n");
+      expect(claimsRun(root, [PROSE]).exit).toBe(EXIT.ok);
+      mdFile(root, "notes.md", "# Notes\n\n3 rules fired.\n");
+      expect(claimsRun(root, [PROSE]).error?.item).toBe(`${PROSE}:3 3`);
+    });
+
+    test("a phrase is matched whole, at token boundaries", () => {
+      const root = withLiteral("event 3", "Sysmon event ID for a network connection");
+      for (const [line, token] of [
+        ["The event 33 fired.", "33"],
+        ["The prevent 3 case.", "3"],
+        ["An event 3.5 case.", "3.5"],
+        ["An event-3 case.", "event-3"],
+      ] as const) {
+        mdFile(root, "notes.md", `# Notes\n\n${line}\n`);
+        expect(claimsRun(root, [PROSE]).error, line).toMatchObject({ code: "claim-number", item: `${PROSE}:3 ${token}` });
+      }
+      mdFile(root, "notes.md", "# Notes\n\nAn event 3, then event 3.\n");
+      expect(claimsRun(root, [PROSE]).exit).toBe(EXIT.ok);
+    });
+
+    test("phrases from the brief pass as written", () => {
+      const root = withLiteral("event 3", "s");
+      for (const text of ["Sysmon 15.21", "level 12", "port 443"]) addLiteral(root, text, "a source");
+      mdFile(root, "notes.md", "# Notes\n\nSysmon 15.21 saw a level 12 rule on port 443 and event 3.\n");
+      expect(claimsRun(root, [PROSE]).exit).toBe(EXIT.ok);
+    });
+
+    test("a literal with an empty source, no word, no digit, or a repeat is refused", () => {
+      const a = withLiteral("ATT&CK 19.2", "   ");
+      expect(claimsRun(a, [WRITEUP]).error).toMatchObject({ code: "literal-source", item: `${LITERALS} ATT&CK 19.2` });
+      for (const text of ["3", "19.2", "nineteen", "event", "12 34", "event  3", " event 3", "event 3 ", "T1105 3", "event \uff13"]) {
+        const b = withLiteral(text, "a source");
+        expect(claimsRun(b, [WRITEUP]).error, text).toMatchObject({ code: "literals-shape" });
+      }
+      const c = withLiteral("ATT&CK 19.2", "one");
+      addLiteral(c, "ATT&CK 19.2", "two");
+      expect(claimsRun(c, [WRITEUP]).error).toMatchObject({ code: "literal-duplicate", item: `${LITERALS} ATT&CK 19.2` });
+    });
+
+    test("a literal the writeup never uses is refused when the lab writeup is checked", () => {
+      const root = withLiteral("ATT&CK 19.2", "ATTACK_VERSION in tools/coverage.ts");
+      const r = claimsRun(root, [WRITEUP]);
+      expect(r.exit).toBe(EXIT.refused);
+      expect(r.error).toMatchObject({ code: "literal-unused", item: `${LITERALS} ATT&CK 19.2` });
+      mdFile(root, "notes.md", "# Notes\n\nATT&CK 19.2.\n");
+      expect(claimsRun(root, [WRITEUP, PROSE]).exit).toBe(EXIT.ok);
+      // A single other file does not report literals it may not use.
+      expect(claimsRun(root, [PROSE]).exit).toBe(EXIT.ok);
+    });
+
+    test("a literals file in the wrong shape, or missing, is refused", () => {
+      const root = scratch();
+      build(root);
+      editJson(root, LITERALS, (x) => (x.format = "talonsoclab-claims-literals/2"));
+      expect(claimsRun(root, [WRITEUP]).error?.code).toBe("literals-shape");
+      rmSync(join(root, LITERALS));
+      const r = claimsRun(root, [WRITEUP]);
+      expect(r.exit).toBe(EXIT.setup);
+      expect(r.error?.code).toBe("input-missing");
+    });
+  });
+});
+
+// ISC-187: a copy of the section elsewhere must be the lab's current section, byte for byte.
+describe("claims: a copy of the section", () => {
+  const COPY = "phase-b-detection/copy.md";
+  const lab = scratch();
+  build(lab);
+  const older = scratch(false);
+  build(older);
+  const sectionText = (root: string) => sectionOf(readText(root, WRITEUP)).section;
+
+  test("an exact copy passes, at the same heading level and at another", () => {
+    for (const level of ["##", "###", "####", "#"]) {
+      mdFile(lab, "copy.md", `# Blog post\n\nProse.\n\n${sectionText(lab).replace(HEADING, `${level} Validation results`)}\n\nMore prose.\n`);
+      const r = claimsRun(lab, [COPY], ["--against", lab]);
+      expect(r.errs).toEqual([]);
+      expect(r.exit).toBe(EXIT.ok);
+    }
+  });
+
+  test("a copy cut from an older build is refused, naming the file and heading line", () => {
+    expect(sectionText(older)).not.toBe(sectionText(lab));
+    mdFile(lab, "copy.md", `# Blog post\n\n${sectionText(older)}\n`);
+    const r = claimsRun(lab, [COPY], ["--against", lab]);
+    expect(r.exit).toBe(EXIT.refused);
+    expect(r.error?.code).toBe("claim-section-differs");
+    expect(r.error?.item).toBe(`${COPY}:3 Validation results`);
+  });
+
+  test("the older copy passes against the older lab", () => {
+    mdFile(lab, "copy.md", `# Blog post\n\n${sectionText(older)}\n`);
+    expect(claimsRun(lab, [COPY], ["--against", older]).exit).toBe(EXIT.ok);
+  });
+
+  test("one changed character in a copy is refused", () => {
+    mdFile(lab, "copy.md", `${sectionText(lab).replace("pack rules", "pack rule")}\n`);
+    expect(claimsRun(lab, [COPY], ["--against", lab]).error?.code).toBe("claim-section-differs");
+  });
+
+  test("two sections in a copy, or one without its source line, are refused", () => {
+    mdFile(lab, "copy.md", `${sectionText(lab)}\n\n${sectionText(lab)}\n`);
+    expect(claimsRun(lab, [COPY], ["--against", lab]).error?.code).toBe("section-duplicate");
+    mdFile(lab, "copy.md", `${HEADING}\n\nText.\n`);
+    expect(claimsRun(lab, [COPY], ["--against", lab]).error?.code).toBe("section-unterminated");
+  });
+
+  test("the lab root defaults to --root, and the rest of the copy's file is still prose-checked", () => {
+    mdFile(lab, "copy.md", `# Post\n\nWe saw 13 of 18.\n\n${sectionText(lab)}\n`);
+    const r = claimsRun(lab, [COPY]);
+    expect(r.error?.code).toBe("claim-number");
+    expect(r.error?.item).toBe(`${COPY}:3 13 of 18`);
   });
 });
 
@@ -1158,6 +1690,74 @@ describe("pre-commit hook", () => {
     expect(r.out).toContain(DIFFERS);
     expect(r.code).not.toBe(0);
     expect(git("reset", "-q", "--", LAYER).code).toBe(0);
+  });
+
+  // ISC-188: the writeup is a built output, so the hook reads its staged copy like a layer.
+  test("a staged results section that differs from the rebuild is blocked, even with the good writeup back in the working tree", () => {
+    const good = readFileSync(join(repo, WRITEUP), "utf8");
+    const bad = bumpPercent(good);
+    expect(bad).not.toBe(good);
+    writeFileSync(join(repo, WRITEUP), bad);
+    expect(git("add", WRITEUP).code).toBe(0);
+    writeFileSync(join(repo, WRITEUP), good);
+    try {
+      const r = git("commit", "-q", "-m", "planted section");
+      expect(r.out).toContain(`coverage: ${WRITEUP} differs from the rebuild`);
+      expect(r.code).not.toBe(0);
+    } finally {
+      expect(git("reset", "-q", "--", WRITEUP).code).toBe(0);
+      writeFileSync(join(repo, WRITEUP), good);
+    }
+  });
+
+  test("a writeup edit outside the section commits, and one that lands only in the working tree does not block", () => {
+    const good = readFileSync(join(repo, WRITEUP), "utf8");
+    writeFileSync(join(repo, WRITEUP), `${good}\nMore prose.\n`);
+    expect(git("add", WRITEUP).code).toBe(0);
+    writeFileSync(join(repo, WRITEUP), bumpPercent(good));
+    try {
+      const r = git("commit", "-q", "-m", "prose");
+      expect(r.out).toContain(MATCH);
+      expect(r.code).toBe(0);
+    } finally {
+      writeFileSync(join(repo, WRITEUP), `${good}\nMore prose.\n`);
+    }
+  });
+
+  // ISC-189: check reads only the section, so the hook also holds the staged prose to claims.
+  test("a count typed in the staged writeup outside the section is blocked, even with the good writeup back in the working tree", () => {
+    const good = readFileSync(join(repo, WRITEUP), "utf8");
+    const bad = good.replace("## Validation results", "We validated 13 of 18 rules.\n\n## Validation results");
+    expect(bad).not.toBe(good);
+    writeFileSync(join(repo, WRITEUP), bad);
+    expect(git("add", WRITEUP).code).toBe(0);
+    writeFileSync(join(repo, WRITEUP), good);
+    try {
+      const r = git("commit", "-q", "-m", "a typed count");
+      expect(r.out).toContain(MATCH);
+      expect(r.out).toContain(`coverage: claim-number: ${WRITEUP}:`);
+      expect(r.out).toContain("13 of 18");
+      expect(r.code).not.toBe(0);
+    } finally {
+      expect(git("reset", "-q", "--", WRITEUP).code).toBe(0);
+      writeFileSync(join(repo, WRITEUP), good);
+    }
+  });
+
+  test("a staged literal that the staged writeup never uses is blocked, even with the good list back in the working tree", () => {
+    const LIST = "phase-b-detection/claims-literals.json";
+    const good = readFileSync(join(repo, LIST), "utf8");
+    editJson(repo, LIST, (x) => x.literals.push({ text: "event 3", source: "the Sysmon event id" }));
+    expect(git("add", LIST).code).toBe(0);
+    writeFileSync(join(repo, LIST), good);
+    try {
+      const r = git("commit", "-q", "-m", "a literal nobody uses");
+      expect(r.out).toContain(`coverage: literal-unused: ${LIST} event 3`);
+      expect(r.code).not.toBe(0);
+    } finally {
+      expect(git("reset", "-q", "--", LIST).code).toBe(0);
+      writeFileSync(join(repo, LIST), good);
+    }
   });
 
   test("a staged input change is blocked until the rebuilt outputs are staged with it, whatever the working tree holds", () => {
