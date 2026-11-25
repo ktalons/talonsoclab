@@ -1,0 +1,39 @@
+# ******************************************************************************
+# *Title: coverage gate*
+# *Author: Kyle Versluis*
+# *Description: Reruns the coverage checks on every push to main.*
+# ******************************************************************************
+# The pre-commit and pre-push hooks run these same two commands on the author's
+# machine, and a hook can be skipped. This job cannot stop a push. It marks the
+# commit, so a push that went around the hooks shows as a failed check.
+# tools/README.md, section "coverage", says what each command holds.
+name: coverage gate
+
+on:
+  push:
+    branches: [main]
+
+# SECURITY: the job reads the repo and nothing else. It holds no secret.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: outputs and numbers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # SECURITY: actions are pinned by commit, not by tag, so a moved tag
+      # cannot change what runs here.
+      - name: Check out the pushed commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.5
+      - name: The checked-in outputs equal a rebuild, and no rule is unclassified
+        run: bun tools/coverage.ts check --final
+      - name: No count typed by hand in the writeup
+        run: bun tools/coverage.ts claims phase-b-detection/README.md

@@ -1568,6 +1568,20 @@ A record that carries no run or cleanup times has no window to ask for: `fetch` 
   URL with no space ("https://example.org/x,13"), a number written in a glyph that is not a
   decimal digit (a Roman numeral, a circled digit, a vulgar fraction), and a fraction in words
   ("one half").
+- The tool is built to catch an honest mistake: a stale output, a typed count, a tool or a rule
+  changed without a rebuild. It is not built to hold against someone who edits its inputs by hand
+  to mislead it. Known ways to do that, each found in review and left as it is: a link address
+  with an escaped bracket hides a number written right after it; a second heading spelled with
+  closing hashes is not read as a second results section, and `build` appends its section inside
+  a code fence left open; a record whose step says `refused` but still carries times opens a run
+  window, and a gate time that is not a time is not refused; an alert outside the Sysmon channel
+  whose time is spelled with fewer decimals is read as a wider instant; a `--root` that is itself
+  a link is followed; a rule file with an invalid byte in a comment is read with a replacement
+  character.
+- A workflow on GitHub, `.github/workflows/coverage-gate.yml`, runs `check --final` and `claims`
+  again on every push to `main`. It cannot stop a push. It marks the commit, so a push that went
+  around the hooks shows as a failed check. It holds no copy of the leak denylist, so it says
+  nothing about what `leakcheck` guards.
 - A local hook cannot stop an author who does not run it: `git commit --no-verify` skips the
   pre-commit hook, `git push --no-verify` skips the pre-push hook, and an author can change either
   hook or the tools it runs. The hook also runs code from the working tree on the author's own
