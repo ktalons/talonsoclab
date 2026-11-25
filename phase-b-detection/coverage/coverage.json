@@ -59,12 +59,12 @@
       "status": "not-validated",
       "validation": null,
       "miss": {
-        "class": "not-run",
-        "evidence": "The only allowlisted test, T1218.010 #2, fetches a scriptlet from the atomics master branch at run time and runs it, outside the commit pin.",
-        "session": null,
-        "test": null,
-        "alertId": null,
-        "ruling": "Kyle, 2026-11-22: skip for now, plan for later with my assistance."
+        "class": "blocked-by-defender",
+        "evidence": "Defender event 1116 (stock rule 62123) at 18:27:52.159Z, inside the run window of T1218.010 #2. The test step threw. Run on 2026-11-25 with the fetched scriptlet compared to the pinned commit right before, byte for byte equal.",
+        "session": "20261125T182727Z-90da90",
+        "test": "c9d0c4ef-8a96-4794-a75b-3d3a5e6f2a36",
+        "alertId": "wMf2E6IBzLVHNgEH4l3E",
+        "ruling": null
       }
     },
     {
@@ -79,12 +79,12 @@
       "status": "not-validated",
       "validation": null,
       "miss": {
-        "class": "not-run",
-        "evidence": "The only allowlisted test, T1218.011 #1, fetches a payload from the atomics master branch at run time and runs it, outside the commit pin.",
-        "session": null,
-        "test": null,
-        "alertId": null,
-        "ruling": "Kyle, 2026-11-22: skip for now, plan for later with my assistance."
+        "class": "blocked-by-defender",
+        "evidence": "Defender event 1116 (stock rule 62123) at 18:29:36.740Z, inside the run window of T1218.011 #1. The test step threw. Run on 2026-11-25 with the fetched payload compared to the pinned commit right before, byte for byte equal.",
+        "session": "20261125T182914Z-6ca13f",
+        "test": "57ba4ce9-ee7a-4f27-9928-3c70c489b59d",
+        "alertId": "uMf4E6IBzLVHNgEHeWAc",
+        "ruling": null
       }
     },
     {
@@ -445,6 +445,18 @@
       "session": "20261123T090325Z-4b506a",
       "verdict": "pass",
       "recordSha256": "6d2b5e95b65865802f445a968e6b75ad2169eecec225faa45fa70ef77685dfd1",
+      "evidence": true
+    },
+    {
+      "session": "20261125T182727Z-90da90",
+      "verdict": "fail",
+      "recordSha256": "d420b3f00c6157dea742a38b3388c59e116497f8aba225c97eb2d17968a67433",
+      "evidence": true
+    },
+    {
+      "session": "20261125T182914Z-6ca13f",
+      "verdict": "fail",
+      "recordSha256": "c3b5663b22be28146fec9a48a72a685782b4fcb178762c1d00949bee8928b621",
       "evidence": true
     }
   ],

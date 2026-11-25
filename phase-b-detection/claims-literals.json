@@ -1,4 +1,41 @@
 {
   "format": "talonsoclab-claims-literals/1",
-  "literals": []
+  "literals": [
+    {
+      "text": "level 12",
+      "source": "deploy/soc-recon/wazuh/custom-rules/local_eid11_pack.xml, the level of rule 100407"
+    },
+    {
+      "text": "level 0",
+      "source": "Wazuh 4.14.9 ruleset/rules/0830-sysmon_id_11.xml, the level of stock rule 92216, a parent of rule 100407"
+    },
+    {
+      "text": "agent 001",
+      "source": "phase-b-detection/validation/20261122T035737Z-cb8eb2.alerts.json, query.agent and each alert's agentId"
+    },
+    {
+      "text": "ATT&CK 19.2",
+      "source": "phase-b-detection/attack/crosswalk.json, the attack field"
+    },
+    {
+      "text": "event 1116",
+      "source": "phase-b-detection/validation/misses.json, the evidence of the entry for rule 100340"
+    },
+    {
+      "text": "regsvr32.exe image",
+      "source": "deploy/soc-recon/wazuh/custom-rules/local_eid3_pack.xml, the image pattern of rule 100341"
+    },
+    {
+      "text": "rundll32.exe image",
+      "source": "deploy/soc-recon/wazuh/custom-rules/local_eid3_pack.xml, the image pattern of rule 100342"
+    },
+    {
+      "text": "event 3",
+      "source": "deploy/soc-recon/wazuh/custom-rules/local_eid3_pack.xml, whose rules hang from the stock Sysmon network connection rule"
+    },
+    {
+      "text": "event 22",
+      "source": "deploy/soc-recon/wazuh/custom-rules/local_eid22_pack.xml, whose rule hangs from the stock Sysmon DNS query rule"
+    }
+  ]
 }

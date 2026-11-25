@@ -1,0 +1,80 @@
+{
+  "format": "talonsoclab-art-alerts/1",
+  "session": "20261125T182914Z-6ca13f",
+  "recordSha256": "c3b5663b22be28146fec9a48a72a685782b4fcb178762c1d00949bee8928b621",
+  "query": {
+    "index": "wazuh-alerts-*",
+    "agent": "001",
+    "rules": [
+      62123,
+      62124,
+      100340,
+      100341,
+      100342,
+      100343,
+      100344,
+      100400,
+      100401,
+      100402,
+      100403,
+      100404,
+      100405,
+      100406,
+      100407,
+      100408,
+      100409,
+      100410,
+      100411,
+      100412
+    ],
+    "fromUtc": "2026-11-25T18:28:35.421Z",
+    "toUtc": "2026-11-25T18:30:40.801Z"
+  },
+  "shards": {
+    "alerts": {
+      "total": 135,
+      "successful": 135,
+      "skipped": 132,
+      "failed": 0
+    },
+    "control": {
+      "total": 135,
+      "successful": 135,
+      "skipped": 132,
+      "failed": 0
+    }
+  },
+  "control": {
+    "agent001Alerts": 107
+  },
+  "alerts": [
+    {
+      "index": "wazuh-alerts-4.x-2026.11.25",
+      "id": "uMf4E6IBzLVHNgEHeWAc",
+      "ruleId": 62123,
+      "ruleLevel": 12,
+      "mitre": [],
+      "agentId": "001",
+      "timestamp": "2026-11-25T18:29:39.015Z",
+      "eventTime": "2026-11-25T18:29:36.7408142Z",
+      "systemTime": "2026-11-25T18:29:36.7408142Z",
+      "eventId": 1116,
+      "channel": "Microsoft-Windows-Windows Defender/Operational",
+      "image": null
+    },
+    {
+      "index": "wazuh-alerts-4.x-2026.11.25",
+      "id": "38f4E6IBzLVHNgEHs2C0",
+      "ruleId": 62124,
+      "ruleLevel": 3,
+      "mitre": [],
+      "agentId": "001",
+      "timestamp": "2026-11-25T18:29:53.878Z",
+      "eventTime": "2026-11-25T18:29:52.1060881Z",
+      "systemTime": "2026-11-25T18:29:52.1060881Z",
+      "eventId": 1117,
+      "channel": "Microsoft-Windows-Windows Defender/Operational",
+      "image": null
+    }
+  ]
+}

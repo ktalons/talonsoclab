@@ -1,0 +1,62 @@
+{
+  "format": "talonsoclab-art-session/1",
+  "session": "20261125T182914Z-6ca13f",
+  "verdict": "fail",
+  "failures": [
+    "57ba4ce9-ee7a-4f27-9928-3c70c489b59d: the test step threw"
+  ],
+  "timedOut": [],
+  "allowlistSha256": "46900ff2fbddfdfd72864212b4f1dcd3f17b85dbfa4291e61de92b05c8457502",
+  "manifestSha256": "559f19bbfb66a912ff92d598d2ca59bb2a1933ca3a9deaf28a746fb4c674ecf2",
+  "atomicsCommit": "a0e3f9bc69fed2fd711bd1f1aa87a40c33482fe6",
+  "module": {
+    "name": "Invoke-AtomicRedTeam",
+    "version": "2.3.0"
+  },
+  "timeoutSeconds": 120,
+  "gateUtc": "2026-11-25T18:29:14.3506581Z",
+  "defenderGate": {
+    "realTimeProtection": true,
+    "exclusionPath": [
+      "C:\\AtomicRedTeam"
+    ],
+    "pass": true
+  },
+  "restorePoint": {
+    "description": "talonsoclab-b4-20261125T182914Z-6ca13f",
+    "createdUtc": "2026-11-25T18:29:18.2849920Z"
+  },
+  "tests": [
+    {
+      "guid": "57ba4ce9-ee7a-4f27-9928-3c70c489b59d",
+      "technique": "T1218.011",
+      "testNumber": 1,
+      "testName": "Rundll32 execute JavaScript Remote Payload With GetObject",
+      "rules": [
+        100342
+      ],
+      "run": {
+        "startUtc": "2026-11-25T18:29:35.4212664Z",
+        "endUtc": "2026-11-25T18:29:36.7471179Z",
+        "status": "threw",
+        "exitCode": null
+      },
+      "cleanup": {
+        "startUtc": "2026-11-25T18:29:39.4684723Z",
+        "endUtc": "2026-11-25T18:29:40.8010897Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    }
+  ],
+  "stateDiff": {
+    "verdict": "no-difference",
+    "items": []
+  },
+  "stagedAfter": {
+    "verdict": "unchanged",
+    "changed": 0,
+    "missing": 0,
+    "extra": 0
+  }
+}

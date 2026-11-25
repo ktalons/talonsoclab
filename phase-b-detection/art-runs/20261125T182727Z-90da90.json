@@ -1,0 +1,84 @@
+{
+  "format": "talonsoclab-art-session/1",
+  "session": "20261125T182727Z-90da90",
+  "verdict": "fail",
+  "failures": [
+    "c9d0c4ef-8a96-4794-a75b-3d3a5e6f2a36: the test step threw",
+    "1 test not sent after that failure"
+  ],
+  "timedOut": [],
+  "allowlistSha256": "46900ff2fbddfdfd72864212b4f1dcd3f17b85dbfa4291e61de92b05c8457502",
+  "manifestSha256": "559f19bbfb66a912ff92d598d2ca59bb2a1933ca3a9deaf28a746fb4c674ecf2",
+  "atomicsCommit": "a0e3f9bc69fed2fd711bd1f1aa87a40c33482fe6",
+  "module": {
+    "name": "Invoke-AtomicRedTeam",
+    "version": "2.3.0"
+  },
+  "timeoutSeconds": 120,
+  "gateUtc": "2026-11-25T18:27:29.8219316Z",
+  "defenderGate": {
+    "realTimeProtection": true,
+    "exclusionPath": [
+      "C:\\AtomicRedTeam"
+    ],
+    "pass": true
+  },
+  "restorePoint": {
+    "description": "talonsoclab-b4-20261125T182727Z-90da90",
+    "createdUtc": "2026-11-25T18:27:32.4334530Z"
+  },
+  "tests": [
+    {
+      "guid": "c9d0c4ef-8a96-4794-a75b-3d3a5e6f2a36",
+      "technique": "T1218.010",
+      "testNumber": 2,
+      "testName": "Regsvr32 remote COM scriptlet execution",
+      "rules": [
+        100341
+      ],
+      "run": {
+        "startUtc": "2026-11-25T18:27:50.9617627Z",
+        "endUtc": "2026-11-25T18:27:52.1688353Z",
+        "status": "threw",
+        "exitCode": null
+      },
+      "cleanup": {
+        "startUtc": "2026-11-25T18:27:54.7527557Z",
+        "endUtc": "2026-11-25T18:27:55.7636016Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    },
+    {
+      "guid": "57ba4ce9-ee7a-4f27-9928-3c70c489b59d",
+      "technique": "T1218.011",
+      "testNumber": 1,
+      "testName": "Rundll32 execute JavaScript Remote Payload With GetObject",
+      "rules": [
+        100342
+      ],
+      "run": {
+        "startUtc": null,
+        "endUtc": null,
+        "status": "not-sent",
+        "exitCode": null
+      },
+      "cleanup": {
+        "startUtc": null,
+        "endUtc": null,
+        "status": "not-sent",
+        "exitCode": null
+      }
+    }
+  ],
+  "stateDiff": {
+    "verdict": "no-difference",
+    "items": []
+  },
+  "stagedAfter": {
+    "verdict": "unchanged",
+    "changed": 0,
+    "missing": 0,
+    "extra": 0
+  }
+}
