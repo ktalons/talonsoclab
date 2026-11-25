@@ -19,6 +19,8 @@ const BIN = resolve(ROOT, "deploy/soc-recon/bin");
 const SNAPSHOT = readFileSync(join(BIN, "tier2-snapshot"), "utf8");
 const HOLD_TOOL = readFileSync(join(BIN, "tier2-hold"), "utf8");
 const START = readFileSync(join(BIN, "tier2-start"), "utf8");
+const PROBE = readFileSync(resolve(ROOT, "deploy/soc-recon/wazuh/probes/soc-recon-tier2-hold.sh"), "utf8");
+const INIT = readFileSync(resolve(ROOT, "deploy/soc-recon/wazuh/cont-init/0-wazuh-init"), "utf8");
 const made: string[] = [];
 
 afterAll(() => {
@@ -51,7 +53,13 @@ mv() {
   local a=() t=
   for x in "$@"; do [ "$x" = -T ] && t=1 || a+=("$x"); done
   if [ -n "$t" ] && [ -d "\${a[-1]}" ] && ! [ -L "\${a[-1]}" ]; then return 1; fi
+  printf 'mv\\n' >>"$W/flush"
   command mv "\${a[@]}"
+}
+# GNU sync FILE flushes that file or folder. Here it only leaves a trace, and fails on request.
+sync() {
+  [ "$1" = -- ] && shift
+  case $1 in *.tmp) printf 'sync tmp\\n' >>"$W/flush"; [ -z "\${FAIL_SYNC_TMP-}" ] ;; *) printf 'sync dir %s\\n' "$1" >>"$W/flush"; [ -z "\${FAIL_SYNC_DIR-}" ] ;; esac
 }
 stat() { [ "$1" = -c ] && [ "$2" = %s ] && shift 3 && command stat -f %z "$@"; }
 chmod() { [ "$2" = -- ] && set -- "$1" "\${@:3}"; command chmod "$@"; }
@@ -62,13 +70,16 @@ chmod() { [ "$2" = -- ] && set -- "$1" "\${@:3}"; command chmod "$@"; }
 const STUBS = `
 say() { printf '%s\\n' "$*" >>"$W/say"; }
 retry() { "$@"; }
-inputs() { printf '%s\\n' "$INPUTS"; }
+inputs() { if [ -e "$W/inputs" ]; then cat "$W/inputs"; else printf '%s\\n' "$INPUTS"; fi; }
 docker() {
   local h=no
   { [ -e "$HOLD" ] || [ -L "$HOLD" ]; } && h=yes
   printf 'docker %s hold=%s\\n' "$*" "$h" >>"$W/calls"
   case "$*" in
-    "compose start wazuh.indexer") [ -z "\${FAIL_INDEXER-}" ] ;;
+    "compose start wazuh.indexer")
+      [ -z "\${DRIFT_AT_INDEXER-}" ] || printf 'B\\n' >"$W/inputs"
+      [ -z "\${BREAK_AT_INDEXER-}" ] || mkdir "$W/inputs"
+      [ -z "\${FAIL_INDEXER-}" ] ;;
     "compose up -d --no-deps --force-recreate --pull never wazuh.manager")
       [ -n "\${LOCK_STATE-}" ] && chmod 555 "$W/state/tier2"
       [ -z "\${FAIL_RECREATE-}" ] ;;
@@ -100,10 +111,12 @@ function box(pending = true): Box {
 /** Run restart() from bin/tier2-snapshot against the stubs. */
 function restart(b: Box, env: Record<string, string> = {}) {
   const script = [
+    "set -u -o pipefail",
     GNU,
     STUBS,
     SNAPSHOT.match(/^HOLD_RE=.*$/m)?.[0] ?? "",
     fn(SNAPSHOT, "write_hold"),
+    fn(SNAPSHOT, "unchanged"),
     fn(SNAPSHOT, "restart"),
     `PENDING=$W/.pending-restart IDS=$W/.restart-ids LOG=$W/log HOLD=$W/state/tier2/HOLD held=`,
     `restart; rc=$?; echo "rc=$rc held=$held"`,
@@ -211,6 +224,53 @@ describe("restart() and the hold", () => {
     expect(held(b)).toBe(true);
   });
 
+  // The OpenAI read, 2026-11-25: the release acted on a comparison made before the indexer start.
+  test("normal branch, the inputs change while the indexer starts: no release, no recreate, the old manager starts", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    const r = restart(b, { DRIFT_AT_INDEXER: "1" });
+    expect(r.out).toContain("rc=0 held=1");
+    expect(r.calls).toContain("docker compose start wazuh.indexer hold=yes");
+    expect(r.calls).not.toContain("force-recreate");
+    expect(r.calls).toContain("docker start bbb hold=yes");
+    expect(readFileSync(b.hold, "utf8")).toBe("hold 1764000000\n");
+    expect(r.say).toContain("WARN: the inputs changed while the indexer started");
+  });
+
+  // The second OpenAI read, 2026-11-25: a failed indexer start skipped the second comparison,
+  // and the recreate that follows one applies a changed compose file, image or bind.
+  test("normal branch, the indexer fails and the inputs changed meanwhile: no recreate", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    const r = restart(b, { DRIFT_AT_INDEXER: "1", FAIL_INDEXER: "1" });
+    expect(r.out).toContain("rc=1 held=1");
+    expect(r.calls).not.toContain("force-recreate");
+    expect(r.calls).toContain("docker start bbb hold=yes");
+    expect(readFileSync(b.hold, "utf8")).toBe("hold 1764000000\n");
+    expect(existsSync(join(b.w, ".pending-restart"))).toBe(true);
+  });
+
+  test("the inputs cannot be read at the first comparison: held, never a recreate", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    mkdirSync(join(b.w, "inputs"));
+    const r = restart(b);
+    expect(r.out).toContain("held=1");
+    expect(r.calls).not.toContain("compose start wazuh.indexer");
+    expect(r.calls).not.toContain("force-recreate");
+    expect(held(b)).toBe(true);
+  });
+
+  test("the inputs cannot be read at the second comparison: held, never a recreate", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    const r = restart(b, { BREAK_AT_INDEXER: "1" });
+    expect(r.out).toContain("rc=0 held=1");
+    expect(r.calls).toContain("docker compose start wazuh.indexer hold=yes");
+    expect(r.calls).not.toContain("force-recreate");
+    expect(readFileSync(b.hold, "utf8")).toBe("hold 1764000000\n");
+  });
+
   test("held branch: the old containers start under the hold, which stays", () => {
     const b = box();
     writeFileSync(b.hold, "hold 1764000000\n");
@@ -253,11 +313,12 @@ describe("restart() and the hold", () => {
 });
 
 describe("write_hold() writes the shared 16-byte marker", () => {
-  const write = (b: Box) => {
-    const script = [GNU, SNAPSHOT.match(/^HOLD_RE=.*$/m)?.[0] ?? "", fn(SNAPSHOT, "write_hold"), `HOLD=$W/state/tier2/HOLD`, "write_hold; echo rc=$?"].join("\n");
+  const write = (b: Box, env: Record<string, string> = {}) => {
+    const script = [GNU, SNAPSHOT.match(/^HOLD_RE=.*$/m)?.[0] ?? "", 'say() { printf "%s\\n" "$*" >>"$W/say"; }', fn(SNAPSHOT, "write_hold"), `HOLD=$W/state/tier2/HOLD`, 'write_hold; echo rc=$?; [ -z "${SHOW-}" ] || echo "line=${hold_line-}"'].join("\n");
     writeFileSync(join(b.w, "w.sh"), script);
-    return Bun.spawnSync([BASH, join(b.w, "w.sh")], { env: { PATH: "/usr/bin:/bin", W: b.w } }).stdout.toString();
+    return Bun.spawnSync([BASH, join(b.w, "w.sh")], { env: { PATH: "/usr/bin:/bin", W: b.w, ...env } }).stdout.toString();
   };
+  const trace = (b: Box, f: string) => (existsSync(join(b.w, f)) ? readFileSync(join(b.w, f), "utf8") : "");
 
   test("exactly 'hold <ten-digit epoch>' and a newline, mode 644, no temp file left", () => {
     const b = box();
@@ -271,6 +332,36 @@ describe("write_hold() writes the shared 16-byte marker", () => {
     expect(existsSync(`${b.hold}.tmp`)).toBe(false);
   });
 
+  // The OpenAI read, 2026-11-25: a rename alone does not outlast a power loss.
+  test("the bytes are flushed before the rename and the folder after it", () => {
+    const b = box();
+    expect(write(b)).toBe("rc=0\n");
+    expect(trace(b, "flush")).toBe(`sync tmp\nmv\nsync dir ${join(b.w, "state/tier2")}\n`);
+  });
+
+  test("bytes that cannot be flushed publish no hold", () => {
+    const b = box();
+    expect(write(b, { FAIL_SYNC_TMP: "1" })).toBe("rc=1\n");
+    expect(trace(b, "flush")).toBe("sync tmp\n");
+    expect(existsSync(b.hold)).toBe(false);
+    expect(existsSync(`${b.hold}.tmp`)).toBe(false);
+  });
+
+  test("a folder that cannot be flushed is said, and the hold stands", () => {
+    const b = box();
+    expect(write(b, { FAIL_SYNC_DIR: "1" })).toBe("rc=0\n");
+    expect(readFileSync(b.hold, "utf8")).toMatch(/^hold [0-9]{10}\n$/);
+    expect(trace(b, "say")).toContain("WARN: cannot flush");
+  });
+
+  test("the line written is kept for the log, which never reads the marker back", () => {
+    const b = box();
+    const out = write(b, { SHOW: "1" });
+    expect(out).toBe(`rc=0\nline=${readFileSync(b.hold, "utf8")}`);
+    expect(SNAPSHOT).toContain('say "backup hold written ($hold_line) for run $stamp, inputs $fp"');
+    expect(SNAPSHOT).not.toContain('$(<"$HOLD")');
+  });
+
   test("a folder at HOLD fails the write instead of taking the file", () => {
     const b = box();
     mkdirSync(b.hold);
@@ -282,6 +373,9 @@ describe("write_hold() writes the shared 16-byte marker", () => {
     expect(SNAPSHOT).toContain("HOLD_RE='^hold [0-9]{10}$'");
     expect(HOLD_TOOL).toContain("HOLD_SIZE=16");
     expect(HOLD_TOOL).toContain("^686f6c6420(3[0-9]){10}0a$");
+    expect(PROBE).toContain("MARKER_SIZE=16");
+    expect(PROBE).toContain("^686f6c6420((3[0-9]){10})0a$");
+    expect(INIT).toContain("if [ -e /srv/tier2/HOLD ] || [ -L /srv/tier2/HOLD ]; then");
   });
 });
 
@@ -320,11 +414,106 @@ describe("tier2-hold types the marker before it reads it", () => {
   }
 });
 
+// *--- Tests: hold_age_min() in bin/tier2-hold ---*
+
+describe("tier2-hold reads the epoch in base 10", () => {
+  const age = (epoch: string) => {
+    const r = Bun.spawnSync([BASH, "-c", `${fn(HOLD_TOOL, "hold_age_min")}\nhold_age_min "$1"`, "sh", epoch], { env: { PATH: "/usr/bin:/bin" } });
+    return { out: r.stdout.toString().trim(), err: r.stderr.toString() };
+  };
+
+  // The OpenAI read, 2026-11-25: hold_kind accepts this marker, and bash reads 09... as octal.
+  test("an epoch with a leading zero is a number of minutes, not an octal error", () => {
+    const r = age("0999999999");
+    expect(r.err).toBe("");
+    expect(Number(r.out)).toBe(Math.floor((Math.floor(Date.now() / 1000) - 999999999) / 60));
+  });
+
+  test("a current epoch is zero minutes old", () => {
+    expect(age(String(Math.floor(Date.now() / 1000))).out).toBe("0");
+  });
+
+});
+
+// *--- Tests: hold_since() and release in bin/tier2-hold ---*
+
+describe("tier2-hold status reads the marker once more, and says so when it is gone", () => {
+  // GNU date -d @N, from the BSD one, inside this run only.
+  const DATE = 'date() { if [ "$1" = -u ] && [ "$2" = -d ]; then command date -u -r "${3#@}" "$4"; else command date "$@"; fi; }';
+  const since = (make: (p: string) => void) => {
+    const b = box();
+    make(b.hold);
+    const script = [DATE, "HOLD=state/tier2/HOLD", fn(HOLD_TOOL, "hold_age_min"), fn(HOLD_TOOL, "hold_since"), "hold_since"].join("\n");
+    const r = Bun.spawnSync([BASH, "-c", script], { cwd: b.w, env: { PATH: "/usr/bin:/bin", LC_ALL: "C" } });
+    return r.stdout.toString() + r.stderr.toString();
+  };
+
+  test("a marker prints its time and its age", () => {
+    expect(since((p) => writeFileSync(p, "hold 1764000000\n"))).toMatch(/^hold: since 2025-11-24T16:00:00Z, [0-9]+ min ago\n$/);
+  });
+
+  // The second OpenAI read, 2026-11-25: a marker released between the type check and this
+  // read printed "hold: since ,  min ago".
+  test("a marker gone since it was typed is said, with no empty time", () => {
+    expect(since(() => {})).toBe("hold: the marker changed while it was read; run status again\n");
+  });
+
+  test("a marker replaced by other bytes is said too", () => {
+    expect(since((p) => writeFileSync(p, "hold soon\n"))).toBe("hold: the marker changed while it was read; run status again\n");
+  });
+
+  test("status prints a marker through it", () => {
+    expect(HOLD_TOOL).toContain("        marker) hold_since ;;");
+  });
+});
+
+describe("tier2-hold release looks in every runs dir, whatever the compose file names", () => {
+  // The whole script, in a deploy dir with no compose file: the project name cannot be
+  // rendered, which is the state a broken compose file leaves. Lock cases need flock and
+  // run on scratch (hold-cmd); these are the pending record and the plain release.
+  const release = (b: Box) => {
+    mkdirSync(join(b.w, "bin"), { recursive: true });
+    writeFileSync(join(b.w, "bin/tier2-hold"), HOLD_TOOL);
+    const r = Bun.spawnSync([BASH, join(b.w, "bin/tier2-hold"), "release"], { env: { HOME: join(b.w, "home"), LC_ALL: "C" } });
+    return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
+  };
+
+  // The OpenAI reads, 2026-11-25: release found the lock and the pending record through the
+  // compose project name, which can change after the run that wrote the hold.
+  test("a pending restart in any project's dir refuses the release, and the hold stays", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    mkdirSync(join(b.w, "home/tier2/some-other-name"), { recursive: true });
+    writeFileSync(join(b.w, "home/tier2/some-other-name/.pending-restart"), "x\n");
+    const r = release(b);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("some-other-name/.pending-restart: bring the stack back first");
+    expect(held(b)).toBe(true);
+  });
+
+  test("with no run anywhere, a hold is released even when compose cannot render", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    mkdirSync(join(b.w, "home/tier2/some-other-name"), { recursive: true });
+    const r = release(b);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("tier2-hold: released");
+    expect(held(b)).toBe(false);
+  });
+
+  test("no runs dir at all: released", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    expect(release(b).code).toBe(0);
+    expect(held(b)).toBe(false);
+  });
+});
+
 // *--- Tests: the order of the steps in each script ---*
 
 // The parts that need the whole script on the box (docker, flock, a real stack) are drilled
 // on scratch (Plans/f7). These pin the order the drills rely on.
-describe("where each script checks and writes the hold", () => {
+describe("source order: where each script checks and writes the hold", () => {
   const at = (text: string, needle: string) => {
     const i = text.indexOf(needle);
     if (i < 0) throw new Error(`not found: ${needle}`);
@@ -337,6 +526,15 @@ describe("where each script checks and writes the hold", () => {
     expect(refuse).toBeLessThan(at(SNAPSHOT, 'flock -n 9 || die "another tier2-snapshot is running"'));
     expect(refuse).toBeLessThan(at(SNAPSHOT, "docker compose config -q"));
     expect(SNAPSHOT.slice(at(SNAPSHOT, 'HOLD=$DEPLOY/state/tier2/HOLD'), refuse)).toContain('[ -e "$HOLD" ] || [ -L "$HOLD" ]');
+  });
+
+  // The OpenAI read, 2026-11-25: a run that waited at the lock never looked again.
+  test("tier2-snapshot checks the hold again under its lock, before it reads PENDING or writes anything", () => {
+    const again = at(SNAPSHOT, 'die "a backup hold appeared while this run started');
+    expect(again).toBeGreaterThan(at(SNAPSHOT, 'flock -n 9 || die "another tier2-snapshot is running"'));
+    expect(again).toBeLessThan(at(SNAPSHOT, 'if [ -e "$OUT/.pending-restart" ]; then'));
+    expect(again).toBeLessThan(at(SNAPSHOT, "if ! write_hold; then"));
+    expect(SNAPSHOT.slice(at(SNAPSHOT, 'flock -n 9 || die "another tier2-snapshot is running"'), again)).toContain('[ -e "$HOLD" ] || [ -L "$HOLD" ]');
   });
 
   test("tier2-snapshot writes the hold after PENDING and before the stop", () => {
@@ -358,8 +556,9 @@ describe("where each script checks and writes the hold", () => {
 
   test("tier2-hold release checks the lock and PENDING before it removes the hold", () => {
     const rm = at(HOLD_TOOL, 'rm -f -- "$HOLD"');
-    expect(at(HOLD_TOOL, "flock -n 9 || die")).toBeLessThan(rm);
-    expect(at(HOLD_TOOL, 'if [ -e "$out/.pending-restart" ]; then\n        die')).toBeLessThan(rm);
+    expect(at(HOLD_TOOL, 'flock -n "$lock" || die')).toBeLessThan(rm);
+    expect(at(HOLD_TOOL, 'if [ -e "$d/.pending-restart" ]; then\n        die')).toBeLessThan(rm);
+    expect(at(HOLD_TOOL, 'for d in "$HOME"/tier2/*/; do')).toBeLessThan(at(HOLD_TOOL, 'flock -n "$lock" || die'));
     expect(at(HOLD_TOOL, '[ "$(id -u)" -ne 0 ] || die')).toBeLessThan(rm);
   });
 });

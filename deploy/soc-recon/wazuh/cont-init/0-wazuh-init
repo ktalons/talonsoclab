@@ -275,6 +275,10 @@ if [ -e /srv/tier2/HOLD ] || [ -L /srv/tier2/HOLD ]; then
     print "Backup hold /srv/tier2/HOLD is in place: no Wazuh configuration files mounted, see runbook 09"
   }
   main
+  # As stock, the status of main's last step is the script's, so a failure there is
+  # not reported as a hold.
+  rc=$?
+  [ "$rc" -eq 0 ] || exit "$rc"
   # Every other step ran. 75 (EX_TEMPFAIL), so no check that wants "exited 0" passes.
   exit 75
 fi

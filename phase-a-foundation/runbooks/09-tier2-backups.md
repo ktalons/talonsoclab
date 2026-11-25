@@ -159,12 +159,14 @@ folder, every start skips the config copy, runs the rest of the init, logs
 `Backup hold /srv/tier2/HOLD is in place...` and exits 75. The hold is on disk, so a reboot or a
 daemon restart in the stopped window finds it.
 
-Only the run's own restart removes it: on unchanged inputs, right before it recreates the
-manager, and only when every step before that worked. A restart that fails after that point
-writes it again, so the hold is gone only after a restart that fully worked. A held run, a
-crash, a failed restart, the watchdog's held restart and a reboot all leave it. Then a new backup refuses, `bin/tier2-start`
-refuses, and the stuck-hold probe raises a level 10 alert once it is over an hour old. To see
-and release it:
+Only the run's own restart removes it: on unchanged inputs, compared again right before the
+release, and only when every step before that worked. A restart that fails after that point
+writes it again. A held run, a crash, a failed restart and the watchdog's held restart all
+leave it, and so does a reboot while the stack is stopped. One ending leaves none: a run cut
+off, by a reboot or a power loss, in the seconds between the release and the new manager's
+start. The recovery steps below begin with a look for that reason. While a hold stands a new
+backup refuses, `bin/tier2-start` refuses, and the stuck-hold probe raises a level 10 alert
+once it is over an hour old. To see and release it:
 
 ```bash
 cd ~/talonsoclab/deploy/soc-recon
@@ -183,7 +185,9 @@ docker compose logs wazuh.manager | grep '0-wazuh-init: exited'     # want exite
 ```
 
 `release` refuses while a run or its watchdog holds the lock, while a run's `.pending-restart`
-stands, as root, and for a folder of that name (look, then remove it by hand). Re-run the scratch
+stands, as root, and for a folder of that name (look, then remove it by hand). It looks in every
+project's folder under `~/tier2`, the scratch stack's included, and does not need the compose
+file to render. Re-run the scratch
 suite's held cases after a manager image change (runbook 02, § 5), and re-diff the owned init
 against the new image's (its header has the command).
 
@@ -195,17 +199,73 @@ or the OOM killer, a detached watchdog started before the stop restarts the stac
 about 100 s.
 
 A box reboot mid-run kills the watchdog too, and the stack stays down. After a reboot, or when
-`last-run.log` ends in `WARN: the stack is not fully back`, bring it back by hand. Every way a run
-ends there leaves the hold, unless the log also says `cannot write the backup hold`.
-`bin/tier2-hold status` shows it. Under the hold this start installs nothing and the init says
-`exited 75`; without it, `exited 0`:
+`last-run.log` ends in `WARN: the stack is not fully back`, bring it back by hand. The paths
+below are the live project's; the folder under `~/tier2` is the compose file's `name:`.
+
+**Look before anything starts.** `status` must say `snapshot lock: free`: while it says held, a
+run or its watchdog is still at work, so wait.
 
 ```bash
 cd ~/talonsoclab/deploy/soc-recon
+bin/tier2-hold status
+grep -E 'stopping the stack|backup hold written' ~/tier2/soc-recon/last-run.log
+git status --short; git log -1 --format=%H
+```
+
+The `stopping the stack` line names the checkout the run began on, which the guard had just
+matched to the running stack. A clean tree at that same commit means git holds nothing new to
+install. Git does not see the ignored single-file binds (the certs, `authd.pass`, `.env`) or a
+moved image tag: if you touched one since the run began, put it back first. Any start re-reads
+every single-file bind, a held one included.
+
+**A hold stands** (nearly every case). Start the containers the run saved, by ID, indexer first.
+This is what the run's own held restart does: nothing is recreated, so no compose or image
+change is applied, and the init installs no config-mount file and says `exited 75`.
+
+```bash
+awk '{print $2}' ~/tier2/soc-recon/.restart-ids | xargs -n 1 docker start
+```
+
+No `.restart-ids` means a held restart already finished and removed it: start what is down by
+the name `docker compose ps -a` shows, with `docker start <name>`. If `docker start` says a
+container does not exist, a recreate removed it before it failed. Review the checkout as above,
+then create that one service. Under the hold a new manager still installs no config-mount file
+(`exited 75`), but it takes the compose file and the image tag as they are now:
+
+```bash
+docker compose up -d --no-deps --pull never <service>
+```
+
+**No hold stands.** The run died between writing `.pending-restart` and the hold, or between its
+release and the new manager's start, or its log says `cannot write the backup hold`. The next
+manager start installs whatever the checkout holds now. If the look above leaves any doubt,
+write a hold by hand and take the held path instead; review at leisure, then release:
+
+```bash
+printf 'hold %s\n' "$(date +%s)" > state/tier2/HOLD
+```
+
+With no doubt left, recreate:
+
+```bash
 docker compose start wazuh.indexer
 docker compose up -d --no-deps --force-recreate --pull never wazuh.manager
 docker compose start
-docker compose logs wazuh.manager | grep '0-wazuh-init: exited'     # 75 under a hold, else 0
+```
+
+**Check, then clear.** Read the init line of this start only (an older boot's line is in the same
+log). No line yet means the init is still running, so ask again. Want 75 under a hold, else 0:
+
+```bash
+m=$(docker compose ps -q wazuh.manager); s=$(docker inspect -f '{{.State.StartedAt}}' "$m")
+docker logs --since "$s" "$m" 2>&1 | grep '0-wazuh-init: exited'
+docker compose ps
+```
+
+Clear the run's restart records only once every service is running and the init line is the
+one wanted. `bin/tier2-hold release` refuses until `.pending-restart` is gone:
+
+```bash
 rm -f ~/tier2/soc-recon/.pending-restart ~/tier2/soc-recon/.restart-ids
 ```
 

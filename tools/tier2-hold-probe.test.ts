@@ -477,6 +477,16 @@ describe("probe: the deadline and the crash trap", () => {
     expect(probe(d, { edit: (t) => swap(t, before, `exit 7\n${before}`) })).toBe("ERROR the probe stopped before reporting");
   });
 
+  // The OpenAI read, 2026-11-25: the case above passes without the run's own EXIT trap, because
+  // the wrapper prints the same line for any early stop. This one runs the run with no wrapper.
+  test("the run itself, with no wrapper, prints the ERROR line from its own trap", () => {
+    const d = withMarker(marker(NOW - 10));
+    const f = probeCopy(d, (t) => swap(t, before, `exit 7\n${before}`));
+    const r = Bun.spawnSync([bashPath, f, "--run"], { env: { HOLD_TEST_NOW: String(NOW) }, stdout: "pipe", stderr: "pipe" });
+    expect(r.stdout.toString()).toBe("ERROR the probe stopped before reporting\n");
+    expect(r.exitCode).toBe(7);
+  });
+
   test("a probe that cannot start its own run prints one ERROR line", () => {
     const d = newDir();
     const f = probeCopy(d, (t) => swap(t, 'bash -- "$0" --run', 'bash -- "$0.gone" --run'));

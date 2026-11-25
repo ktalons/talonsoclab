@@ -139,11 +139,34 @@ touched() {
 # write_hold: state/tier2/HOLD, exactly "hold <ten-digit epoch>" and a newline,
 # replaced by rename so neither the init nor the stuck-hold probe reads half of
 # it. -T, so a folder in its place fails the write instead of taking the file.
+# The bytes are flushed before the rename and the folder after it: the hold has
+# to outlast a power loss in the seconds after a held restart, when the box would
+# come back, start the manager and find no marker. hold_line is the line written,
+# for the log, so nothing reads the marker back by name.
 write_hold() {
     local m
     m="hold $(date +%s)"
     [[ $m =~ $HOLD_RE ]] || return 1
-    printf '%s\n' "$m" >"$HOLD.tmp" && chmod 644 -- "$HOLD.tmp" && mv -f -T -- "$HOLD.tmp" "$HOLD"
+    # NOTE: fd 9, the run's lock, is closed for each flush, as retry() closes it for
+    # docker: a flush that stalls must not keep the lock the watchdog waits on.
+    if ! { printf '%s\n' "$m" >"$HOLD.tmp" && chmod 644 -- "$HOLD.tmp" && sync -- "$HOLD.tmp" 9>&- &&
+        mv -f -T -- "$HOLD.tmp" "$HOLD"; }; then
+        rm -f -- "$HOLD.tmp"
+        return 1
+    fi
+    # NOTE: the marker stands from the rename on, so a failed flush is said, not failed.
+    sync -- "${HOLD%/*}" 9>&- ||
+        say "WARN: cannot flush ${HOLD%/*}: the backup hold stands, but a power loss in the next seconds could lose it"
+    hold_line=$m
+}
+
+# unchanged <hash>: whether everything a recreate reads still hashes to <hash>.
+# An unreadable input is a change.
+unchanged() {
+    local now
+    [ -n "${1-}" ] || return 1
+    now=$(inputs | sha256sum) || return 1
+    [ "${now%% *}" = "$1" ]
 }
 
 # Brings the stack back: the indexer first so filebeat finds it, then a new
@@ -165,13 +188,27 @@ write_hold() {
 # single-file bind changed during the run (a cert, a cont-init script, the init
 # itself included, an indexer or dashboard config) goes live on the start.
 restart() {
-    local ok=1 s up svcs want now id
+    local ok=1 s up svcs want id same=
     [ -e "$PENDING" ] || return 0
     say "starting the stack"
     read -r _ want <"$PENDING" || want=
-    now=$(inputs | sha256sum) || now=
-    if [ -n "$want" ] && [ "${now%% *}" = "$want" ]; then
+    unchanged "$want" && same=1
+    if [ -n "$same" ]; then
         retry docker compose start wazuh.indexer || ok=
+        # SECURITY: that comparison is seconds to minutes old by now (three tries of
+        # the indexer). The release and the recreate below act on a fresh one, so a
+        # change made while the indexer started takes the held path. It runs after
+        # a failed indexer start too: the recreate that follows one keeps the hold,
+        # which stops the config copy but not a changed compose file, image or
+        # single-file bind. What is left is the moment between this hash and the
+        # recreate's own read of the checkout, which no script can close; the run's
+        # later checks fail it.
+        if ! unchanged "$want"; then
+            same=
+            say "WARN: the inputs changed while the indexer started"
+        fi
+    fi
+    if [ -n "$same" ]; then
         # The one place the hold goes: the inputs match what the manager ran, so
         # the recreate's init installs nothing new and must run unheld to exit 0.
         # After a failed step it stays, and the recreate under it installs nothing.
@@ -209,7 +246,7 @@ restart() {
         # try on unchanged inputs may have released it before failing, so it is
         # written again; when it cannot be, nothing starts.
         if ! [ -e "$HOLD" ] && ! [ -L "$HOLD" ] && ! write_hold; then
-            say "WARN: cannot write the backup hold $HOLD, so nothing is started: a start without it would install the change"
+            say "WARN: cannot write the backup hold $HOLD, so nothing more is started: a start without it would install the change"
             ok=
         else
             while read -r s id; do
@@ -491,6 +528,12 @@ done
 
 exec 9>"$OUT/.lock" || die "cannot open the lock"
 flock -n 9 || die "another tier2-snapshot is running"
+# The hold again, now under the lock. A run that passed the first check and then
+# waited here while another ran and ended held would write over that run's hold
+# and release it with its own restart.
+if [ -e "$HOLD" ] || [ -L "$HOLD" ]; then
+    die "a backup hold appeared while this run started ($HOLD): another run ended held or died; check with bin/tier2-hold status, then runbook 09, section 2"
+fi
 # An earlier run whose three restart rounds all failed left this, and the stack
 # was brought back by hand since. Its cleanup would act on the stale file.
 if [ -e "$OUT/.pending-restart" ]; then
@@ -584,8 +627,8 @@ if ! write_hold; then
     rm -f -- "$PENDING" "$HOLD.tmp"
     die "cannot write the backup hold $HOLD"
 fi
-say "backup hold written ($(<"$HOLD")) for run $stamp, inputs $fp"
-say "stopping the stack ($project) at $stamp; progress in $LOG"
+say "backup hold written ($hold_line) for run $stamp, inputs $fp"
+say "stopping the stack ($project) at $stamp, checkout $head; progress in $LOG"
 # NOTE: two minutes for the indexer to flush before SIGKILL, not compose's 10 s.
 # The lock stays open for it, so a watchdog never restarts during a stop.
 docker compose stop -t 120 >>"$LOG" 2>&1 || die "the stack did not stop"

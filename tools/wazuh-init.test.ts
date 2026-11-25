@@ -87,6 +87,7 @@ exec /usr/bin/sed "$@"
 `,
   chown: `#!/bin/bash
 printf '%s\\n' "$*" >>"$CHOWN_LOG"
+case "$*" in *"\${FAIL_CHOWN:-no such call}"*) exit 4 ;; esac
 `,
   openssl: `#!/bin/bash
 while [ $# -gt 0 ]; do [ "$1" = -out ] && : >"$2"; shift; done
@@ -147,12 +148,12 @@ interface Run {
 }
 
 /** Run one init text in the sandbox, as s6 would at a container start. */
-function init(text: string, root: string): Run {
+function init(text: string, root: string, env: Record<string, string> = {}): Run {
   const script = join(root, "init.sh");
   writeFileSync(script, sandboxed(text, root));
   const r = Bun.spawnSync([BASH, "-c", 'exec "$0" "$1" 2>&1', BASH, script], {
     cwd: root,
-    env: { PATH: `${root}/shims:/usr/bin:/bin`, HOME: root, HOSTNAME: "sandbox", LC_ALL: "C", WAZUH_CLUSTER_KEY: "sandbox-key", CHOWN_LOG: join(root, "chown.log") },
+    env: { PATH: `${root}/shims:/usr/bin:/bin`, HOME: root, HOSTNAME: "sandbox", LC_ALL: "C", WAZUH_CLUSTER_KEY: "sandbox-key", CHOWN_LOG: join(root, "chown.log"), ...env },
   });
   return { code: r.exitCode ?? -1, out: r.stdout.toString().split(root).join("<root>") };
 }
@@ -194,6 +195,24 @@ describe("ISC-174: the owned script against the stock bytes", () => {
     expect(r.problems).toEqual([]);
     expect(r.sha256).toBe(STOCK_SHA256);
     expect(r.stock.split("\n").length).toBe(239);
+  });
+
+  // The OpenAI read, 2026-11-25: a block moved to take in more stock lines, with those lines
+  // recorded, rebuilds to the same digest. So what each block replaces is pinned too.
+  test("each block replaces exactly the one stock line it names", () => {
+    const record = (n: number) => {
+      const m = new RegExp(`^# F7-BLOCK-${n} stock\\n([\\s\\S]*?)^# F7-BLOCK-${n} end$`, "m").exec(OWNED_TEXT);
+      if (!m) throw new Error(`no stock record for block ${n}`);
+      return m[1];
+    };
+    expect(record(1)).toBe('#|        exec_cmd "cp -ar ${data_tmp}. ${permanent_dir}"\n');
+    expect(record(2)).toBe("#|main\n");
+    const lines = OWNED_TEXT.split("\n");
+    const before = (marker: string) => lines[lines.indexOf(marker) - 1];
+    expect(before("# F7-BLOCK-1 begin: the restart trap fix (ISA F7, compose GOTCHA 2)")).toBe('        print "Installing ${permanent_dir}"');
+    expect(before("# F7-BLOCK-2 begin: the Tier 2 backup hold (ISA F7, runbook 09 section 2)")).toBe("");
+    expect(lines[lines.indexOf("# F7-BLOCK-1 end") + 1]).toBe("    fi");
+    expect(lines.slice(lines.indexOf("# F7-BLOCK-2 end") + 1).join("\n")).toBe("");
   });
 
   test("planted: one changed byte outside a block fails", () => {
@@ -353,14 +372,30 @@ describe("the backup hold", () => {
     });
   }
 
-  test("under a hold every other step of main still runs", () => {
+  test("under a hold the steps around the skipped copy still run: the empty dir is left, the hostname set, ownership fixed", () => {
     const root = started(OWNED_TEXT);
     writeFileSync(hold(root), "hold 1764000000\n");
+    // The first start logged its own chowns; only the held start's count here.
+    rmSync(join(root, "chown.log"));
     const r = init(OWNED_TEXT, root);
     expect(r.code).toBe(75);
     expect(r.out).toContain(`Left <root>/var/ossec/var/multigroups ${FIX_LINE}`);
     expect(readFileSync(join(root, "var/ossec/etc/ossec.conf"), "utf8")).not.toContain("to_be_replaced_by_hostname");
     expect(readFileSync(join(root, "chown.log"), "utf8")).toContain(`-R wazuh:wazuh ${root}/var/ossec/etc/lists`);
+  });
+
+  // The OpenAI read, 2026-11-25: 75 replaced the status of main's last step.
+  test("under a hold, a failure of main's last step is the script's status, as stock, not 75", () => {
+    const fail = { FAIL_CHOWN: "var/ossec/etc/lists" };
+    const stock = sandbox();
+    const want = init(STOCK_TEXT, stock, fail).code;
+    expect(want).toBe(4);
+    const root = started(OWNED_TEXT);
+    writeFileSync(hold(root), "hold 1764000000\n");
+    const r = init(OWNED_TEXT, root, fail);
+    expect(r.code).toBe(want);
+    expect(r.out).toContain(HOLD_LINE);
+    expect(installed(root)).toBe("<!-- v1 -->\n");
   });
 
   test("a new container under a hold restores permanent data, installs nothing, removes data_tmp", () => {
