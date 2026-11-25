@@ -87,6 +87,7 @@ docker() {
     "compose config --services") printf 'wazuh.indexer\\nwazuh.manager\\n' ;;
     "compose ps --status running --format {{.Service}}") printf 'wazuh.indexer\\nwazuh.manager\\n' ;;
     "inspect -f {{.State.Running}} "*) echo true ;;
+    "start "*) [ -z "\${FAIL_IDSTART-}" ] ;;
     *) return 0 ;;
   esac
 }
@@ -291,6 +292,35 @@ describe("restart() and the hold", () => {
     expect(readFileSync(b.hold, "utf8")).toMatch(/^hold [0-9]{10}\n$/);
   });
 
+  // Three OpenAI reads, 2026-11-25: a held round that failed, then a change put back, let the
+  // next round compare equal, release the hold and recreate.
+  test("a held round that fails is held on every later round, even once the inputs match again", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    const first = restart(b, { INPUTS: "B", FAIL_IDSTART: "1" });
+    expect(first.out).toContain("rc=1 held=1");
+    expect(readFileSync(join(b.w, ".pending-restart"), "utf8")).toBe("2026-11-24T000000Z held\n");
+    rmSync(join(b.w, "calls"));
+    const r = restart(b);
+    expect(r.out).toContain("rc=0 held=1");
+    expect(r.calls).not.toContain("force-recreate");
+    expect(r.calls).not.toContain("compose start");
+    expect(r.calls).toContain("docker start bbb hold=yes");
+    expect(readFileSync(b.hold, "utf8")).toBe("hold 1764000000\n");
+    expect(existsSync(join(b.w, ".pending-restart"))).toBe(false);
+  });
+
+  test("a held decision that cannot be recorded is said, and the round still runs held", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    mkdirSync(join(b.w, ".pending-restart.tmp"));
+    const r = restart(b, { INPUTS: "B" });
+    rmSync(join(b.w, ".pending-restart.tmp"), { recursive: true, force: true });
+    expect(r.out).toContain("rc=0 held=1");
+    expect(r.say).toContain("WARN: cannot record the held decision");
+    expect(r.calls).toContain("docker start bbb hold=yes");
+  });
+
   test("held branch, the hold cannot be written: nothing starts and the run fails", () => {
     const b = box();
     chmodSync(join(b.w, "state/tier2"), 0o555);
@@ -458,6 +488,11 @@ describe("tier2-hold status reads the marker once more, and says so when it is g
     expect(since(() => {})).toBe("hold: the marker changed while it was read; run status again\n");
   });
 
+  // The third OpenAI read, 2026-11-25: only the second field was checked.
+  test("a line with ten digits but another first word is not a marker", () => {
+    expect(since((p) => writeFileSync(p, "held 1764000000\n"))).toBe("hold: the marker changed while it was read; run status again\n");
+  });
+
   test("a marker replaced by other bytes is said too", () => {
     expect(since((p) => writeFileSync(p, "hold soon\n"))).toBe("hold: the marker changed while it was read; run status again\n");
   });
@@ -471,12 +506,57 @@ describe("tier2-hold release looks in every runs dir, whatever the compose file 
   // The whole script, in a deploy dir with no compose file: the project name cannot be
   // rendered, which is the state a broken compose file leaves. Lock cases need flock and
   // run on scratch (hold-cmd); these are the pending record and the plain release.
-  const release = (b: Box) => {
+  const tool = (b: Box, cmd: string) => {
     mkdirSync(join(b.w, "bin"), { recursive: true });
     writeFileSync(join(b.w, "bin/tier2-hold"), HOLD_TOOL);
-    const r = Bun.spawnSync([BASH, join(b.w, "bin/tier2-hold"), "release"], { env: { HOME: join(b.w, "home"), LC_ALL: "C" } });
+    const r = Bun.spawnSync([BASH, join(b.w, "bin/tier2-hold"), cmd], { env: { HOME: join(b.w, "home"), LC_ALL: "C" } });
     return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
   };
+  const release = (b: Box) => tool(b, "release");
+
+  // The third OpenAI read, 2026-11-25: release walked every dir, status only the one the
+  // compose file named, and the runbook tells the operator to wait on status.
+  test("status names every runs dir, and a pending restart in the one that has it", () => {
+    const b = box();
+    for (const p of ["alpha", "beta"]) mkdirSync(join(b.w, "home/tier2", p), { recursive: true });
+    writeFileSync(join(b.w, "home/tier2/beta/.pending-restart"), "x\n");
+    const r = tool(b, "status");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(`snapshot lock: free in ${join(b.w, "home/tier2/alpha")}\n`);
+    expect(r.out).toContain(`snapshot lock: free in ${join(b.w, "home/tier2/beta")}\n`);
+    expect(r.out).toContain(`pending restart: ${join(b.w, "home/tier2/beta/.pending-restart")}`);
+    expect(r.out).not.toContain("alpha/.pending-restart");
+  });
+
+  test("status with no runs root says no run has used it", () => {
+    const b = box();
+    expect(tool(b, "status").out).toContain("snapshot lock: free, no run has used");
+  });
+
+  test("a runs root that cannot be listed: status says unknown and release refuses, the hold stays", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    mkdirSync(join(b.w, "home/tier2/alpha"), { recursive: true });
+    writeFileSync(join(b.w, "home/tier2/alpha/.pending-restart"), "x\n");
+    chmodSync(join(b.w, "home/tier2"), 0o000);
+    const s = tool(b, "status");
+    const r = release(b);
+    chmodSync(join(b.w, "home/tier2"), 0o755);
+    expect(s.out).toContain("snapshot lock: unknown");
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("cannot be listed, so no snapshot lock can be checked");
+    expect(held(b)).toBe(true);
+  });
+
+  test("a runs root that is a link is not walked: release refuses", () => {
+    const b = box();
+    writeFileSync(b.hold, "hold 1764000000\n");
+    mkdirSync(join(b.w, "home/elsewhere/alpha"), { recursive: true });
+    symlinkSync(join(b.w, "home/elsewhere"), join(b.w, "home/tier2"));
+    const r = release(b);
+    expect(r.code).toBe(1);
+    expect(held(b)).toBe(true);
+  });
 
   // The OpenAI reads, 2026-11-25: release found the lock and the pending record through the
   // compose project name, which can change after the run that wrote the hold.
@@ -558,7 +638,8 @@ describe("source order: where each script checks and writes the hold", () => {
     const rm = at(HOLD_TOOL, 'rm -f -- "$HOLD"');
     expect(at(HOLD_TOOL, 'flock -n "$lock" || die')).toBeLessThan(rm);
     expect(at(HOLD_TOOL, 'if [ -e "$d/.pending-restart" ]; then\n        die')).toBeLessThan(rm);
-    expect(at(HOLD_TOOL, 'for d in "$HOME"/tier2/*/; do')).toBeLessThan(at(HOLD_TOOL, 'flock -n "$lock" || die'));
+    expect(at(HOLD_TOOL, "runs_readable || die")).toBeLessThan(at(HOLD_TOOL, 'flock -n "$lock" || die'));
+    expect(HOLD_TOOL).not.toContain("docker compose config");
     expect(at(HOLD_TOOL, '[ "$(id -u)" -ne 0 ] || die')).toBeLessThan(rm);
   });
 });

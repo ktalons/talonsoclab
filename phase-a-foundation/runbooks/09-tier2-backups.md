@@ -160,7 +160,8 @@ folder, every start skips the config copy, runs the rest of the init, logs
 daemon restart in the stopped window finds it.
 
 Only the run's own restart removes it: on unchanged inputs, compared again right before the
-release, and only when every step before that worked. A restart that fails after that point
+release, only when every step before that worked, and never once a round of that run took the
+held path. A restart that fails after that point
 writes it again. A held run, a crash, a failed restart and the watchdog's held restart all
 leave it, and so does a reboot while the stack is stopped. One ending leaves none: a run cut
 off, by a reboot or a power loss, in the seconds between the release and the new manager's
@@ -202,8 +203,9 @@ A box reboot mid-run kills the watchdog too, and the stack stays down. After a r
 `last-run.log` ends in `WARN: the stack is not fully back`, bring it back by hand. The paths
 below are the live project's; the folder under `~/tier2` is the compose file's `name:`.
 
-**Look before anything starts.** `status` must say `snapshot lock: free`: while it says held, a
-run or its watchdog is still at work, so wait.
+**Look before anything starts.** `status` lists every folder under `~/tier2` and must say
+`snapshot lock: free` for each: while any says held, a run or its watchdog is still at work, so
+wait.
 
 ```bash
 cd ~/talonsoclab/deploy/soc-recon
@@ -211,6 +213,10 @@ bin/tier2-hold status
 grep -E 'stopping the stack|backup hold written' ~/tier2/soc-recon/last-run.log
 git status --short; git log -1 --format=%H
 ```
+
+No `stopping the stack` line means the run died before it stopped anything. Then `docker compose
+ps` shows every service running, the manager's init line is its older one, and all that is left
+is to clear the records (last step below) and release a hold if one stands.
 
 The `stopping the stack` line names the checkout the run began on, which the guard had just
 matched to the running stack. A clean tree at that same commit means git holds nothing new to
@@ -220,7 +226,9 @@ every single-file bind, a held one included.
 
 **A hold stands** (nearly every case). Start the containers the run saved, by ID, indexer first.
 This is what the run's own held restart does: nothing is recreated, so no compose or image
-change is applied, and the init installs no config-mount file and says `exited 75`.
+change is applied, and the init installs no config-mount file and says `exited 75`. A run that
+took the held path records it (`.pending-restart` ends in `held`) and stays held on every retry,
+even after the change is put back: only you release it.
 
 ```bash
 awk '{print $2}' ~/tier2/soc-recon/.restart-ids | xargs -n 1 docker start
@@ -254,7 +262,9 @@ docker compose start
 ```
 
 **Check, then clear.** Read the init line of this start only (an older boot's line is in the same
-log). No line yet means the init is still running, so ask again. Want 75 under a hold, else 0:
+log). No line yet means the init is still running, so ask again. Want 75 under a hold, else 0.
+If the compose file no longer renders, find the containers with
+`docker ps -a --filter label=com.docker.compose.project=soc-recon` and use the manager's ID:
 
 ```bash
 m=$(docker compose ps -q wazuh.manager); s=$(docker inspect -f '{{.State.StartedAt}}' "$m")
@@ -262,8 +272,9 @@ docker logs --since "$s" "$m" 2>&1 | grep '0-wazuh-init: exited'
 docker compose ps
 ```
 
-Clear the run's restart records only once every service is running and the init line is the
-one wanted. `bin/tier2-hold release` refuses until `.pending-restart` is gone:
+Clear the run's restart records only once every service is running, healthy where it has a
+health check, and the init line is the one wanted. `bin/tier2-hold release` refuses until
+`.pending-restart` is gone:
 
 ```bash
 rm -f ~/tier2/soc-recon/.pending-restart ~/tier2/soc-recon/.restart-ids

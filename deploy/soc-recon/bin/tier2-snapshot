@@ -235,6 +235,21 @@ restart() {
         done
     else
         held=1
+        # SECURITY: a held decision stands for every later round of this run, the
+        # watchdog's included. Without the record, a round that failed here and a
+        # change put back before the retry would compare equal, release the hold
+        # and recreate: a run that took the held path would end with no hold and
+        # nobody asked. "held" is no hash, so no comparison matches it again; the
+        # operator reviews and releases (bin/tier2-hold).
+        if [ "$want" != held ]; then
+            if read -r s _ <"$PENDING" && [ -n "$s" ] && printf '%s held\n' "$s" >"$PENDING.tmp" &&
+                mv -f -- "$PENDING.tmp" "$PENDING"; then
+                want=held
+            else
+                rm -f -- "$PENDING.tmp"
+                say "WARN: cannot record the held decision in $PENDING: a later round compares the inputs again"
+            fi
+        fi
         say "WARN: the checkout, the compose file or the image changed during the run, so the old manager is started, not recreated: no config-mount file was installed (a start re-reads every single-file bind, runbook 09)"
         # NOTE: by the container IDs saved before the stop, not through compose:
         # the compose file may be what changed, even into one that no longer parses.

@@ -11,9 +11,10 @@
 # restart on unchanged inputs removes it. A run that ended held or died leaves it,
 # and while it stands every manager start skips the config copy (init exits 75).
 # Release refuses while a run or its watchdog holds a snapshot lock, or while a
-# run's .pending-restart says the stack is not back, in any dir under ~/tier2. Nothing here starts,
-# stops or recreates a container. Exit: 0 done (status: no hold), 3 status found
-# a hold, 1 refused or failed, 2 usage.
+# run's .pending-restart says the stack is not back, in any dir under ~/tier2.
+# Nothing here starts, stops or recreates a container, and nothing here calls
+# docker. Exit: 0 done (status: no hold), 3 status found a hold, 1 refused or
+# failed, 2 usage.
 
 # *--- Configuration ---*
 
@@ -72,22 +73,30 @@ hold_age_min() {
 # hold_since: the marker's time and age. hold_kind typed it a moment ago, so a
 # marker released or replaced since then is said, not printed as an empty time.
 hold_since() {
-    local epoch=
-    { read -r _ epoch <"$HOLD"; } 2>/dev/null || :
-    if [[ $epoch =~ ^[0-9]{10}$ ]]; then
+    local line='' epoch
+    { IFS= read -r line <"$HOLD"; } 2>/dev/null || :
+    if [[ $line =~ ^hold\ ([0-9]{10})$ ]]; then
+        epoch=${BASH_REMATCH[1]}
         echo "hold: since $(date -u -d "@$epoch" +%Y-%m-%dT%H:%M:%SZ), $(hold_age_min "$epoch") min ago"
     else
         echo "hold: the marker changed while it was read; run status again"
     fi
 }
 
-# The snapshot runs' dir, named by the compose project as bin/tier2-start reads it.
-# Fails when compose cannot render the file, so release can refuse.
-runs_dir() {
-    local project
-    project=$(docker compose config 2>/dev/null | awk 'NR == 1 && $1 == "name:" { print $2 }') || return 1
-    [[ $project =~ ^[a-z0-9][a-z0-9_-]*$ ]] || return 1
-    printf '%s\n' "$HOME/tier2/$project"
+# SECURITY: status and release look in every runs dir under ~/tier2, never only
+# the one the compose file names now. The run that wrote a hold named its dir
+# from the running manager's project, and the compose file may have changed
+# since, even into one that no longer renders. So a run of any project shows in
+# status and blocks a release, the scratch stack's included, named by its dir.
+RUNS=$HOME/tier2
+
+# runs_readable: a runs root that exists but cannot be listed hides a run's lock,
+# so it is an error for release and said by status, never "no run".
+runs_readable() {
+    if ! [ -e "$RUNS" ] && ! [ -L "$RUNS" ]; then
+        return 0
+    fi
+    [ -d "$RUNS" ] && ! [ -L "$RUNS" ] && [ -r "$RUNS" ] && [ -x "$RUNS" ]
 }
 
 # *--- Entry Point ---*
@@ -99,7 +108,6 @@ case $1 in status | release) ;; *) usage ;; esac
 cd -P -- "$(dirname -- "$0")/.." || die "cannot find the deploy dir"
 
 kind=$(hold_kind)
-out=$(runs_dir) || out=
 
 if [ "$1" = status ]; then
     case $kind in
@@ -107,23 +115,30 @@ if [ "$1" = status ]; then
         marker) hold_since ;;
         *) echo "hold: $kind at $HOLD, not a marker bin/tier2-snapshot wrote; it still holds" ;;
     esac
-    if [ -z "$out" ]; then
-        echo "snapshot lock: unknown, compose cannot render the project name"
-    elif ! [ -d "$out" ] || [ -L "$out" ]; then
-        echo "snapshot lock: free, no run has used $out"
+    if ! runs_readable; then
+        echo "snapshot lock: unknown, $RUNS cannot be listed"
     else
-        # NOTE: opened read-only, so status writes nothing; flock needs no write.
-        if ! [ -f "$out/.lock" ] || (flock -n 9) 9<"$out/.lock"; then
-            echo "snapshot lock: free"
-        else
-            echo "snapshot lock: held by a tier2-snapshot run or its watchdog"
-        fi
-        if [ -e "$out/.pending-restart" ]; then
-            echo "pending restart: $out/.pending-restart, the stack may not be back (runbook 09, When a run dies)"
-        fi
-        if [ -f "$out/last-run.log" ]; then
-            echo "last run: $(tail -n 1 -- "$out/last-run.log")"
-        fi
+        seen=
+        for d in "$RUNS"/*/; do
+            d=${d%/}
+            if ! [ -d "$d" ] || [ -L "$d" ]; then
+                continue
+            fi
+            seen=1
+            # NOTE: opened read-only, so status writes nothing; flock needs no write.
+            if ! [ -f "$d/.lock" ] || (flock -n 9) 9<"$d/.lock"; then
+                echo "snapshot lock: free in $d"
+            else
+                echo "snapshot lock: held by a tier2-snapshot run or its watchdog in $d"
+            fi
+            if [ -e "$d/.pending-restart" ]; then
+                echo "pending restart: $d/.pending-restart, the stack may not be back (runbook 09, When a run dies)"
+            fi
+            if [ -f "$d/last-run.log" ]; then
+                echo "last run in $d: $(tail -n 1 -- "$d/last-run.log")"
+            fi
+        done
+        [ -n "$seen" ] || echo "snapshot lock: free, no run has used $RUNS"
     fi
     if [ "$kind" != none ]; then
         echo "next: review what the checkout changed since the last install (runbook 06, section 3), then"
@@ -145,12 +160,8 @@ fi
 case $kind in
     folder | other) die "$HOLD is a $kind, not a marker; inspect it and remove it by hand" ;;
 esac
-# SECURITY: every runs dir under ~/tier2, not only the one the compose file names
-# now. The run that wrote this hold named its dir from the running manager's
-# project, and the compose file may have changed since, even into one that no
-# longer renders. So a run of any project blocks a release: the scratch stack's
-# included, and its message names the dir.
-for d in "$HOME"/tier2/*/; do
+runs_readable || die "$RUNS cannot be listed, so no snapshot lock can be checked"
+for d in "$RUNS"/*/; do
     d=${d%/}
     if ! [ -d "$d" ] || [ -L "$d" ]; then
         continue
