@@ -7,7 +7,7 @@
 // *--- Imports ---*
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { EXIT } from "./art-harness.ts";
@@ -18,6 +18,7 @@ import {
   editJson,
   fetchAll,
   layoutFor,
+  leakScanWith,
   makeScratch,
   msearchBody,
   NAVIGATOR_VERSION,
@@ -94,6 +95,10 @@ const alert = (over: Record<string, unknown>) => ({
   ...over,
 });
 
+const DEFENDER = "Microsoft-Windows-Windows Defender/Operational";
+/** The fields of an alert whose time is exact: a channel with no utcTime, where the event time is the system time. */
+const exactly = (time: string) => ({ channel: DEFENDER, eventTime: time, systemTime: time });
+
 /** Replace the alerts of one evidence file in a scratch root. */
 const setAlerts = (root: string, session: string, alerts: unknown[]) => editJson(root, evPath(session), (e) => (e.alerts = alerts));
 
@@ -130,6 +135,16 @@ function fakeRemote(seen: string[] = []): Remote {
 }
 
 const noScan = () => {};
+
+/** The error a call throws, or null when it returns. */
+const caught = (fn: () => unknown): CoverageError | null => {
+  try {
+    fn();
+    return null;
+  } catch (e) {
+    return e as CoverageError;
+  }
+};
 
 // *--- Tests ---*
 
@@ -203,6 +218,11 @@ describe("refresh-attack", () => {
     const text = buildAttackTsv(new TextEncoder().encode(b), sha(b));
     expect(text).toContain("T1002\trevoked\tT1001\tstealth\tName T1002");
     expect(text).toContain("T1003\tdeprecated\t\t");
+    // The header names the bundle that was hashed, so the read-back accepts this text under that digest.
+    expect(parseAttackTsv(text, "list", sha(b)).byId.size).toBe(3);
+    // A name with a control character passes the generator's own checks; only the read-back refuses it.
+    const bad = b.replace("Name T1001", "Name\\u0001T1001");
+    expect(() => buildAttackTsv(new TextEncoder().encode(bad), sha(bad))).toThrow(/control character/);
   });
   test("a hash that is not the expected one is refused", () => {
     const b = bundle();
@@ -218,6 +238,46 @@ describe("refresh-attack", () => {
   test("a revoked pattern with no revoked-by is refused", () => {
     const b = bundle().replace('"relationship_type":"revoked-by"', '"relationship_type":"subtechnique-of"');
     expect(() => buildAttackTsv(new TextEncoder().encode(b), sha(b))).toThrow(/successor/);
+  });
+  // ISC-206: the paths on the command line get the same check as every other path the tool reads or writes.
+  describe("paths", () => {
+    const place = () => {
+      const dir = mkdtempSync(join(tmpdir(), "coverage-bundle-"));
+      roots.push(dir);
+      const b = bundle();
+      const path = join(dir, "bundle.json");
+      writeFileSync(path, b);
+      return { dir, path, hash: sha(b), out: join(dir, "out.tsv") };
+    };
+    const refresh = (path: string, hash: string, out: string) => run(["refresh-attack", path, "--sha256", hash, "--out", out], quiet);
+    test("a bundle with a hash and a new path writes the list", () => {
+      const { path, hash, out } = place();
+      const r = refresh(path, hash, out);
+      expect(r.error).toBeUndefined();
+      expect(readFileSync(out, "utf8")).toContain("T1002\trevoked\tT1001");
+    });
+    test("an existing folder as the output is refused before anything is written, and no temp file is left", () => {
+      const { dir, path, hash } = place();
+      mkdirSync(join(dir, "out.tsv"));
+      const r = refresh(path, hash, join(dir, "out.tsv"));
+      expect(r.exit).toBe(EXIT.refused);
+      expect(r.error?.code).toBe("path-not-file");
+      expect(r.error?.item.endsWith("/out.tsv")).toBe(true);
+      expect(readdirSync(dir).sort()).toEqual(["bundle.json", "out.tsv"]);
+    });
+    test("a link as the output or as the bundle is refused and nothing is written through it", () => {
+      const { dir, path, hash } = place();
+      const real = join(dir, "real.tsv");
+      writeFileSync(real, "MARKER\n");
+      symlinkSync(real, join(dir, "link.tsv"));
+      const viaOut = refresh(path, hash, join(dir, "link.tsv"));
+      expect(viaOut.error?.code).toBe("path-symlink");
+      expect(readFileSync(real, "utf8")).toBe("MARKER\n");
+      symlinkSync(path, join(dir, "link.json"));
+      const viaBundle = refresh(join(dir, "link.json"), hash, join(dir, "fresh.tsv"));
+      expect(viaBundle.error?.code).toBe("path-symlink");
+      expect(existsSync(join(dir, "fresh.tsv"))).toBe(false);
+    });
   });
   test("the real bundle regenerates the checked-in list byte for byte", () => {
     const path = join(process.env.HOME ?? "", "code/attack-stix-data/enterprise-attack-19.2.json");
@@ -315,8 +375,8 @@ describe("what counts as validated", () => {
   test("an event at the exact start instant counts and one a tenth of a microsecond before does not", () => {
     const root = scratch();
     setAlerts(root, EV1, [
-      alert({ id: "FIXTUREDOCID00000060", eventTime: "2026-11-22T03:52:39.2612243Z" }),
-      alert({ id: "FIXTUREDOCID00000061", ruleId: 100411, eventTime: "2026-11-22T03:52:45.5162034Z" }),
+      alert({ id: "FIXTUREDOCID00000060", ...exactly("2026-11-22T03:52:39.2612243Z") }),
+      alert({ id: "FIXTUREDOCID00000061", ruleId: 100411, ...exactly("2026-11-22T03:52:45.5162034Z") }),
     ]);
     build(root);
     const s = summaryOf(root);
@@ -326,8 +386,8 @@ describe("what counts as validated", () => {
   test("an event at the exact end instant counts and one a tenth of a microsecond after does not", () => {
     const root = scratch();
     setAlerts(root, EV1, [
-      alert({ id: "FIXTUREDOCID00000060", eventTime: "2026-11-22T03:52:40.0864581Z" }),
-      alert({ id: "FIXTUREDOCID00000061", ruleId: 100411, eventTime: "2026-11-22T03:52:46.5268895Z" }),
+      alert({ id: "FIXTUREDOCID00000060", ...exactly("2026-11-22T03:52:40.0864581Z") }),
+      alert({ id: "FIXTUREDOCID00000061", ruleId: 100411, ...exactly("2026-11-22T03:52:46.5268895Z") }),
     ]);
     build(root);
     const s = summaryOf(root);
@@ -601,10 +661,39 @@ describe("evidence refusals", () => {
     editJson(root, evPath(EV1), (e) => (e.alerts[0].eventTime = "2026-11-22 03:52:40.014"));
     expect(refusal(["build", "--root", root]).code).toBe("evidence-time");
   });
-  test("a second evidence file for one session is refused", () => {
+  // ISC-198: the times of an alert are exact where the log gives them exactly.
+  test("a Sysmon event time without three decimals is refused", () => {
+    for (const bad of ["2026-11-22T03:52:40.01Z", "2026-11-22T03:52:40Z", "2026-11-22T03:52:40.0140000Z"]) {
+      const root = scratch();
+      editJson(root, evPath(EV1), (e) => (e.alerts[0].eventTime = bad));
+      const e = refusal(["build", "--root", root]);
+      expect(e.code).toBe("evidence-time");
+      expect(e.item).toContain("eventTime");
+    }
+  });
+  test("an event time that differs from the system time off the Sysmon channel is refused", () => {
     const root = scratch();
-    cpSync(join(root, evPath(EV1)), join(root, `${VALIDATION}/${EV1}.alerts.json.bak`));
-    expect(refusal(["build", "--root", root]).code).toBe("validation-file");
+    setAlerts(root, EV1, [{ ...alert({}), channel: DEFENDER, eventTime: "2026-11-22T03:52:40.0140000Z", systemTime: "2026-11-22T03:52:40.0180000Z" }]);
+    const e = refusal(["build", "--root", root]);
+    expect(e.code).toBe("evidence-time");
+    expect(e.item).toContain("eventTime");
+  });
+  test("every checked-in evidence file loads", () => {
+    const names = readdirSync(join(ROOT, VALIDATION)).filter((n) => n.endsWith(".alerts.json"));
+    expect(names.length).toBeGreaterThan(0);
+    expect(run(["check", "--root", ROOT], quiet).error).toBeUndefined();
+  });
+  test("a second evidence file for one session is refused", () => {
+    // A name outside the evidence pattern is refused as a stray file.
+    const stray = scratch();
+    cpSync(join(stray, evPath(EV1)), join(stray, `${VALIDATION}/${EV1}.alerts.json.bak`));
+    expect(refusal(["build", "--root", stray]).code).toBe("validation-file");
+    // A name inside the pattern passes that check, so only the rule that a file is named for its session catches it.
+    const root = scratch();
+    cpSync(join(root, evPath(EV1)), join(root, `${VALIDATION}/copy.alerts.json`));
+    const e = refusal(["build", "--root", root]);
+    expect(e.code).toBe("evidence-name");
+    expect(e.item).toContain("copy.alerts.json");
   });
   test("an alert listed twice is refused", () => {
     const root = scratch();
@@ -681,6 +770,74 @@ describe("record refusals", () => {
     const root = scratch();
     editJson(root, recPath(EV1), (r) => (r.tests[0].run.startUtc = null));
     expect(refusal(["build", "--root", root]).code).toBe("record-time");
+  });
+  // ISC-197: a step that says it was not sent has no times, and every time a record carries has seven decimals.
+  test("a step that was not sent but carries times is refused", () => {
+    const root = scratch();
+    editJson(root, recPath(EV1), (r) => (r.tests[0].cleanup.status = "not-sent"));
+    const e = refusal(["build", "--root", root]);
+    expect(e.code).toBe("record-step");
+    expect(e.item).toContain("test 1 cleanup");
+  });
+  test("a record time without seven decimals is refused", () => {
+    for (const [which, field] of [["run", "startUtc"], ["run", "endUtc"], ["cleanup", "startUtc"], ["cleanup", "endUtc"]] as const) {
+      const root = scratch();
+      editJson(root, recPath(EV1), (r) => (r.tests[0][which][field] = r.tests[0][which][field].replace(/\.(\d{3})\d{4}Z$/, ".$1Z")));
+      const e = refusal(["build", "--root", root]);
+      expect(e.code).toBe("record-time");
+      expect(e.item).toContain(`test 1 ${which} ${field}`);
+    }
+  });
+  test("every checked-in record loads", () => {
+    const names = readdirSync(join(ROOT, RECORDS)).filter((n) => n.endsWith(".json"));
+    expect(names.length).toBeGreaterThan(0);
+    for (const n of names) expect(() => parseRecord(`${RECORDS}/${n}`, readFileSync(join(ROOT, RECORDS, n)))).not.toThrow();
+  });
+  // ISC-199: the digest is over the file's bytes, and bytes that are not UTF-8 are not read.
+  /** Every record under a lab: its digest is over its bytes, and the evidence it has, if any, names that digest. */
+  const digestsHold = (root: string) => {
+    let seen = 0;
+    for (const n of readdirSync(join(root, RECORDS)).filter((f) => f.endsWith(".json"))) {
+      seen++;
+      const bytes = readFileSync(join(root, RECORDS, n));
+      const independent = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+      expect(parseRecord(`${RECORDS}/${n}`, bytes).sha256).toBe(independent);
+      // The same bytes handed over as text give the same digest, and the evidence on disk names it.
+      expect(parseRecord(`${RECORDS}/${n}`, bytes.toString("utf8")).sha256).toBe(independent);
+      // A record with no run or cleanup times has no window to ask for, so it has no evidence file.
+      const evidence = evPath(n.replace(/\.json$/, ""));
+      if (existsSync(join(root, evidence))) expect(read(root, evidence).recordSha256).toBe(independent);
+    }
+    return seen;
+  };
+  test("the record digest is the SHA-256 of the file's bytes, and every checked-in one is unchanged", () => {
+    expect(digestsHold(ROOT)).toBeGreaterThan(0);
+  });
+  // ISC-204: what the harness writes when every step is refused carries no times, and nothing fetches evidence for it.
+  test("a record with no run or cleanup times builds and checks, and the digest test holds with it in the folder", () => {
+    const root = scratch();
+    const session = "20261126T010101Z-abcdef";
+    const rec = read(root, recPath(EV1));
+    rec.session = session;
+    rec.verdict = "fail";
+    rec.failures = rec.tests.map((x: { guid: string }) => `${x.guid}: the run step was refused`);
+    for (const x of rec.tests) {
+      x.run = { startUtc: null, endUtc: null, status: "refused", exitCode: null };
+      x.cleanup = { startUtc: null, endUtc: null, status: "refused", exitCode: null };
+    }
+    writeFileSync(join(root, recPath(session)), `${JSON.stringify(rec, null, 2)}\n`);
+    expect(existsSync(join(root, evPath(session)))).toBe(false);
+    expect(run(["build", "--root", root], quiet).error).toBeUndefined();
+    expect(run(["check", "--root", root], quiet).error).toBeUndefined();
+    expect(digestsHold(root)).toBeGreaterThan(1);
+  });
+  test("a record that is not UTF-8 is refused with a typed error", () => {
+    const root = scratch();
+    const path = join(root, recPath(EV1));
+    writeFileSync(path, Buffer.concat([readFileSync(path), Buffer.from([0xff, 0xfe])]));
+    const e = refusal(["build", "--root", root]);
+    expect(e.code).toBe("bad-utf8");
+    expect(e.item).toContain(EV1);
   });
   test("a stray file in art-runs is refused", () => {
     const root = scratch();
@@ -823,6 +980,169 @@ describe("pack reading", () => {
     const root = scratch();
     editJson(root, "phase-b-detection/attack/crosswalk.json", (c) => (c.entries = c.entries.filter((e: { from: string }) => e.from !== "T1033")));
     expect(refusal(["build", "--root", root]).item).toBe("T1033");
+  });
+});
+
+// ISC-191: this tool reads and writes regular files and folders only, so a link anywhere on a path is refused by name.
+describe("links and folders", () => {
+  const LAYERS = ["layer-rule-exists.json", "layer-validated.json", "coverage.json"].map((n) => `${COVERAGE}/${n}`);
+  const RULES_DIR = "deploy/soc-recon/wazuh/custom-rules";
+  /** A scratch root that has been built once, with a marker in each output so that any write after a refusal shows. */
+  const marked = () => {
+    const root = scratch();
+    build(root);
+    for (const o of LAYERS) writeFileSync(join(root, o), `MARKER ${o}\n`);
+    return root;
+  };
+  const untouched = (root: string, except = "") => {
+    for (const o of LAYERS) if (o !== except) expect(readText(root, o)).toBe(`MARKER ${o}\n`);
+  };
+  const away = (root: string) => mkdtempSync(join(root, "elsewhere-"));
+  /** Replace a file with a link to a copy of its bytes. */
+  const linkFile = (root: string, p: string) => {
+    const real = join(away(root), "bytes");
+    cpSync(join(root, p), real);
+    rmSync(join(root, p), { recursive: true });
+    symlinkSync(real, join(root, p));
+  };
+  /** Replace a file with a link to nothing. */
+  const dangle = (root: string, p: string) => {
+    rmSync(join(root, p), { recursive: true });
+    symlinkSync(join(away(root), "nothing"), join(root, p));
+  };
+  const linkFolder = (root: string, p: string) => {
+    const real = join(away(root), "folder");
+    cpSync(join(root, p), real, { recursive: true });
+    rmSync(join(root, p), { recursive: true });
+    symlinkSync(real, join(root, p));
+  };
+  const inputs = [
+    "phase-b-detection/attack/crosswalk.json",
+    "phase-b-detection/attack/enterprise-19.2-techniques.tsv",
+    recPath(EV1),
+    evPath(EV1),
+    MISSES,
+    WRITEUP,
+  ];
+  for (const input of inputs) {
+    for (const [how, plant] of [["a link to good bytes", linkFile], ["a link to nothing", dangle]] as const) {
+      test(`${how} in place of ${input} is refused by name, by build and by check`, () => {
+        const root = marked();
+        plant(root, input);
+        for (const cmd of ["build", "check"]) {
+          const e = refusal([cmd, "--root", root]);
+          expect(e.code).toBe("path-symlink");
+          expect(e.item).toBe(input);
+        }
+        untouched(root);
+      });
+    }
+  }
+  test("a rule file that is a link is refused by name", () => {
+    const root = marked();
+    const name = readdirSync(join(root, RULES_DIR)).find((n) => n.endsWith(".xml")) as string;
+    linkFile(root, `${RULES_DIR}/${name}`);
+    const e = refusal(["build", "--root", root]);
+    expect(e.code).toBe("path-symlink");
+    expect(e.item).toBe(`${RULES_DIR}/${name}`);
+    untouched(root);
+  });
+  // ISC-205: the rules folder is walked into subfolders, so a link inside one is as much a link as one at the top.
+  test("a link inside a subfolder of the rules folder is refused by name, by build and by check", () => {
+    const sub = `${RULES_DIR}/archive`;
+    const target = `${sub}/old_pack.xml`;
+    for (const cmd of ["build", "check"]) {
+      const root = marked();
+      mkdirSync(join(root, sub));
+      const real = join(away(root), "bytes.xml");
+      writeFileSync(real, "<group name=\"x\"/>\n");
+      symlinkSync(real, join(root, target));
+      const e = refusal([cmd, "--root", root]);
+      expect(e.code).toBe("path-symlink");
+      expect(e.item).toBe(target);
+      untouched(root);
+    }
+  });
+  for (const folder of [COVERAGE, RECORDS, VALIDATION, RULES_DIR, "phase-b-detection/attack"]) {
+    test(`a link in place of the folder ${folder} is refused by name`, () => {
+      const root = marked();
+      linkFolder(root, folder);
+      const e = refusal(["build", "--root", root]);
+      expect(e.code).toBe("path-symlink");
+      expect(e.item).toBe(folder);
+      if (folder !== COVERAGE) untouched(root);
+    });
+  }
+  // A file where a folder belongs: the folder itself, and a folder above one the tool reads.
+  for (const folder of [COVERAGE, RECORDS, VALIDATION, RULES_DIR, "phase-b-detection/attack", "deploy/soc-recon/wazuh"]) {
+    test(`a file in place of the folder ${folder} is refused by name`, () => {
+      const root = marked();
+      rmSync(join(root, folder), { recursive: true });
+      writeFileSync(join(root, folder), "not a folder\n");
+      for (const cmd of ["build", "check"]) {
+        const e = refusal([cmd, "--root", root]);
+        expect(e.code).toBe("path-not-folder");
+        expect(e.item).toBe(folder);
+      }
+    });
+  }
+  for (const o of LAYERS) {
+    test(`${o} as a link, even to good bytes, is refused by build and by check, and nothing is written`, () => {
+      const root = marked();
+      linkFile(root, o);
+      for (const cmd of ["build", "check"]) {
+        const e = refusal([cmd, "--root", root]);
+        expect(e.code).toBe("path-symlink");
+        expect(e.item).toBe(o);
+      }
+      untouched(root, o);
+      expect(readText(root, o)).toBe(`MARKER ${o}\n`);
+    });
+    test(`${o} as a folder is refused by build before any write`, () => {
+      const root = marked();
+      const before = readText(root, WRITEUP);
+      rmSync(join(root, o));
+      mkdirSync(join(root, o));
+      const e = refusal(["build", "--root", root]);
+      expect(e.code).toBe("path-not-file");
+      expect(e.item).toBe(o);
+      untouched(root, o);
+      expect(readText(root, WRITEUP)).toBe(before);
+    });
+  }
+  test("the writeup as a folder is refused by build before any write", () => {
+    const root = marked();
+    rmSync(join(root, WRITEUP));
+    mkdirSync(join(root, WRITEUP));
+    expect(refusal(["build", "--root", root]).code).toBe("path-not-file");
+    untouched(root);
+  });
+  test("an evidence name that is a link or a folder stops fetch before it writes anything", () => {
+    // A link and a dangling link start from a file; a folder is made where the file would be.
+    const folder = (r: string, p: string) => mkdirSync(join(r, p));
+    for (const [plant, code, existing] of [[linkFile, "path-symlink", true], [dangle, "path-symlink", true], [folder, "path-not-file", false]] as const) {
+      const root = scratch(false);
+      const target = evPath(EV1);
+      if (existing) writeFileSync(join(root, target), "{}");
+      plant(root, target);
+      const e = caught(() => fetchAll(layoutFor(root), fakeRemote(), noScan));
+      expect(e?.code).toBe(code);
+      expect(e?.item).toBe(target);
+      expect(existsSync(join(root, evPath(EV2)))).toBe(false);
+    }
+  });
+  test("claims refuses a file or a literals file that is a link", () => {
+    const root = marked();
+    const notes = mdFile(root, "notes.md", "# Notes\n\nPlain.\n");
+    linkFile(root, notes);
+    const e = claimsRun(root, [notes]).error;
+    expect(e?.code).toBe("path-symlink");
+    expect(e?.item).toBe(notes);
+    const other = scratch();
+    linkFile(other, LITERALS);
+    const l = claimsRun(other, [WRITEUP]).error;
+    expect(l?.code).toBe("path-symlink");
+    expect(l?.item).toBe(LITERALS);
   });
 });
 
@@ -979,31 +1299,83 @@ describe("fetch", () => {
     // Any other value with markup in it is still outside the pattern.
     expect(() => fetchAll(layoutFor(scratch(false)), withImage("&lt;another value&gt;"), noScan)).toThrow(/image/);
   });
-  test("the real leak scan stops a planted identifier and nothing is written", () => {
+  // The repo's leakcheck reads tools/leak-denylist.txt, which is gitignored and so absent from a clone. These
+  // tests run its class checks alone (--no-denylist) so they mean the same on every checkout.
+  const classChecksOnly = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), "coverage-leakwrap-"));
+    roots.push(dir);
+    const script = join(dir, "scan.ts");
+    const leakcheck = join(ROOT, "tools/leakcheck.ts");
+    writeFileSync(script, `const r = Bun.spawnSync(["bun", ${JSON.stringify(leakcheck)}, "--no-denylist", ...process.argv.slice(2)], { stdout: "inherit", stderr: "inherit" });\nprocess.exit(r.exitCode ?? 2);\n`);
+    return script;
+  };
+  /** A remote whose first session answers with an image name that is a private address, joined at run time so this file holds no literal one. */
+  const plantedRemote = (): Remote => (nd, t) => {
+    const real = fakeRemote()(nd, t);
+    if (!nd.includes("2026-11-22T03:51:39")) return real;
+    const planted = ["192", "168", "50", "7"].join(".");
+    const alerts = fixtureAlerts(EV1).map((a: ReturnType<typeof alert>, i: number) => (i === 0 ? { ...a, image: `${planted}.exe` } : a));
+    return { code: 0, out: answerFor(alerts, 9), timedOut: false };
+  };
+  test("a leak scan that finds a planted identifier refuses and nothing is written", () => {
     const root = scratch(false);
-    const remote: Remote = (nd, t) => {
-      const real = fakeRemote()(nd, t);
-      if (!nd.includes("2026-11-22T03:51:39")) return real;
-      // The planted private address is joined at run time, so this file carries no literal one.
-      const planted = ["192", "168", "50", "7"].join(".");
-      const alerts = fixtureAlerts(EV1).map((a: ReturnType<typeof alert>, i: number) => (i === 0 ? { ...a, channel: `Microsoft-Windows-Sysmon/Operational host ${planted}` } : a));
-      return { code: 0, out: answerFor(alerts, 9), timedOut: false };
-    };
-    const err = (() => {
-      try {
-        fetchAll(layoutFor(root), remote);
-        return null;
-      } catch (e) {
-        return e as CoverageError;
-      }
-    })();
+    const err = caught(() => fetchAll(layoutFor(root), plantedRemote(), leakScanWith(classChecksOnly())));
     expect(err?.code).toBe("leak-scan");
+    expect(err?.exit).toBe(EXIT.refused);
     expect(readdirSync(join(root, VALIDATION)).filter((n) => n.endsWith(".alerts.json"))).toEqual([]);
   });
-  test("the real leak scan passes the fixture evidence", () => {
+  test("the same scan passes the fixture evidence", () => {
     const root = scratch(false);
-    expect(() => fetchAll(layoutFor(root), fakeRemote())).not.toThrow();
+    expect(() => fetchAll(layoutFor(root), fakeRemote(), leakScanWith(classChecksOnly()))).not.toThrow();
     expect(existsSync(join(root, evPath(EV1)))).toBe(true);
+  });
+  test("a scan that did not run is a setup failure, not a leak refusal", () => {
+    const dir = mkdtempSync(join(tmpdir(), "coverage-leakfake-"));
+    roots.push(dir);
+    const fake = (name: string, source: string) => {
+      const path = join(dir, name);
+      writeFileSync(path, source);
+      return path;
+    };
+    const files = new Map([["x.json", "{}"]]);
+    const setupOf = (script: string) => caught(() => leakScanWith(script)(files));
+    // leakcheck's own setup exit, a crash and a missing script (bun exits 1 for both), and a bare exit 1.
+    for (const script of [fake("two.ts", "process.exit(2);\n"), fake("crash.ts", 'throw new Error("boom");\n'), join(dir, "missing.ts"), fake("one.ts", "process.exit(1);\n")]) {
+      const err = setupOf(script);
+      expect(err?.code).toBe("leak-scan-setup");
+      expect(err?.exit).toBe(EXIT.setup);
+    }
+    // Only exit 1 with leakcheck's own findings line is a finding.
+    const finding = setupOf(fake("finding.ts", 'console.error("leakcheck: 1 finding(s) in 1 file(s), 1 scanned.");\nprocess.exit(1);\n'));
+    expect(finding?.code).toBe("leak-scan");
+    expect(finding?.exit).toBe(EXIT.refused);
+    expect(setupOf(fake("clean.ts", "process.exit(0);\n"))).toBeNull();
+  });
+  test("the default scan passes the fixture evidence where the denylist exists, and says setup where it does not", () => {
+    const root = scratch(false);
+    const err = caught(() => fetchAll(layoutFor(root), fakeRemote()));
+    if (existsSync(join(ROOT, "tools/leak-denylist.txt"))) {
+      expect(err).toBeNull();
+      expect(existsSync(join(root, evPath(EV1)))).toBe(true);
+    } else {
+      expect(err?.code).toBe("leak-scan-setup");
+      expect(readdirSync(join(root, VALIDATION)).filter((n) => n.endsWith(".alerts.json"))).toEqual([]);
+    }
+  });
+  test("a record with no times is skipped, and a line says so", () => {
+    const root = scratch(false);
+    // Every step of the second record was never sent, so it has no window to ask the index about.
+    editJson(root, recPath(EV2), (r) => {
+      for (const test of r.tests) {
+        test.run = { startUtc: null, endUtc: null, status: "not-sent", exitCode: null };
+        test.cleanup = { startUtc: null, endUtc: null, status: "not-sent", exitCode: null };
+      }
+    });
+    const lines: string[] = [];
+    const written = fetchAll(layoutFor(root), fakeRemote(), noScan, (l) => lines.push(l));
+    expect(written).toEqual([`${VALIDATION}/${EV1}.alerts.json`]);
+    expect(lines.filter((l) => l.includes(`skipped ${EV2}`) && l.includes("no run or cleanup times"))).toHaveLength(1);
+    expect(existsSync(join(root, evPath(EV2)))).toBe(false);
   });
   test("an unsafe host alias is refused before ssh is reached", () => {
     for (const host of ["a b", "-oProxyCommand=x", "a;b", "$(id)", ""]) {
@@ -1251,9 +1623,52 @@ describe("results section", () => {
     const again = scratch();
     build(again);
     writeFileSync(join(again, WRITEUP), bad);
+    // Each output holds a marker a rebuild would replace, so any write before the refusal shows.
+    const outputs = ["layer-rule-exists.json", "layer-validated.json", "coverage.json"].map((n) => `${COVERAGE}/${n}`);
+    for (const o of outputs) writeFileSync(join(again, o), `MARKER ${o}\n`);
     const r = run(["build", "--root", again], quiet);
     expect(r.error?.code).toBe("section-duplicate");
     expect(readText(again, WRITEUP)).toBe(bad);
+    for (const o of outputs) expect(readText(again, o)).toBe(`MARKER ${o}\n`);
+  });
+
+  // ISC-199: prose that is not UTF-8 would be read with replacement characters, so it is not read.
+  test("a writeup that is not UTF-8 is refused with a typed error, and nothing is written", () => {
+    const root = scratch();
+    build(root);
+    const bad = Buffer.concat([readFileSync(join(root, WRITEUP)), Buffer.from([0xc3, 0x28, 0x0a])]);
+    writeFileSync(join(root, WRITEUP), bad);
+    for (const o of ["layer-rule-exists.json", "layer-validated.json", "coverage.json"]) writeFileSync(join(root, COVERAGE, o), `MARKER ${o}\n`);
+    for (const cmd of ["build", "check"]) {
+      const e = refusal([cmd, "--root", root]);
+      expect(e.code).toBe("bad-utf8");
+      expect(e.item).toBe(WRITEUP);
+    }
+    expect(readFileSync(join(root, WRITEUP)).equals(bad)).toBe(true);
+    for (const o of ["layer-rule-exists.json", "layer-validated.json", "coverage.json"]) expect(readText(root, `${COVERAGE}/${o}`)).toBe(`MARKER ${o}\n`);
+  });
+
+  // ISC-196: a shorter fence line inside a longer fence does not close it.
+  test("a results section inside a four-backtick fence is not a section, whatever it holds", () => {
+    const root = scratch();
+    build(root);
+    const { section } = sectionOf(readText(root, WRITEUP));
+    writeFileSync(join(root, WRITEUP), `# Title\n\n\`\`\`\`md\n\`\`\`\n${section}\n\`\`\`\`\n`);
+    expect(refusal(["check", "--root", root]).code).toBe("section-missing");
+    // The same text under a three-backtick fence is closed by its three-backtick line, so the section is outside it.
+    writeFileSync(join(root, WRITEUP), `# Title\n\n\`\`\`md\n\`\`\`\n${section}\n`);
+    expect(run(["check", "--root", root], quiet).error?.code).not.toBe("section-missing");
+  });
+
+  // ISC-205: a closing fence has no text after it, so a line with an info string does not end a fence.
+  test("a fence line with an info string does not close the fence, and a bare one does", () => {
+    const root = scratch();
+    build(root);
+    const { section } = sectionOf(readText(root, WRITEUP));
+    writeFileSync(join(root, WRITEUP), `# Title\n\n\`\`\`\n\`\`\`md\n${section}\n\`\`\`\n`);
+    expect(refusal(["check", "--root", root]).code).toBe("section-missing");
+    writeFileSync(join(root, WRITEUP), `# Title\n\n\`\`\`\n\`\`\`\n${section}\n`);
+    expect(run(["check", "--root", root], quiet).error?.code).not.toBe("section-missing");
   });
 
   test("a heading inside a code fence is not a section", () => {
@@ -1324,6 +1739,100 @@ describe("claims: numbers in prose", () => {
     const r = claimsRun(root, [PROSE]);
     const items = r.errs.filter((l) => l.includes("claim-")).join("\n");
     for (const token of ["13 of 18", "70%", "twelve of eighteen", "5"]) expect(items).toContain(token);
+  });
+
+  // ISC-193: a spelled-out ratio or percentage is refused in each form a writer can give it.
+  test("a spelled ratio with a determiner, a hyphen, a line break or a blockquote marker is refused", () => {
+    for (const [text, token] of [
+      ["Twelve of the eighteen pack rules.", "Twelve of the eighteen"],
+      ["We did twelve-of-eighteen.", "twelve-of-eighteen"],
+      ["We validated twelve out of\neighteen rules.", "twelve out of eighteen"],
+      ["> twelve out of\n> eighteen\n", "twelve out of eighteen"],
+    ] as const) {
+      const root = scratch();
+      build(root);
+      const r = planted(root, text);
+      expect(r.error?.code).toBe("claim-number-word");
+      expect(r.error?.item).toBe(`${PROSE}:3 ${token}`);
+    }
+    // A paragraph break between the words is two sentences, not a wrapped ratio.
+    const root = scratch();
+    build(root);
+    expect(planted(root, "one of the\n\neighteen").exit).toBe(EXIT.ok);
+  });
+  test("a spelled percentage built on hundred or thousand is refused", () => {
+    for (const [text, token] of [
+      ["It was one thousand percent.", "one thousand percent"],
+      ["It was one hundred and five percent.", "one hundred and five percent"],
+    ] as const) {
+      const root = scratch();
+      build(root);
+      const r = planted(root, text);
+      expect(r.error?.code).toBe("claim-number-word");
+      expect(r.error?.item).toBe(`${PROSE}:3 ${token}`);
+    }
+  });
+  // ISC-202: emphasis marks and non-breaking spaces do not change the words a reader reads.
+  test("a spelled ratio or percentage with emphasis marks or a non-breaking space in it is refused", () => {
+    for (const text of [
+      "**twelve** out of **eighteen** rules.",
+      "_twelve of eighteen_ rules.",
+      "*twelve* of *eighteen* rules are validated.",
+      "twelve of&nbsp;eighteen rules.",
+      "twelve&nbsp;percent.",
+      "twelve **out of** eighteen rules.",
+      "twelve&#160;percent.",
+      "**13** of 18 rules.",
+    ]) {
+      const root = scratch();
+      build(root);
+      const r = planted(root, text);
+      expect(r.error?.code).toBe(text.startsWith("**13**") ? "claim-number" : "claim-number-word");
+      expect(r.error?.item.startsWith(`${PROSE}:3 `)).toBe(true);
+      expect(r.exit).toBe(EXIT.refused);
+    }
+    // The same forms split across a line break are refused, and the report names the words as written.
+    const root = scratch();
+    build(root);
+    const wrapped = planted(root, "We saw **twelve** out of\n**eighteen** rules.");
+    expect(wrapped.error?.code).toBe("claim-number-word");
+    expect(wrapped.error?.item).toContain(`${PROSE}:3 `);
+  });
+  test("emphasis with no ratio in it still passes, and an underscore inside a word is not emphasis", () => {
+    for (const text of ["This is **very** _clear_ and *plain* prose.", "The twelve_of_eighteen label is a name.", "A **bold** claim about the rule_id field."]) {
+      const root = scratch();
+      build(root);
+      expect(planted(root, text).exit).toBe(EXIT.ok);
+    }
+  });
+  test("the writeup as it stands passes the number gate", () => {
+    const r = run(["claims", join(ROOT, WRITEUP), "--root", ROOT], quiet);
+    expect(r.error).toBeUndefined();
+    expect(r.exit).toBe(EXIT.ok);
+  });
+
+  // ISC-195: a count cannot hide against a link, and a stamp or version is an identifier only when it is a real one.
+  test("a number touching a link's closing bracket is reported", () => {
+    const root = scratch();
+    build(root);
+    const r = planted(root, "[s](https://example.org/)13%");
+    expect(r.error?.code).toBe("claim-number");
+    expect(r.error?.item).toBe(`${PROSE}:3 13%`);
+  });
+  test("a UTC offset that no clock keeps is refused, and real ones pass", () => {
+    const root = scratch();
+    build(root);
+    const bad = planted(root, "Seen at 2026-11-25T12:34+99:99.");
+    expect(bad.error?.code).toBe("claim-number");
+    expect(bad.error?.item).toBe(`${PROSE}:3 2026-11-25T12:34+99:99`);
+    expect(planted(root, "Seen at 2026-11-25T12:34+14:00 and 2026-11-25T12:34-07:00 and 2026-11-25T12:34+05:45.").exit).toBe(EXIT.ok);
+    expect(planted(root, "Seen at 2026-11-25T12:34+14:15.").error?.code).toBe("claim-number");
+  });
+  test("a bare v-prefixed number is a version, as the README says", () => {
+    const root = scratch();
+    build(root);
+    expect(planted(root, "Version v2 is installed.").exit).toBe(EXIT.ok);
+    expect(planted(root, "Version 2 is installed.").error?.code).toBe("claim-number");
   });
 
   test("identifiers pass: pack rule IDs, Defender rule IDs, ATT&CK IDs, session IDs, dates, times, digests, list markers", () => {
@@ -1604,6 +2113,30 @@ describe("claims: a copy of the section", () => {
   });
 });
 
+/**
+ * A scratch repo with the hooks installed and every tool tracked, and a git config of its own so no
+ * global one (signing, hooks path) reaches it. Returns the repo, the folder that holds the config and the env.
+ */
+function hookScratch(): { repo: string; home: string; env: Record<string, string> } {
+  const repo = scratch();
+  expect(build(repo).exit).toBe(EXIT.ok);
+  const home = mkdtempSync(join(tmpdir(), "coverage-hook-"));
+  roots.push(home);
+  writeFileSync(join(home, "gitconfig"), "[user]\n\tname = hook test\n\temail = test@example.test\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n");
+  const env = { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", GIT_CONFIG_GLOBAL: join(home, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1" };
+  // The hook and every tool it runs; the tools are tracked, because the hook runs the staged copies.
+  mkdirSync(join(repo, "tools"));
+  for (const f of readdirSync(resolve(ROOT, "tools"))) if (f.endsWith(".ts") && !f.endsWith(".test.ts")) cpSync(resolve(ROOT, "tools", f), join(repo, "tools", f));
+  cpSync(resolve(ROOT, "tools/hooks"), join(repo, "tools/hooks"), { recursive: true });
+  writeFileSync(join(repo, "tools/leak-denylist.txt"), "zq-scratch-only-literal\n");
+  expect(Bun.spawnSync(["git", "init", "-q"], { cwd: repo, env }).exitCode).toBe(0);
+  const installed = Bun.spawnSync(["bash", "tools/hooks/install.sh"], { cwd: repo, env, stdout: "pipe", stderr: "pipe" });
+  expect(installed.exitCode).toBe(0);
+  writeFileSync(join(repo, ".gitignore"), "/tools/leak-denylist.txt\n");
+  writeFileSync(join(repo, "README.md"), "# scratch\n");
+  return { repo, home, env };
+}
+
 // The hook end to end in a scratch repo (ISA ISC-169): the check reads the index, so the
 // working tree can neither hide a bad staged output nor block a good one.
 describe("pre-commit hook", () => {
@@ -1642,22 +2175,7 @@ describe("pre-commit hook", () => {
   };
 
   beforeAll(() => {
-    repo = scratch();
-    expect(build(repo).exit).toBe(EXIT.ok);
-    home = mkdtempSync(join(tmpdir(), "coverage-hook-"));
-    roots.push(home);
-    writeFileSync(join(home, "gitconfig"), "[user]\n\tname = hook test\n\temail = test@example.test\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n");
-    env = { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", GIT_CONFIG_GLOBAL: join(home, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1" };
-    // The hook and every tool it runs, kept untracked as in the leakcheck tests.
-    mkdirSync(join(repo, "tools"));
-    for (const f of readdirSync(resolve(ROOT, "tools"))) if (f.endsWith(".ts") && !f.endsWith(".test.ts")) cpSync(resolve(ROOT, "tools", f), join(repo, "tools", f));
-    cpSync(resolve(ROOT, "tools/hooks"), join(repo, "tools/hooks"), { recursive: true });
-    writeFileSync(join(repo, "tools/leak-denylist.txt"), "zq-scratch-only-literal\n");
-    expect(git("init", "-q").code).toBe(0);
-    const installed = Bun.spawnSync(["bash", "tools/hooks/install.sh"], { cwd: repo, env, stdout: "pipe", stderr: "pipe" });
-    expect(installed.exitCode).toBe(0);
-    writeFileSync(join(repo, ".gitignore"), "/tools/\n");
-    writeFileSync(join(repo, "README.md"), "# scratch\n");
+    ({ repo, home, env } = hookScratch());
   });
 
   test("a commit of a tree whose outputs match the rebuild runs the check and goes through", () => {
@@ -1810,6 +2328,354 @@ describe("pre-commit hook", () => {
     } finally {
       git("reset", "-q", "--", LAYER);
       writeFileSync(join(repo, LAYER), good);
+    }
+  });
+
+  // The tool that judges a commit is the staged one, never the working-tree copy (ISC-190).
+  const TOOL = "tools/coverage.ts";
+  const NAV = 'export const NAVIGATOR_VERSION = "5.3.2";';
+  /** Put paths back to what HEAD holds, in the index and the working tree. */
+  const restore = (...paths: string[]) => expect(git("checkout", "-q", "HEAD", "--", ...paths).code).toBe(0);
+  /** The scratch repo's tool with its Navigator version changed, so it rebuilds different layers. */
+  const changedTool = () => {
+    const good = readFileSync(join(repo, TOOL), "utf8");
+    expect(good).toContain(NAV);
+    return { good, bad: good.replace(NAV, NAV.replace("5.3.2", "5.3.3")) };
+  };
+
+  test("a staged tool change with outputs left as they were is blocked", () => {
+    const { bad } = changedTool();
+    writeFileSync(join(repo, TOOL), bad);
+    try {
+      expect(git("add", TOOL).code).toBe(0);
+      const r = git("commit", "-q", "-m", "a tool change with stale outputs");
+      expect(r.out).toContain("differs from the rebuild");
+      expect(r.code).not.toBe(0);
+    } finally {
+      restore(TOOL);
+    }
+  });
+
+  test("a bad staged tool is blocked even with the good tool back in the working tree", () => {
+    const { good, bad } = changedTool();
+    writeFileSync(join(repo, TOOL), bad);
+    try {
+      expect(git("add", TOOL).code).toBe(0);
+      writeFileSync(join(repo, TOOL), good);
+      const r = git("commit", "-q", "-m", "a bad staged tool");
+      expect(r.out).toContain("differs from the rebuild");
+      expect(r.code).not.toBe(0);
+    } finally {
+      restore(TOOL);
+    }
+  });
+
+  test("a good staged tool is the one that runs, whatever the working tree holds", () => {
+    const writeup = readFileSync(join(repo, WRITEUP), "utf8");
+    writeFileSync(join(repo, WRITEUP), `${writeup}\nAnother line of prose.\n`);
+    expect(git("add", WRITEUP).code).toBe(0);
+    // The working-tree tool is broken; the staged one is the committed good tool.
+    writeFileSync(join(repo, TOOL), "process.exit(9);\n");
+    try {
+      const r = git("commit", "-q", "-m", "prose, with a broken tool left in the working tree");
+      expect(r.out).toContain(MATCH);
+      expect(r.code).toBe(0);
+    } finally {
+      restore(TOOL);
+    }
+  });
+
+  test("a tool the index does not hold as a regular file blocks the commit", () => {
+    const NAME = "tools/winevt.ts";
+    const good = readFileSync(join(repo, NAME), "utf8");
+    try {
+      // Removed from the index, kept in the working tree.
+      expect(git("rm", "-q", "--cached", NAME).code).toBe(0);
+      const gone = git("commit", "-q", "-m", "a tool left out of the index");
+      expect(gone.out).toContain(`${NAME} is not a regular file in the index`);
+      expect(gone.code).not.toBe(0);
+      restore(NAME);
+      // Staged as a link to the same bytes.
+      const real = join(home, "winevt-bytes.ts");
+      writeFileSync(real, good);
+      rmSync(join(repo, NAME));
+      symlinkSync(real, join(repo, NAME));
+      expect(git("add", NAME).code).toBe(0);
+      const linked = git("commit", "-q", "-m", "a tool staged as a link");
+      expect(linked.out).toContain(`${NAME} is not a regular file in the index`);
+      expect(linked.code).not.toBe(0);
+    } finally {
+      rmSync(join(repo, NAME), { force: true });
+      restore(NAME);
+    }
+  });
+
+  // ISC-191: a layer staged as a link to good bytes is not the layer, whatever the link reaches.
+  test("a layer staged as a link to good bytes blocks the commit", () => {
+    const real = join(home, "layer-bytes.json");
+    writeFileSync(real, readFileSync(join(repo, LAYER)));
+    rmSync(join(repo, LAYER));
+    symlinkSync(real, join(repo, LAYER));
+    try {
+      expect(git("add", LAYER).code).toBe(0);
+      const r = git("commit", "-q", "-m", "a layer staged as a link");
+      expect(r.out).toContain("path-symlink");
+      expect(r.out).toContain(LAYER);
+      expect(r.code).not.toBe(0);
+    } finally {
+      rmSync(join(repo, LAYER), { force: true });
+      restore(LAYER);
+    }
+  });
+
+  // ISC-192: the review's recipe. A replace ref on HEAD makes a plain diff of the index against HEAD hide the layer.
+  test("a replace ref on HEAD cannot hide a staged layer change from the hook", () => {
+    const head = git("rev-parse", "HEAD").out.trim();
+    plant();
+    expect(git("add", LAYER).code).toBe(0);
+    const tree = git("write-tree").out.trim();
+    const commit = git("commit-tree", tree, "-m", "R").out.trim();
+    expect(commit).toMatch(/^[0-9a-f]{40,64}$/);
+    expect(git("replace", head, commit).code).toBe(0);
+    const readme = readFileSync(join(repo, "README.md"), "utf8");
+    try {
+      writeFileSync(join(repo, "README.md"), `${readme}\nAn unrelated line.\n`);
+      expect(git("add", "README.md").code).toBe(0);
+      // With the ref honored, the staged layer equals HEAD's and the diff of built paths is empty.
+      expect(git("diff", "--cached", "--name-only", "--", COVERAGE).out.trim()).toBe("");
+      const r = git("commit", "-q", "-m", "hidden behind a replace ref on HEAD");
+      expect(r.out).toContain(DIFFERS);
+      expect(r.code).not.toBe(0);
+    } finally {
+      expect(git("replace", "-d", head).code).toBe(0);
+      writeFileSync(join(repo, "README.md"), readme);
+      restore(LAYER, "README.md");
+    }
+  });
+});
+
+// The pre-push hook end to end (ISA ISC-203): a merge, a cherry-pick or a rebase never meets the
+// pre-commit hook, so the tree of each pushed tip is held to the same check at the push. Every push
+// here goes to a bare repo on the same disk.
+describe("pre-push hook", () => {
+  const LAYER = `${COVERAGE}/layer-validated.json`;
+  const LITERALS = "phase-b-detection/claims-literals.json";
+  const TOOL = "tools/coverage.ts";
+  const FAILS = "fails the coverage check";
+  let repo: string;
+  let home: string;
+  let env: Record<string, string>;
+  let remote: string;
+  const run1 = (cmd: string[], e: Record<string, string> = env, cwd = repo) => {
+    const r = Bun.spawnSync(cmd, { cwd, env: e, stdout: "pipe", stderr: "pipe" });
+    return { code: r.exitCode, out: `${r.stdout.toString()}${r.stderr.toString()}` };
+  };
+  const git = (...args: string[]) => run1(["git", ...args]);
+  const push = (...args: string[]) => run1(["git", "push", "-q", "origin", ...args]);
+  const onRemote = (ref: string) => {
+    const r = run1(["git", "--git-dir", remote, "rev-parse", "--verify", "--quiet", ref]);
+    return r.code === 0 ? r.out.trim() : "";
+  };
+  const head = (ref = "HEAD") => git("rev-parse", ref).out.trim();
+  const commit = (msg: string, ...flags: string[]) => {
+    const r = git("commit", "-q", "-m", msg, ...flags);
+    expect(r.code).toBe(0);
+    return head();
+  };
+  const edit = (path: string, fn: (text: string) => string) => {
+    const was = readFileSync(join(repo, path), "utf8");
+    const now = fn(was);
+    expect(now).not.toBe(was);
+    writeFileSync(join(repo, path), now);
+    expect(git("add", path).code).toBe(0);
+  };
+  const LITERAL_0 = { text: "level 0", source: "a scratch literal, the level of a stock rule" };
+  const lines = (a: string, b: string) => (text: string) => text.replace(a, b);
+
+  beforeAll(() => {
+    ({ repo, home, env } = hookScratch());
+    remote = join(home, "remote.git");
+    expect(run1(["git", "init", "-q", "--bare", remote]).code).toBe(0);
+    expect(git("remote", "add", "origin", remote).code).toBe(0);
+    expect(git("add", "-A").code).toBe(0);
+    commit("initial");
+    // The base of the merge below: one prose line that uses a listed literal, and the literal itself.
+    edit(WRITEUP, lines("# Phase B detection writeup\n", "# Phase B detection writeup\n\nA stock rule scores this event level 0.\n"));
+    edit(LITERALS, (t) => JSON.stringify({ ...JSON.parse(t), literals: [LITERAL_0] }, null, 2) + "\n");
+    commit("a literal in use");
+  });
+
+  test("a push of a clean tip runs the check and goes through", () => {
+    const r = push("main");
+    expect(r.code).toBe(0);
+    expect(onRemote("refs/heads/main")).toBe(head());
+  });
+
+  // ISC-203, the review's recipe: two commits that each pass pre-commit, merged without it into a tree claims refuses.
+  test("a clean merge of two commits that each passed pre-commit is blocked at the push when claims refuses the result", () => {
+    const base = head();
+    expect(git("checkout", "-q", "-b", "side").code).toBe(0);
+    edit(WRITEUP, lines("\n## Validation results", "\nA second stock rule also scores level 0.\n\n## Validation results"));
+    const side = commit("a second use of the literal");
+    expect(git("checkout", "-q", "main").code).toBe(0);
+    edit(WRITEUP, lines("A stock rule scores this event level 0.", "A stock rule stays silent on this event."));
+    edit(LITERALS, (t) => JSON.stringify({ ...JSON.parse(t), literals: [] }, null, 2) + "\n");
+    commit("the literal is gone");
+    const merged = git("merge", "-q", "--no-edit", "side");
+    expect(merged.code).toBe(0);
+    const tip = head();
+    expect(tip).not.toBe(base);
+    // The merged tree is the one claims refuses; the tool run by hand says so.
+    expect(run1(["bun", join(repo, TOOL), "claims", join(repo, WRITEUP), "--root", repo]).out).toContain("claim-number");
+    const r = push("main");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(FAILS);
+    expect(r.out).toContain("claim-number");
+    expect(onRemote("refs/heads/main")).toBe(base);
+    // A tip that passes still goes through, and the same bad tree is blocked under any remote name.
+    expect(push("side").code).toBe(0);
+    expect(onRemote("refs/heads/side")).toBe(side);
+    expect(push(`${tip}:refs/heads/other`).code).not.toBe(0);
+    expect(onRemote("refs/heads/other")).toBe("");
+    expect(git("reset", "-q", "--hard", base).code).toBe(0);
+  });
+
+  test("a tip whose layer differs from the rebuild is blocked, whatever the working tree holds", () => {
+    const good = readFileSync(join(repo, LAYER), "utf8");
+    edit(LAYER, (t) => t.replace("validated by a live alert", "validated by a live alerT"));
+    commit("planted layer", "--no-verify");
+    const tip = head();
+    // The working tree holds a tool that says yes to everything; the tip's own copy is the one that runs.
+    writeFileSync(join(repo, TOOL), "process.exit(0);\n");
+    try {
+      const r = push("main");
+      expect(r.code).not.toBe(0);
+      expect(r.out).toContain(FAILS);
+      expect(r.out).toContain(`differs from the rebuild`);
+    } finally {
+      expect(git("checkout", "-q", "HEAD", "--", TOOL).code).toBe(0);
+      expect(git("reset", "-q", "--hard", "HEAD~1").code).toBe(0);
+      expect(readFileSync(join(repo, LAYER), "utf8")).toBe(good);
+    }
+    expect(onRemote("refs/heads/main")).not.toBe(tip);
+  });
+
+  test("a replace ref on the pushed tip cannot show the hook another tree", () => {
+    const cleanTip = head();
+    edit(LAYER, (t) => t.replace("validated by a live alert", "validated by a live alerT"));
+    const bad = commit("planted layer", "--no-verify");
+    expect(git("replace", bad, cleanTip).code).toBe(0);
+    try {
+      const r = push(`${bad}:refs/heads/replaced`);
+      expect(r.code).not.toBe(0);
+      expect(r.out).toContain(FAILS);
+      expect(onRemote("refs/heads/replaced")).toBe("");
+    } finally {
+      expect(git("replace", "-d", bad).code).toBe(0);
+      expect(git("reset", "-q", "--hard", cleanTip).code).toBe(0);
+    }
+  });
+
+  // A commit made from plumbing, so no hook and no working tree is involved: one file, by name and text.
+  const plumb = (files: Record<string, string>) => {
+    const entries = Object.entries(files).map(([name, text]) => {
+      const r = Bun.spawnSync(["git", "hash-object", "-w", "--stdin"], { cwd: repo, env, stdin: Buffer.from(text), stdout: "pipe", stderr: "pipe" });
+      return `100644 blob ${r.stdout.toString().trim()}\t${name}\n`;
+    });
+    const tree = Bun.spawnSync(["git", "mktree"], { cwd: repo, env, stdin: Buffer.from(entries.join("")), stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
+    return git("commit-tree", tree, "-m", "plumbing").out.trim();
+  };
+
+  test("a tip whose tree has no tools/coverage.ts is said so in one line and is not blocked", () => {
+    const tip = plumb({ "README.md": "# nothing here\n" });
+    const r = run1(["git", "push", "origin", `${tip}:refs/heads/before-the-tool`]);
+    expect(r.code).toBe(0);
+    const said = r.out.split("\n").filter((l) => l.includes("holds no tools/coverage.ts"));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain("skipped");
+    expect(onRemote("refs/heads/before-the-tool")).toBe(tip);
+  });
+
+  test("a tip that holds the tool but not one of its imports is blocked, by name", () => {
+    const keep = head();
+    expect(git("rm", "-q", "tools/winevt.ts").code).toBe(0);
+    commit("an import left out", "--no-verify");
+    try {
+      const r = push("main:refs/heads/no-import");
+      expect(r.code).not.toBe(0);
+      expect(r.out).toContain("tools/winevt.ts is not a regular file");
+      expect(onRemote("refs/heads/no-import")).toBe("");
+    } finally {
+      expect(git("reset", "-q", "--hard", keep).code).toBe(0);
+    }
+  });
+
+  // The hook is run directly with the ref lines git would send, so a line git itself would never send can be tried.
+  // Git puts its own folder first on a hook's PATH, ahead of any stub, so a stub is only seen this way.
+  const hookWith = (refs: string, path = env.PATH) => {
+    const r = Bun.spawnSync(["bash", "tools/hooks/pre-push", "origin", remote], { cwd: repo, env: { ...env, PATH: path }, stdin: Buffer.from(refs), stdout: "pipe", stderr: "pipe" });
+    return { code: r.exitCode, out: `${r.stdout.toString()}${r.stderr.toString()}` };
+  };
+  const refLine = (tip: string) => `refs/heads/main ${tip} refs/heads/broken ${"0".repeat(tip.length)}\n`;
+
+  test("a git that fails on any step of reading or copying the tip's tree blocks the push", () => {
+    const real = Bun.which("git") ?? "";
+    expect(real).not.toBe("");
+    // The listing that finds the tool, the index it is copied through, the list of paths (the producer of a pipe), and the copy itself.
+    for (const [sub, said] of [["ls-tree", "could not read the tree"], ["read-tree", "could not copy the tree"], ["ls-files", "could not copy the tree"], ["checkout-index", "could not copy the tree"]]) {
+      const bin = join(home, `broken-${sub}`);
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(bin, "git"), `#!/usr/bin/env bash\ncase " $* " in *" ${sub} "*) echo "fatal: injected" >&2; exit 128 ;; esac\nexec "${real}" "$@"\n`);
+      chmodSync(join(bin, "git"), 0o755);
+      const r = hookWith(refLine(head()), `${bin}:${env.PATH}`);
+      expect(r.code).not.toBe(0);
+      expect(r.out).toContain(said);
+    }
+  });
+
+  // leakcheck keeps its own verdict and its own exit status, and it reads the same ref lines the new check does.
+  test("a pushed commit that leakcheck refuses is blocked by leakcheck, with its exit status, before the coverage check", () => {
+    const tip = plumb({ "README.md": "zq-scratch-only-literal\n" });
+    const r = run1(["git", "push", "origin", `${tip}:refs/heads/leaky`]);
+    const alone = run1(["bash", "-c", `printf '%s\\n' 'refs/heads/leaky ${tip} refs/heads/leaky 0000000000000000000000000000000000000000' | bun tools/leakcheck.ts --pushed --remote '${remote}'`]);
+    expect(alone.code).not.toBe(0);
+    expect(r.code).toBe(alone.code);
+    expect(r.out).toContain("leakcheck:");
+    expect(r.out).not.toContain("pre-push:");
+    expect(onRemote("refs/heads/leaky")).toBe("");
+    // Its other exit status is kept too: a destination it cannot list ends in 2, not in the 1 of a finding.
+    const gone = join(home, "no-such-remote.git");
+    const clean = `refs/heads/main ${head()} refs/heads/new ${"0".repeat(head().length)}\n`;
+    const viaHook = Bun.spawnSync(["bash", "tools/hooks/pre-push", "origin", gone], { cwd: repo, env, stdin: Buffer.from(clean), stdout: "pipe", stderr: "pipe" });
+    const direct = Bun.spawnSync(["bun", "tools/leakcheck.ts", "--pushed", "--remote", gone], { cwd: repo, env, stdin: Buffer.from(clean), stdout: "pipe", stderr: "pipe" });
+    expect(direct.exitCode).toBe(2);
+    expect(viaHook.exitCode).toBe(2);
+    expect(viaHook.stderr.toString()).not.toContain("pre-push:");
+  });
+
+  test("a ref on a blob is not checked, and a ref on an object git cannot read is blocked", () => {
+    const zero = "0".repeat(head().length);
+    const blob = Bun.spawnSync(["git", "hash-object", "-w", "--stdin"], { cwd: repo, env, stdin: Buffer.from("a note\n"), stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
+    const onBlob = hookWith(`refs/tags/note ${blob} refs/tags/note ${zero}\n`);
+    expect(onBlob.code).toBe(0);
+    expect(onBlob.out).not.toContain("pre-push:");
+    const missing = hookWith(`refs/heads/ghost ${"1".repeat(zero.length)} refs/heads/ghost ${zero}\n`);
+    expect(missing.code).not.toBe(0);
+    expect(missing.out).toContain("pre-push: refs/heads/ghost names");
+  });
+
+  test("a deleted ref pushes as before", () => {
+    expect(onRemote("refs/heads/side")).not.toBe("");
+    const r = push(":refs/heads/side");
+    expect(r.code).toBe(0);
+    expect(onRemote("refs/heads/side")).toBe("");
+  });
+
+  test("the tool lists are the pre-commit hook's, word for word", () => {
+    const listOf = (file: string, name: string) => new RegExp(`^${name}=\\(\\n([\\s\\S]*?)\\n\\)$`, "m").exec(readFileSync(join(ROOT, "tools/hooks", file), "utf8"))?.[1];
+    for (const name of ["tools", "built"]) {
+      expect(listOf("pre-push", name)).toBeDefined();
+      expect(listOf("pre-push", name)).toBe(listOf("pre-commit", name));
     }
   });
 });

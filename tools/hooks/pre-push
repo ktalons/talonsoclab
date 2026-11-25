@@ -2,16 +2,43 @@
 # ******************************************************************************
 # *Title: pre-push*
 # *Author: Kyle Versluis*
-# *Description: Block a push whose commits fail leakcheck.*
+# *Description: Block a push that fails leakcheck or the coverage check.*
 # ******************************************************************************
 
 # *--- Configuration ---*
 
 # NOTE: installed by tools/hooks/install.sh. Git writes one "<local ref> <local sha>
-# <remote ref> <remote sha>" line per ref to stdin, which exec passes through. $2 is
-# the URL being pushed to ($1 names the remote, or repeats the URL). The scanner asks
-# that URL what it already holds, so a ref new to it is bounded by what it lists.
+# <remote ref> <remote sha>" line per ref to stdin. The hook reads them once and gives the same
+# lines to leakcheck and to the coverage check. $2 is the URL being pushed to ($1 names the
+# remote, or repeats the URL). The scanner asks that URL what it already holds, so a ref new
+# to it is bounded by what it lists.
 set -euo pipefail
+# SECURITY: every git call below, and every one a tool makes, reads the objects that will be
+# pushed. A replace ref on a tip would otherwise show this hook other bytes.
+export GIT_NO_REPLACE_OBJECTS=1
+
+# NOTE: the two lists below are the pre-commit hook's, word for word; a test holds them equal.
+# The tool and the four files it imports, its whole closure: the check runs the tip's own
+# copies of these, never the working tree.
+tools=(
+  tools/coverage.ts
+  tools/wazuh-rules.ts
+  tools/art-harness.ts
+  tools/winevt-capture.ts
+  tools/winevt.ts
+)
+# What tools/coverage.ts builds from, the folder it writes, the writeup that holds the
+# generated results section, and the literals its prose may use.
+built=(
+  deploy/soc-recon/wazuh/custom-rules/
+  phase-b-detection/art-runs/
+  phase-b-detection/attack/
+  phase-b-detection/validation/
+  phase-b-detection/coverage/
+  phase-b-detection/README.md
+  phase-b-detection/claims-literals.json
+  "${tools[@]}"
+)
 
 # *--- Entry Point ---*
 
@@ -21,5 +48,79 @@ if ! command -v bun >/dev/null 2>&1; then
   echo "pre-push: bun not found, so leakcheck cannot run. Push blocked." >&2
   exit 1
 fi
+if ! lines=$(cat); then
+  echo "pre-push: the pushed refs could not be read. Push blocked." >&2
+  exit 1
+fi
 dest=${2:-${1:-}}
-exec bun "$root/tools/leakcheck.ts" --pushed ${dest:+--remote "$dest"}
+# leakcheck keeps its own exit status: a refusal here ends the hook before the coverage check.
+leak=0
+bun "$root/tools/leakcheck.ts" --pushed ${dest:+--remote "$dest"} <<<"$lines" || leak=$?
+if [ "$leak" -ne 0 ]; then
+  exit "$leak"
+fi
+
+# ISA ISC-203: the pre-commit hook never sees a merge, a cherry-pick or a rebase, so the tree of
+# each pushed tip is held to the same check, run by the tool that tree holds.
+checked=" "
+work=""
+while read -r ref sha _ _; do
+  # A deleted ref pushes nothing.
+  if [ -z "${sha:-}" ] || [ -z "${sha//0/}" ]; then
+    continue
+  fi
+  if ! tip=$(git -C "$root" rev-parse --verify --quiet "$sha^{commit}"); then
+    # A tag on a blob or a tree has no commit tree to check. An object git cannot find is not waved through.
+    if git -C "$root" cat-file -e "$sha" 2>/dev/null; then
+      continue
+    fi
+    echo "pre-push: $ref names $sha, which git cannot read, so the coverage check cannot run. Push blocked." >&2
+    exit 1
+  fi
+  case "$checked" in *" $tip "*) continue ;; esac
+  checked="$checked$tip "
+  short=${tip:0:7}
+  # SECURITY: fail closed on a listing that fails, and treat only an absent tool as a tree from before it existed.
+  if ! entry=$(git -C "$root" ls-tree "$tip" -- tools/coverage.ts); then
+    echo "pre-push: git could not read the tree of $ref ($short), so the coverage check cannot run. Push blocked." >&2
+    exit 1
+  fi
+  if [ -z "$entry" ]; then
+    echo "pre-push: $ref ($short) holds no tools/coverage.ts, so the coverage check is skipped for it."
+    continue
+  fi
+  if [ -z "$work" ]; then
+    if ! work=$(mktemp -d); then
+      echo "pre-push: no temp folder, so the coverage check cannot run. Push blocked." >&2
+      exit 1
+    fi
+    trap 'rm -rf "$work"' EXIT
+  fi
+  copy="$work/$short"
+  # SECURITY: the check reads a copy of the tip's own tree, through a private index, never the working tree.
+  if ! (
+    export GIT_INDEX_FILE="$work/index-$short"
+    git -C "$root" read-tree "$tip" &&
+      git -C "$root" ls-files -z -- "${built[@]}" | git -C "$root" checkout-index -z --stdin --prefix="$copy/"
+  ); then
+    echo "pre-push: git could not copy the tree of $ref ($short), so the coverage check cannot run. Push blocked." >&2
+    exit 1
+  fi
+  # SECURITY: the tool that judges the push is the tip's own. A file missing from the tree, or held as a link, is not a tool this hook will run.
+  for t in "${tools[@]}"; do
+    if [ -L "$copy/$t" ] || [ ! -f "$copy/$t" ]; then
+      echo "pre-push: $t is not a regular file in $ref ($short), so the coverage tool cannot run. Push blocked." >&2
+      exit 1
+    fi
+  done
+  status=0
+  bun "$copy/tools/coverage.ts" check --root "$copy" || status=$?
+  # The path is given inside the copy: claims reads a file where it is told, not under --root.
+  if [ "$status" -eq 0 ]; then
+    bun "$copy/tools/coverage.ts" claims "$copy/phase-b-detection/README.md" --root "$copy" || status=$?
+  fi
+  if [ "$status" -ne 0 ]; then
+    echo "pre-push: $ref ($short) fails the coverage check. Push blocked." >&2
+    exit "$status"
+  fi
+done <<<"$lines"

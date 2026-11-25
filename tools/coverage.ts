@@ -8,9 +8,9 @@
 // *--- Imports ---*
 
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { EXIT, type ExitCode, type SessionRecord, type TestRecord } from "./art-harness.ts";
 import { isPack, readRulesDir, repeatedIds, RulesError } from "./wazuh-rules.ts";
 
@@ -64,13 +64,14 @@ const REGENERATE = `bun tools/coverage.ts refresh-attack <path to enterprise-att
 
 // The Navigator layer file format. 4.5 is the format the 5.x app reads.
 const LAYER_FORMAT = "4.5";
-// NOTE: the layer spec (4.5) requires versions.navigator of at least 4.9.0, and the hosted app is
-// 5.3.2. The layers have not yet been opened in Navigator, so that stays unconfirmed until they are.
+// The layer spec (4.5) requires versions.navigator of at least 4.9.0, and the hosted app is 5.3.2.
 export const NAVIGATOR_VERSION = "5.3.2";
 
 // Live-index evidence: the agent, the Defender rules a block cites, the index shape.
 const AGENT = "001";
 const DEFENDER_RULES = [62123, 62124];
+// Sysmon cuts its own event time to the millisecond; every other channel's event time is its system time.
+const SYSMON_CHANNEL = "Microsoft-Windows-Sysmon/Operational";
 const INDEX_PATTERN = "wazuh-alerts-*";
 const INDEX_NAME = /^wazuh-alerts-4\.x-\d{4}\.\d{2}\.\d{2}$/;
 // Fetch pads the query so an alert indexed a moment late is still returned. Matching never uses it.
@@ -348,10 +349,74 @@ export function layoutFor(root: string): Layout {
   };
 }
 
+const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
+/** Bytes as text; bytes that are not UTF-8 are refused, never read as U+FFFD. */
+function decode(bytes: Uint8Array, item: string): string {
+  try {
+    return UTF8.decode(bytes);
+  } catch {
+    return refuse("bad-utf8", item, `${item} is not valid UTF-8`);
+  }
+}
+
+/**
+ * Refuse a path that is a link, dangling or not, or that sits under a link or under something that is
+ * not a folder. Every folder from the root down is looked at without being followed. A path that is
+ * absent passes: the caller says so.
+ */
+function checkPath(l: Layout, path: string): void {
+  const under = relative(l.root, path);
+  const inside = under !== "" && !under.startsWith("..");
+  const steps = inside ? under.split(sep).map((_, i, all) => join(l.root, ...all.slice(0, i + 1))) : [path];
+  for (const [i, step] of steps.entries()) {
+    const name = inside ? rel(l, step) : step;
+    let st: ReturnType<typeof lstatSync>;
+    try {
+      st = lstatSync(step);
+    } catch {
+      return;
+    }
+    if (st.isSymbolicLink()) refuse("path-symlink", name, `${name} is a symbolic link; this tool reads and writes regular files and folders only`);
+    if (i < steps.length - 1 && !st.isDirectory()) refuse("path-not-folder", name, `${name} is not a folder, so nothing under it can be read or written`);
+  }
+}
+
+/** A folder this tool reads: absent is a setup problem, a link or a file in its place is refused. */
+function checkFolder(l: Layout, dir: string): void {
+  checkPath(l, dir);
+  if (!existsSync(dir)) setup("input-missing", rel(l, dir), `${rel(l, dir)} is missing`);
+  if (!lstatSync(dir).isDirectory()) refuse("path-not-folder", rel(l, dir), `${rel(l, dir)} is not a folder`);
+}
+
+/** The same check for every entry under a folder, so a link inside a folder this tool reads is refused too. */
+function checkTree(l: Layout, dir: string): void {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isSymbolicLink()) refuse("path-symlink", rel(l, p), `${rel(l, p)} is a symbolic link; this tool reads and writes regular files and folders only`);
+    if (e.isDirectory()) checkTree(l, p);
+  }
+}
+
+/** A file's bytes; a link, a folder where a file belongs, or a missing file is refused or reported as setup. */
+function readBytes(l: Layout, path: string, missing: (item: string, message: string) => never): Buffer {
+  checkPath(l, path);
+  if (!existsSync(path)) return missing(rel(l, path), `${rel(l, path)} is missing`);
+  if (!lstatSync(path).isFile()) refuse("path-not-file", rel(l, path), `${rel(l, path)} is not a regular file`);
+  return readFileSync(path);
+}
+
 /** One input file as text; a missing one is a setup problem, not a refusal. */
 function readInput(l: Layout, path: string): string {
-  if (!existsSync(path)) return setup("input-missing", rel(l, path), `${rel(l, path)} is missing`);
-  return readFileSync(path, "utf8");
+  return decode(readBytes(l, path, (item, message) => setup("input-missing", item, message)), rel(l, path));
+}
+
+/** Where outputs are about to be written: each must be absent or a regular file, and be checked before the first write. */
+function checkTargets(l: Layout, dests: string[]): void {
+  for (const dest of dests) {
+    checkPath(l, dest);
+    if (existsSync(dest) && !lstatSync(dest).isFile()) refuse("path-not-file", rel(l, dest), `${rel(l, dest)} exists and is not a regular file; nothing was written`);
+  }
 }
 
 // A real logtest transcript (tools/logtest.ts --save) is a rule check on a hand-fed line,
@@ -370,13 +435,14 @@ function readJson(text: string, file: string): unknown {
 
 /** The files of a folder with one extension, in order; the Finder file is skipped, anything else refused. */
 function listFiles(l: Layout, dir: string, pattern: RegExp, code: string): string[] {
-  if (!existsSync(dir)) return setup("input-missing", rel(l, dir), `${rel(l, dir)} is missing`);
+  checkFolder(l, dir);
   const names = readdirSync(dir).sort(ordinal);
   for (const n of names) {
     if (n === FINDER) continue;
     if (!pattern.test(n)) refuse(code, `${rel(l, dir)}/${n}`, `${rel(l, dir)}/${n} is not a file this tool reads`);
-    // A folder or a link with a record's name would otherwise end as an untyped read error.
-    if (!statSync(join(dir, n)).isFile()) refuse(code, `${rel(l, dir)}/${n}`, `${rel(l, dir)}/${n} is not a regular file`);
+    // A folder or a link with a record's name would otherwise end as an untyped read error; a dangling link has no stat at all.
+    checkPath(l, join(dir, n));
+    if (!lstatSync(join(dir, n)).isFile()) refuse(code, `${rel(l, dir)}/${n}`, `${rel(l, dir)}/${n} is not a regular file`);
   }
   return names.filter((n) => n !== FINDER);
 }
@@ -438,8 +504,8 @@ function attackHeader(counts: AttackList["counts"], bundleSha = ATTACK_SHA256): 
   ].join("\n");
 }
 
-/** The pinned list as a map, refusing any line the generator could not have written. */
-export function parseAttackTsv(text: string, file = ATTACK_TSV): AttackList {
+/** The pinned list as a map, refusing any line the generator could not have written; the header names the bundle that was hashed. */
+export function parseAttackTsv(text: string, file = ATTACK_TSV, bundleSha = ATTACK_SHA256): AttackList {
   if (text.includes("wazuh_logtest[") || text.includes("Reply: {")) refuse("logtest-transcript", file, `${file} is a logtest transcript`);
   if (!text.endsWith("\n") || text.includes("\r")) refuse("attack-tsv", file, `${file} must use LF line ends and end with one`);
   const lines = text.slice(0, -1).split("\n");
@@ -469,7 +535,7 @@ export function parseAttackTsv(text: string, file = ATTACK_TSV): AttackList {
     if (t.successor !== "" && !byId.has(t.successor)) refuse("attack-tsv", `${file} ${t.id}`, `${file}: ${t.id} names successor ${t.successor}, which is not in the list`);
   }
   const header = lines.filter((x) => x.startsWith("#")).join("\n");
-  if (`${header}\n` !== attackHeader(counts).replace(/\n$/, "\n")) {
+  if (`${header}\n` !== attackHeader(counts, bundleSha).replace(/\n$/, "\n")) {
     refuse("attack-tsv-header", file, `${file}: the header comments are not the pinned ones for these rows (source, sha256, collection or counts differ)`);
   }
   return { byId, counts };
@@ -553,8 +619,8 @@ export function buildAttackTsv(bundle: Uint8Array, expected: string): string {
   if (expected === ATTACK_SHA256 && sha256(text) !== ATTACK_TSV_SHA256) {
     refuse("attack-tsv-pin", "generated list", "the pinned bundle no longer produces the pinned technique list; the generator changed");
   }
-  // The generator has to read back what it wrote, so a bad row stops here, not in a build.
-  if (expected === ATTACK_SHA256) parseAttackTsv(text, "generated list");
+  // The generator has to read back what it wrote, whatever bundle it was given, so a bad row stops here, not in a build.
+  parseAttackTsv(text, "generated list", got);
   return text;
 }
 
@@ -612,7 +678,8 @@ export function loadAttack(l: Layout): AttackList {
 
 /** The pack rules from the rules folder, each with its ATT&CK ids as written and as 19.2. */
 export function loadPack(l: Layout, crosswalk: Map<string, CrosswalkEntry>): PackRule[] {
-  if (!existsSync(l.rules)) setup("input-missing", rel(l, l.rules), `${rel(l, l.rules)} is missing`);
+  checkFolder(l, l.rules);
+  checkTree(l, l.rules);
   let read: ReturnType<typeof readRulesDir>;
   try {
     read = readRulesDir(l.rules);
@@ -645,8 +712,16 @@ export function loadPack(l: Layout, crosswalk: Map<string, CrosswalkEntry>): Pac
 
 // -- The session records --
 
-/** One record, whose every field this tool reads is checked; it holds its run windows. */
-export function parseRecord(file: string, text: string): Session {
+// A time in a record has seven decimals, the form the harness writes; a shorter one would look exact when it is not.
+const RECORD_TIME = /\.\d{7}Z$/;
+
+/**
+ * One record, whose every field this tool reads is checked; it holds its run windows. Given bytes, it
+ * refuses what is not UTF-8; its digest is over the bytes it was given, never over a decoded copy.
+ */
+export function parseRecord(file: string, input: string | Uint8Array): Session {
+  const bytes = typeof input === "string" ? Buffer.from(input, "utf8") : input;
+  const text = typeof input === "string" ? input : decode(input, file);
   const doc = readJson(text, file);
   if (!isObject(doc)) return refuse("record-shape", file, `${file} must be one JSON object`);
   if (doc.format !== RECORD_FORMAT) refuse("record-format", file, `${file} format must be ${RECORD_FORMAT}`);
@@ -666,9 +741,12 @@ export function parseRecord(file: string, text: string): Session {
     if (!isObject(s)) return refuse("record-step", name, `${name} must be an object`);
     if (typeof s.status !== "string") refuse("record-step", name, `${name} has no status`);
     if (s.exitCode !== null && !isInt(s.exitCode)) refuse("record-step", name, `${name} exitCode must be a number or null`);
+    // A step that was never sent has no times; one that carries them says two things at once.
+    if (s.status === "not-sent" && (s.startUtc !== null || s.endUtc !== null)) refuse("record-step", name, `${name} says it was not sent but carries times`);
     if (s.startUtc === null && s.endUtc === null) return null;
     const start = parseInstant(s.startUtc, "record-time", `${name} startUtc`);
     const end = parseInstant(s.endUtc, "record-time", `${name} endUtc`);
+    for (const field of ["startUtc", "endUtc"]) if (!RECORD_TIME.test(s[field] as string)) refuse("record-time", `${name} ${field}`, `${name} ${field} must carry seven decimals`);
     if (end < start) refuse("record-window", name, `${name} ends before it starts`);
     starts.push(start);
     ends.push(end);
@@ -693,7 +771,7 @@ export function parseRecord(file: string, text: string): Session {
   });
   const span = starts.length ? { from: starts.reduce((a, b) => (b < a ? b : a)), to: ends.reduce((a, b) => (b > a ? b : a)) } : null;
   const record: Record0 = { format: doc.format, session: doc.session, verdict: doc.verdict, failures: doc.failures as string[], tests };
-  return { record, file, sha256: sha256(text), windows, span };
+  return { record, file, sha256: sha256(bytes), windows, span };
 }
 
 /** Every record under art-runs, in file order; a repeated session or a name that is not the session is refused. */
@@ -702,7 +780,7 @@ export function loadRecords(l: Layout): Session[] {
   const seen = new Set<string>();
   const names = listFiles(l, l.records, /\.json$/, "record-file");
   for (const name of names) {
-    const s = parseRecord(`${rel(l, l.records)}/${name}`, readFileSync(join(l.records, name), "utf8"));
+    const s = parseRecord(`${rel(l, l.records)}/${name}`, readBytes(l, join(l.records, name), (item, message) => setup("input-missing", item, message)));
     if (seen.has(s.record.session)) refuse("record-duplicate-session", s.record.session, `session ${s.record.session} is recorded in two files`);
     seen.add(s.record.session);
     out.push(s);
@@ -790,6 +868,13 @@ export function parseEvidence(file: string, text: string, sessions: Map<string, 
     if (raw.systemTime !== null) parseInstant(raw.systemTime, "evidence-time", `${at} systemTime`);
     if (raw.eventId !== null && !isNat(raw.eventId)) refuse("evidence-alerts", at, `${at} eventId must be a number or null`);
     if (typeof raw.channel !== "string" || !SAFE_CHANNEL.test(raw.channel)) refuse("evidence-alerts", at, `${at} channel is outside its pattern`);
+    // The event time is what matching reads. Sysmon cuts its own utcTime to the millisecond and writes exactly three
+    // decimals; any other channel has no utcTime, so its event time is its system time and nothing else.
+    if (raw.channel === SYSMON_CHANNEL) {
+      if (!/\.\d{3}Z$/.test(raw.eventTime as string)) refuse("evidence-time", `${at} eventTime`, `${at} eventTime is a Sysmon time and must carry exactly three decimals`);
+    } else if (raw.systemTime === null || parseInstant(raw.eventTime, "evidence-time", `${at} eventTime`) !== parseInstant(raw.systemTime, "evidence-time", `${at} systemTime`)) {
+      refuse("evidence-time", `${at} eventTime`, `${at} eventTime must equal its systemTime on the ${raw.channel} channel`);
+    }
     if (raw.image !== null && raw.image !== UNKNOWN_IMAGE && (typeof raw.image !== "string" || !SAFE_IMAGE.test(raw.image))) refuse("evidence-alerts", at, `${at} image must be a bare file name or null`);
     const key = `${raw.index}/${raw.id}`;
     if (seen.has(key)) refuse("evidence-duplicate", key, `${file} lists ${key} twice`);
@@ -818,7 +903,7 @@ export function loadEvidence(l: Layout, sessions: Session[]): Evidence[] {
   const names = listFiles(l, l.validation, /^(?:misses\.json|[^/]+\.alerts\.json)$/, "validation-file");
   for (const name of names.filter((n) => n !== "misses.json")) {
     const file = `${rel(l, l.validation)}/${name}`;
-    const text = readFileSync(join(l.validation, name), "utf8");
+    const text = decode(readBytes(l, join(l.validation, name), (item, message) => setup("input-missing", item, message)), file);
     const e = parseEvidence(file, text, bySession);
     if (seen.has(e.session)) refuse("evidence-duplicate-session", e.session, `session ${e.session} has two evidence files`);
     seen.add(e.session);
@@ -1184,8 +1269,11 @@ export function diffOutputs(l: Layout, files: Map<string, string>): string[] {
   const bad: string[] = [];
   for (const [name, text] of files) {
     const path = join(l.coverage, name);
+    checkPath(l, path);
     if (!existsSync(path)) bad.push(`${rel(l, path)} is missing`);
-    else if (readFileSync(path, "utf8") !== text) bad.push(`${rel(l, path)} differs from the rebuild`);
+    else if (!lstatSync(path).isFile()) refuse("path-not-file", rel(l, path), `${rel(l, path)} is not a regular file`);
+    // Bytes, not text, so a file that is not UTF-8 reads as a difference, never as the same text.
+    else if (!readFileSync(path).equals(Buffer.from(text))) bad.push(`${rel(l, path)} differs from the rebuild`);
   }
   return bad;
 }
@@ -1200,15 +1288,16 @@ interface Found {
 }
 
 // A fenced block can show a heading or a source line as an example; neither counts there.
+// A fence closes only on the same character, at least as long as the opening one, with nothing after it.
 function fencedLines(lines: string[]): boolean[] {
-  let open: string | null = null;
+  let open: { ch: string; len: number } | null = null;
   return lines.map((line) => {
-    const m = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
     if (open === null) {
-      if (m) open = m[1][0];
+      if (m) open = { ch: m[1][0], len: m[1].length };
       return m !== null;
     }
-    if (m && m[1][0] === open) open = null;
+    if (m && m[1][0] === open.ch && m[1].length >= open.len && m[2].trim() === "") open = null;
     return true;
   });
 }
@@ -1233,11 +1322,16 @@ export function findSection(text: string, file: string, anyLevel: boolean): Foun
   return refuse("section-unterminated", `${file}:${start + 1} ${SECTION_TITLE}`, `the results section in ${file} has no source line before the next heading or the end of the file`);
 }
 
+/** The writeup as text: a link, a missing file or bytes that are not UTF-8 are refused. */
+function readWriteup(l: Layout): string {
+  const file = rel(l, l.writeup);
+  return decode(readBytes(l, l.writeup, (item, message) => refuse("writeup-missing", item, `${message}; it holds the results section`)), file);
+}
+
 /** The writeup with its results section replaced, or appended when it has none; every other byte is kept. */
 function spliceWriteup(l: Layout, section: string): string {
   const file = rel(l, l.writeup);
-  if (!existsSync(l.writeup)) refuse("writeup-missing", file, `${file} is missing; it holds the results section`);
-  const text = readFileSync(l.writeup, "utf8");
+  const text = readWriteup(l);
   const found = findSection(text, file, false);
   if (!found) return `${text}${text.endsWith("\n") ? "" : "\n"}\n${section}\n`;
   return [...found.lines.slice(0, found.start), ...section.split("\n"), ...found.lines.slice(found.end + 1)].join("\n");
@@ -1246,8 +1340,7 @@ function spliceWriteup(l: Layout, section: string): string {
 /** The writeup's section against the rebuild: one line when it differs, none when it matches; a missing or malformed one is refused. */
 export function diffWriteup(l: Layout, section: string): string[] {
   const file = rel(l, l.writeup);
-  if (!existsSync(l.writeup)) return refuse("writeup-missing", file, `${file} is missing; it holds the results section`);
-  const found = findSection(readFileSync(l.writeup, "utf8"), file, false);
+  const found = findSection(readWriteup(l), file, false);
   if (!found) return refuse("section-missing", file, `${file} has no "${SECTION_HEADING}" section`);
   return found.lines.slice(found.start, found.end + 1).join("\n") === section ? [] : [`${file} differs from the rebuild`];
 }
@@ -1358,28 +1451,42 @@ export function evidenceFromAnswer(s: Session, query: Evidence["query"], answer:
   return { format: ALERTS_FORMAT, session: s.record.session, recordSha256: s.sha256, query, shards, control: { agent001Alerts: control }, alerts };
 }
 
-/** The real leak scan: the repo's leakcheck over the text, on a scratch copy, as art-harness does. */
-export const realLeakScan: LeakScan = (files) => {
-  const tmp = mkdtempSync(join(tmpdir(), "coverage-scan-"));
-  try {
-    for (const [name, text] of files) writeFileSync(join(tmp, name), text);
-    const r = Bun.spawnSync(["bun", resolve(ROOT, "tools/leakcheck.ts"), "--paths", tmp], { stdout: "pipe", stderr: "pipe", timeout: 120_000 });
-    if (r.exitCode !== 0) refuse("leak-scan", "evidence", `leakcheck did not pass the evidence text (exit ${r.exitCode}); nothing was written`);
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-};
+/**
+ * A leak scan that runs one leakcheck script over the text, on a scratch copy, as art-harness does.
+ * Exit 1 with leakcheck's own findings line is a finding and is refused. Any other failure (exit 2, a
+ * crash or missing script that also exits 1, a timeout) means the scan itself did not run, which is a
+ * setup problem and never a statement about the text.
+ */
+export function leakScanWith(script: string): LeakScan {
+  return (files) => {
+    const tmp = mkdtempSync(join(tmpdir(), "coverage-scan-"));
+    try {
+      for (const [name, text] of files) writeFileSync(join(tmp, name), text);
+      const r = Bun.spawnSync(["bun", script, "--paths", tmp], { stdout: "pipe", stderr: "pipe", timeout: 120_000 });
+      if (r.exitCode === 1 && /^leakcheck: \d+ finding\(s\) in /m.test(r.stderr.toString())) refuse("leak-scan", "evidence", "leakcheck found an identifier in the evidence text; nothing was written");
+      if (r.exitCode !== 0) setup("leak-scan-setup", "evidence", `leakcheck did not run to a verdict (exit ${r.exitCode}): ${r.stderr.toString().trim().split("\n")[0]}; nothing was written`);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  };
+}
+
+/** The real leak scan: this repo's own leakcheck. */
+export const realLeakScan: LeakScan = leakScanWith(resolve(ROOT, "tools/leakcheck.ts"));
 
 /** Ask the index for every record's evidence, check it all, scan it, then write it. */
-export function fetchAll(l: Layout, remote: Remote, scan: LeakScan = realLeakScan): string[] {
+export function fetchAll(l: Layout, remote: Remote, scan: LeakScan = realLeakScan, log: (line: string) => void = () => {}): string[] {
   const attack = loadAttack(l);
-  const packIds =loadPack(l, parseCrosswalk(readInput(l, l.crosswalk), attack, rel(l, l.crosswalk))).map((r) => r.id);
+  const packIds = loadPack(l, parseCrosswalk(readInput(l, l.crosswalk), attack, rel(l, l.crosswalk))).map((r) => r.id);
   const sessions = loadRecords(l);
   if (!sessions.length) setup("fetch-no-records", rel(l, l.records), `${rel(l, l.records)} holds no session record to fetch for`);
   const bySession = new Map(sessions.map((s) => [s.record.session, s]));
   const files = new Map<string, string>();
   for (const s of sessions) {
-    if (!s.span) continue;
+    if (!s.span) {
+      log(`coverage: skipped ${s.record.session}: its record carries no run or cleanup times, so there is no window to ask for`);
+      continue;
+    }
     const { text, query } = msearchBody(s, packIds);
     const r = remote(text, FETCH_TIMEOUT_MS);
     if (r.timedOut || r.code !== 0) setup("fetch-ssh", s.record.session, `the index query for ${s.record.session} did not complete (${r.timedOut ? "timed out" : `ssh exit ${r.code}`})`);
@@ -1391,6 +1498,7 @@ export function fetchAll(l: Layout, remote: Remote, scan: LeakScan = realLeakSca
     files.set(name, body);
   }
   scan(files);
+  checkTargets(l, [...files.keys()].map((n) => join(l.validation, n)));
   writeAll(l.validation, files);
   return [...files.keys()].map((n) => `${rel(l, l.validation)}/${n}`);
 }
@@ -1398,22 +1506,36 @@ export function fetchAll(l: Layout, remote: Remote, scan: LeakScan = realLeakSca
 // -- Claims --
 
 const ONES = "one|two|three|four|five|six|seven|eight|nine";
-const COUNT_WORD = `(?:(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[- ](?:${ONES})|zero|${ONES}|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)`;
-const COUNT = `(?:\\d+|${COUNT_WORD})`;
+const COUNT_WORD = `(?:(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[- ](?:${ONES})|zero|${ONES}|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand)`;
+// A spelled-out number is one or more of those words, so "one hundred and five" is one count, not three.
+const SPELLED = `${COUNT_WORD}(?:[\\s-]+(?:and[\\s-]+)?${COUNT_WORD})*`;
+const COUNT = `(?:\\d+|${SPELLED})`;
+// Between the two counts of a ratio a person may write "the" or "all", and a hyphen or a wrapped line for a space.
+const RATIO_GAP = `[\\s-]+(?:out[\\s-]+of|of)[\\s-]+(?:(?:the|all|our|these|those|its|their)[\\s-]+)?`;
 // A ratio ("13 of 18", "twelve out of eighteen") or a percentage ("70%", "twelve percent") is a claim
 // whichever way it is written. Other number words are a stated limit: they pass.
-const RATIO = new RegExp(`\\b${COUNT}\\s+(?:out\\s+of|of)\\s+${COUNT}\\b`, "gi");
+const RATIO = new RegExp(`\\b${COUNT}${RATIO_GAP}${COUNT}\\b`, "gi");
 const PERCENT = new RegExp(`(?:\\b\\d+(?:\\.\\d+)?\\s?%|\\b${COUNT}\\s+(?:percent|per\\s+cent)\\b)`, "gi");
+/**
+ * The text as a reader sees the spaces and words of it: emphasis marks and non-breaking spaces written as
+ * entities become plain spaces, one for one, so an index into it is an index into the original. An underscore
+ * inside a word is part of the word, not emphasis.
+ */
+function plain(text: string): string {
+  return text
+    .replace(/&(?:nbsp|#160|#xa0);/gi, (m) => " ".repeat(m.length))
+    .replace(/\*|(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])/g, " ");
+}
 const LIST_MARKER = /^(\s*(?:[-*+>]\s+)*)(\d+[.)])(?=\s)/;
 const ART_REF = /(?<![A-Za-z0-9_])T\d{4}(?:\.\d{3})? #\d+(?![A-Za-z0-9_])/g;
 const SESSION_ID = /(?<![A-Za-z0-9_])\d{8}T\d{6}Z-[0-9a-f]{6}(?![A-Za-z0-9_])/g;
-const ISO_STAMP = /(?<![A-Za-z0-9_])(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?(?![A-Za-z0-9_]|[.,]\d)/g;
+const ISO_STAMP = /(?<![A-Za-z0-9_])(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-](\d{2}):?(\d{2}))?)?(?![A-Za-z0-9_]|[.,]\d)/g;
 const CLOCK = /(?<![A-Za-z0-9_:.])(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?Z?(?![A-Za-z0-9_]|:\d|[.,]\d)/g;
 const DIGEST = /(?<![A-Za-z0-9_])(?:[0-9a-f]{64}|[0-9a-f]{40})(?![A-Za-z0-9_])/g;
 const TACTIC_ID = /(?<![A-Za-z0-9_])TA\d{4}(?![A-Za-z0-9_])/g;
 const TECHNIQUE_ID = /(?<![A-Za-z0-9_])T\d{4}(?:\.\d{3})?(?![A-Za-z0-9_]|\.\d)/g;
-// Exactly three parts, or a v prefix: a bare "19.2" is a decimal number and needs a listed literal.
-const VERSION = /(?<![A-Za-z0-9_.])(?:v\d+(?:\.\d+){1,3}|\d+\.\d+\.\d+)(?![A-Za-z0-9_]|\.\d)/g;
+// A v prefix, or exactly three parts: a bare "19.2" is a decimal number and needs a listed literal.
+const VERSION = /(?<![A-Za-z0-9_.])(?:v\d+(?:\.\d+){0,3}|\d+\.\d+\.\d+)(?![A-Za-z0-9_]|\.\d)/g;
 const RULE_ID = /(?<![A-Za-z0-9_]|\d[.,])\d{5,6}(?![A-Za-z0-9_]|[.,]\d)/g;
 // What is left once every identifier is masked: a run of word characters and number punctuation.
 const NUMBER_TOKEN = /[A-Za-z0-9][A-Za-z0-9._,/-]*/g;
@@ -1440,16 +1562,29 @@ function phraseOf(text: string): Phrase {
   return { text, re: new RegExp(`(?<![A-Za-z0-9_&./,-])${body}(?![A-Za-z0-9_&/-]|[.,][A-Za-z0-9])`, "g") };
 }
 
-/** The end of a URL match: trailing punctuation and any bracket the URL does not open are not part of it. */
+/**
+ * The end of a URL match. A closing bracket the URL never opened ends it, so a link written as
+ * [text](url)13% leaves the 13% outside the address; trailing punctuation is not part of it either.
+ */
 function urlEnd(url: string): string {
-  for (;;) {
-    const cut = url.replace(/[.,;:!?*_]+$/, "");
-    const open = (c: string) => cut.split(c).length - 1;
-    if (cut.endsWith(")") && open(")") > open("(")) url = cut.slice(0, -1);
-    else if (cut.endsWith("]") && open("]") > open("[")) url = cut.slice(0, -1);
-    else if (cut === url) return url;
-    else url = cut;
+  let paren = 0;
+  let square = 0;
+  let end = url.length;
+  for (let i = 0; i < url.length; i++) {
+    const c = url[i];
+    if (c === "(") paren++;
+    else if (c === "[") square++;
+    else if (c === ")" || c === "]") {
+      const left = c === ")" ? paren : square;
+      if (left === 0) {
+        end = i;
+        break;
+      }
+      if (c === ")") paren--;
+      else square--;
+    }
   }
+  return url.slice(0, end).replace(/[.,;:!?*_]+$/, "");
 }
 
 /** The listed literals (phrase to source), after the file's own checks: shape, a real source, no repeat. */
@@ -1505,8 +1640,17 @@ function scanLine(line: string, reg: Registry, phrases: Phrase[], used: Set<stri
     if (/^[0-9]+$/.test(m[0])) return false;
     bad(at, "claim-number", m[0]);
   });
-  mask(RATIO, numeric);
-  mask(PERCENT, numeric);
+  // The two word-bearing forms are read as plain text, so emphasis or a non-breaking space cannot split them.
+  const asRead = (re: RegExp) => {
+    const raw = chars.join("");
+    for (const m of plain(raw).matchAll(re)) {
+      const at = m.index as number;
+      bad(at, /\d/.test(m[0]) ? "claim-number" : "claim-number-word", raw.slice(at, at + m[0].length));
+      for (let k = 0; k < m[0].length; k++) chars[at + k] = " ";
+    }
+  };
+  asRead(RATIO);
+  asRead(PERCENT);
   // Only after the ratio and percent forms, so a phrase cannot hide the "of 18" that follows it.
   for (const ph of phrases) mask(ph.re, () => void used.add(ph.text));
   mask(ART_REF, (m, at) => {
@@ -1520,7 +1664,10 @@ function scanLine(line: string, reg: Registry, phrases: Phrase[], used: Set<stri
     const day = new Date(Date.UTC(y as number, (mo as number) - 1, d as number));
     const real = day.getUTCFullYear() === y && day.getUTCMonth() === (mo as number) - 1 && day.getUTCDate() === d;
     const clock = (h === null || (h < 24 && (mi as number) < 60)) && (se === null || se < 60);
-    if (!real || !clock) bad(at, "claim-number", m[0]);
+    // A zone offset is real only as the hours and minutes a clock on Earth keeps: up to 14:00, in quarter hours.
+    const [oh, om] = [m[7], m[8]].map((x) => (x === undefined ? null : Number(x)));
+    const zone = oh === null || ((oh as number) <= 14 && [0, 15, 30, 45].includes(om as number) && ((oh as number) < 14 || om === 0));
+    if (!real || !clock || !zone) bad(at, "claim-number", m[0]);
   });
   mask(CLOCK, (m, at) => {
     const [h, mi, se] = m.slice(1, 4).map((x) => (x === undefined ? 0 : Number(x)));
@@ -1547,6 +1694,45 @@ function scanLine(line: string, reg: Registry, phrases: Phrase[], used: Set<stri
 }
 
 /**
+ * The ratios and percentages that a line break splits. Each paragraph outside the results section is
+ * joined into one line, and only a match that spans two or more source lines is reported, since
+ * scanLine already holds every match inside one line.
+ */
+function wrappedClaims(lines: string[], outside: (i: number) => boolean): { line: number; code: string; token: string }[] {
+  const out: { line: number; code: string; token: string }[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (!outside(i) || lines[i].trim() === "") {
+      i++;
+      continue;
+    }
+    // A paragraph: consecutive lines outside the section with text on them. Each is joined by one space,
+    // after the list or quote marker that opens a continuation line is dropped.
+    const starts: number[] = [];
+    let joined = "";
+    const first = i;
+    while (i < lines.length && outside(i) && lines[i].trim() !== "") {
+      const text = lines[i].replace(/^\s*(?:[>*+-]\s+)*/, "").trimEnd();
+      starts.push(joined.length);
+      joined += (joined === "" ? "" : " ") + text;
+      i++;
+    }
+    if (starts.length < 2) continue;
+    const lineOf = (offset: number) => starts.findLastIndex((s) => s <= offset);
+    const read = plain(joined);
+    for (const re of [RATIO, PERCENT]) {
+      for (const m of read.matchAll(re)) {
+        const at = m.index as number;
+        const from = lineOf(at);
+        if (from === lineOf(at + m[0].length - 1)) continue;
+        out.push({ line: first + from + 1, code: /\d/.test(m[0]) ? "claim-number" : "claim-number-word", token: joined.slice(at, at + m[0].length).replace(/\s+/g, " ") });
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * Hold Markdown files to the numbers the build owns. A count or percentage typed outside the
  * results section is refused, and so is a copy of the section that is not the lab's current one.
  * Every problem is printed; the first one is the refusal.
@@ -1564,10 +1750,9 @@ export function checkClaims(files: string[], lab: Layout, shown: Layout, io: Io)
     const inside = !relative(shown.root, path).startsWith("..");
     const name = inside ? relative(shown.root, path) : given;
     if (!name.endsWith(".md")) refuse("claims-file", name, `${name} is not a Markdown file`);
-    if (!existsSync(path)) setup("input-missing", name, `${name} is missing`);
     const isLab = path === lab.writeup;
     labWriteup ||= isLab;
-    const text = readFileSync(path, "utf8");
+    const text = decode(readBytes(shown, path, (item, message) => setup("input-missing", item, message)), name);
     const found = findSection(text, name, !isLab);
     if (isLab && !found) refuse("section-missing", name, `${name} has no "${SECTION_HEADING}" section`);
     const lines = text.split("\n");
@@ -1576,10 +1761,12 @@ export function checkClaims(files: string[], lab: Layout, shown: Layout, io: Io)
       const copy = [SECTION_HEADING, ...found.lines.slice(found.start + 1, found.end + 1)].join("\n");
       if (copy !== built.section) problems.push({ code: "claim-section-differs", item: `${name}:${found.start + 1} ${SECTION_TITLE}` });
     }
+    const outside = (i: number) => !(found && i >= found.start && i <= found.end);
     for (const [i, line] of lines.entries()) {
-      if (found && i >= found.start && i <= found.end) continue;
+      if (!outside(i)) continue;
       for (const p of scanLine(line, built.registry, phrases, used)) problems.push({ code: p.code, item: `${name}:${i + 1} ${p.token}` });
     }
+    for (const p of wrappedClaims(lines, outside)) problems.push({ code: p.code, item: `${name}:${p.line} ${p.token}` });
   }
   // Use is judged only when the lab writeup is among the files, so a blog post alone cannot mark one unused.
   if (labWriteup) for (const text of literals.keys()) if (!used.has(text)) problems.push({ code: "literal-unused", item: `${rel(lab, lab.literals)} ${text}` });
@@ -1624,7 +1811,7 @@ export function rehash(root: string): void {
   for (const n of readdirSync(join(root, VALIDATION_DIR))) {
     if (!n.endsWith(".alerts.json")) continue;
     const e = readJsonFile(join(root, VALIDATION_DIR, n));
-    e.recordSha256 = sha256(readFileSync(join(root, RECORD_DIR, `${e.session}.json`), "utf8"));
+    e.recordSha256 = sha256(readFileSync(join(root, RECORD_DIR, `${e.session}.json`)));
     writeJsonFile(join(root, VALIDATION_DIR, n), e);
   }
 }
@@ -1722,7 +1909,7 @@ export const PLANTS: Plant[] = [
   { name: "a listed literal with no source", mutate: (r) => editJson(r, LITERALS, (x) => x.literals.push({ text: "ATT&CK 19.2", source: " " })), args: claimsOf(WRITEUP), exit: EXIT.refused, code: "literal-source", item: `${LITERALS} ATT&CK 19.2` },
   { name: "a listed literal that no file uses", mutate: (r) => editJson(r, LITERALS, (x) => x.literals.push({ text: "ATT&CK 19.2", source: "the pinned ATT&CK release" })), args: claimsOf(WRITEUP), exit: EXIT.refused, code: "literal-unused", item: `${LITERALS} ATT&CK 19.2` },
   { name: "a literal that is only a number", mutate: (r) => editJson(r, LITERALS, (x) => x.literals.push({ text: "3", source: "Sysmon event ID" })), args: claimsOf(WRITEUP), exit: EXIT.refused, code: "literals-shape", item: `${LITERALS} literal 1` },
-  { name: "a count typed beside a listed phrase", mutate: (r) => { editJson(r, LITERALS, (x) => x.literals.push({ text: "event 3", source: "Sysmon event ID" })); writeText(r, NOTES, "Sysmon event 3 fired and 3 rules did not.\n"); }, args: claimsOf(NOTES), exit: EXIT.refused, code: "claim-number", item: `${NOTES}:1 3` },
+  { name: "a count typed beside a listed phrase", mutate: (r) => { editJson(r, LITERALS, (x) => x.literals.push({ text: "event 3", source: "Sysmon event ID" })); writeText(r, NOTES, "Sysmon event 3 fired and 7 rules did not.\n"); }, args: claimsOf(NOTES), exit: EXIT.refused, code: "claim-number", item: `${NOTES}:1 7` },
   claimPlant("a decimal digit outside ASCII", "Only \uff11\uff12 rules fired.\n", "claim-number", "\uff11\uff12"),
   claimPlant("link text with a count over a URL", "[13 of 18](https://example.org/)\n", "claim-number", "13 of 18"),
 ];
@@ -1824,6 +2011,8 @@ function main(argv: string[], io: Io, deps: Deps): ExitCode {
     const b = buildAll(l);
     // The writeup is spliced before anything is written, so a refusal leaves every output as it was.
     const writeup = spliceWriteup(l, b.section);
+    // Every output path is looked at before the first one is written: a link or a folder in one place leaves all as they were.
+    checkTargets(l, [...[...b.files.keys()].map((name) => join(l.coverage, name)), l.writeup]);
     mkdirSync(l.coverage, { recursive: true });
     writeSet([...[...b.files].map(([name, text]): [string, string] => [join(l.coverage, name), text]), [l.writeup, writeup]]);
     io.log(`coverage: wrote ${plural(b.files.size, "file")} under ${rel(l, l.coverage)} and the results section of ${rel(l, l.writeup)}`);
@@ -1846,7 +2035,7 @@ function main(argv: string[], io: Io, deps: Deps): ExitCode {
   }
   if (c.cmd === "fetch") {
     if (!c.host || !SAFE_HOST.test(c.host)) refuse("fetch-host", "--host", "--host must be an ssh alias");
-    const written = fetchAll(l, deps.remote ?? sshRemote(c.host), deps.leakScan ?? realLeakScan);
+    const written = fetchAll(l, deps.remote ?? sshRemote(c.host), deps.leakScan ?? realLeakScan, io.log);
     for (const w of written) io.log(`coverage: wrote ${w}`);
     return EXIT.ok;
   }
@@ -1858,8 +2047,10 @@ function main(argv: string[], io: Io, deps: Deps): ExitCode {
     if ((c.sha ?? ATTACK_SHA256) !== ATTACK_SHA256 && !c.out) {
       refuse("attack-tsv-pin", "--sha256", "a bundle other than the pinned one needs --out; it cannot replace the checked-in technique list");
     }
-    const text = buildAttackTsv(readFileSync(bundlePath), c.sha ?? ATTACK_SHA256);
+    const bundle = readBytes(l, bundlePath, (item, message) => setup("input-missing", item, message));
+    const text = buildAttackTsv(bundle, c.sha ?? ATTACK_SHA256);
     const dest = c.out ?? l.attackTsv;
+    checkTargets(l, [dest]);
     mkdirSync(dirname(dest), { recursive: true });
     const tmp = `${dest}.${process.pid}.tmp`;
     writeFileSync(tmp, text);

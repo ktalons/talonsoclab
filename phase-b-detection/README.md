@@ -256,5 +256,5 @@ checked in: the cases, the session records and the evidence files.
   "blocked by Defender" does not either.
 - **ATT&CK is pinned.** The crosswalk and the layers use ATT&CK 19.2. A newer release exists,
   and moving to it is a rebuild.
-- **Four rules are not validated.** The results table says which, and the section above says
+- **Some rules are not validated.** The results table says which, and the section above says
   why. I would rather show them than cut the pack to the rules that passed.

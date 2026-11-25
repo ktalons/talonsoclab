@@ -1343,9 +1343,8 @@ answer that cannot be read. Each of those may mean something ran.
 
 `coverage.ts` turns the detection pack and the live-alert evidence into two ATT&CK Navigator
 layers, one summary file and the results section of the writeup, for B.5. It runs offline on the Mac. The one command that touches
-the network is `fetch`, a read-only query of the alerts index. It first ran against the live
-index on 2026-11-23, for the two session records of 2026-11-22, and returned the four alerts
-those sessions raised.
+the network is `fetch`, a read-only query of the alerts index. It has run against the live index
+for every session record checked in under `art-runs/`.
 
 ```bash
 bun tools/coverage.ts build                          # read everything, write the four outputs
@@ -1358,8 +1357,21 @@ bun test tools/coverage.test.ts
 ```
 
 Exit 0 is ok. 1 is a failed check (`check` found an output or the results section that differs). 2 is a setup problem: an
-input is missing, or ssh did not answer. 3 is a refusal. A refusal is always a thrown, typed
+input is missing, ssh did not answer, or the leak scan `fetch` runs did not (`leak-scan-setup`). 3 is a refusal. A refusal is always a thrown, typed
 error that names the offending item, a non-zero exit and no output file written or changed.
+
+`build`, `check`, `claims`, `fetch` and `refresh-attack` check each path before they read or write
+it. Under the lab root every folder from the root down is looked at without being followed, and
+every entry under the rules folder is checked, subfolders included. A path outside the root, such
+as a file given to `claims` or the bundle and `--out` of `refresh-attack`, is checked at its last
+component only, and the root itself is taken as given. A path that is a symbolic link, dangling
+or not, is refused as `path-symlink` and names the path. `build` and `refresh-attack` refuse
+before they write anything when an output path is neither absent nor a regular file
+(`path-not-file`). A file this tool reads itself (the writeup, the records, the evidence, the
+miss list, the literals list, the crosswalk, the technique list and the files `claims` is given) that is not valid UTF-8 is refused as `bad-utf8` and is never
+decoded with replacement characters; the ATT&CK bundle is refused as `bundle-json`. The rule XML is
+the exception: `wazuh-rules.ts` reads it, and it decodes a stray byte as a replacement
+character without a refusal.
 
 ### What it will not overstate
 
@@ -1367,15 +1379,18 @@ The pack is the rules whose ID is in the pack ranges of `wazuh-rules.ts` (100340
 100400 to 100499), read from `deploy/soc-recon/wazuh/custom-rules/`. Today that is 18 rules.
 A pack rule is **validated** when an alert it raised from agent `001` has an event time inside
 the run window of a test whose `rules` list names that rule, in a session whose verdict is
-`pass`. Logtest output never counts, and the tool refuses a logtest transcript wherever it is
-pointed at one.
+`pass`. Logtest output never counts, and the tool refuses a logtest transcript given as a session
+record, evidence, the miss list, the crosswalk, the literals list or the technique list. The
+writeup and the files `claims` reads are prose, and are not checked for one.
 
 The match is on the event time: the Sysmon `utcTime` when the alert has one, else the system
 time. The index time lags the event by about a second, so an alert indexed inside a window for
 an event that happened after it does not count, and an event inside a window that was indexed
 after it does. Times are compared as exact instants. The records carry seven decimals; a Sysmon event time
 carries three, so it stands for a whole millisecond, and that whole millisecond has to be inside
-the window for the alert to count.
+the window for the alert to count. A Sysmon event time with other than three decimals is
+refused as `evidence-time`. On any other channel the event time has to equal the system time of
+that alert, and a difference is refused the same way.
 
 Everything else is listed in `coverage.json` with a reason: outside the run window (cleanup and
 gaps included), rule not in the test's `rules`, or session verdict not `pass`. A pack alert for
@@ -1401,7 +1416,7 @@ evidence, a second entry for one rule, or a field its class does not carry.
 |---|---|
 | `phase-b-detection/attack/enterprise-19.2-techniques.tsv` | every Enterprise 19.2 technique with its status, successor and tactics, written by `refresh-attack` from the pinned bundle |
 | `phase-b-detection/attack/crosswalk.json` | one entry for every ATT&CK ID a pack rule uses, mapping it to its 19.2 ID as `unchanged` or `revoked-by` |
-| `phase-b-detection/art-runs/*.json` | the session records of `art-harness.ts` |
+| `phase-b-detection/art-runs/*.json` | the session records of `art-harness.ts`; a step that was not sent carries no times (`record-step`), and every time a record carries has seven decimals (`record-time`) |
 | `phase-b-detection/validation/<session>.alerts.json` | the evidence `fetch` writes, one file per session |
 | `phase-b-detection/validation/misses.json` | the hand-kept miss list |
 
@@ -1417,13 +1432,30 @@ the bundle records.
 `phase-b-detection/coverage/` holds `layer-rule-exists.json`, `layer-validated.json` and
 `coverage.json`, and the writeup holds the results section (below). They are deterministic: sorted, no wall-clock time, byte-identical on a rebuild,
 and `check` is the gate that says so. The pre-commit hook runs it whenever a commit stages a
-change under the pack rules folder or under `art-runs/`, `attack/`, `validation/` or `coverage/`
-in `phase-b-detection/`. It runs on a copy of the index made with replace refs off, so a good
-file in the working tree cannot stand in for a stale one in the commit, and a failure to list or
-copy the index blocks the commit. The hook runs plain `check`; `--final` is for the ship. After `check` it runs `claims` on the
+change under the pack rules folder, under `art-runs/`, `attack/`, `validation/` or `coverage/`
+in `phase-b-detection/`, or to the tool itself. It makes a copy of the index that holds the
+staged inputs and outputs and the staged copies of `coverage.ts` and the four files it imports
+(`wazuh-rules.ts`, `art-harness.ts`, `winevt-capture.ts` and `winevt.ts`), and it runs that copy of
+the tool on that copy of the tree. A good file or a good tool in the working tree cannot stand in
+for a stale or bad one in the commit, so a tool change staged without the outputs it now
+rebuilds differently is blocked, and so is a bad staged tool beside a good one on disk. A tool
+that the index does not hold as a regular file blocks the commit. Every git call in the hook,
+and every one the tool makes, runs with replace refs off, so a replace ref on HEAD or on a staged blob cannot show the hook other bytes
+than the commit will hold. A failure to list or copy the index blocks the commit. A layer staged
+as a link is refused as `path-symlink`. The hook runs plain `check`; `--final` is for the ship. After `check` it runs `claims` on the
 writeup inside the same copy, with the literals list copied beside it, so a count typed outside
-the results section cannot land either. A commit that stages `phase-b-detection/README.md` runs it too. Each
-layer scores a technique by the number of pack rules
+the results section cannot land either. A commit that stages `phase-b-detection/README.md` runs it too.
+
+The pre-push hook runs the same two commands on the tree of each tip being pushed, because a
+merge, a cherry-pick or a rebase that git finishes without a pre-commit hook would otherwise
+reach the remote unchecked. `leakcheck` runs first, with the exit status it always had, and the
+check gets the same ref lines. For each tip the hook copies that tree's inputs, outputs, literals
+and the five tool files through a private index, with replace refs off, and runs the tip's own
+copy of `coverage.ts` on the copy: `check`, then `claims` on the writeup. A tip whose tree has
+no `tools/coverage.ts` is named in one line and not blocked, and a deleted ref pushes as before.
+A failure to read or copy a tip's tree, or a tool file that is not a regular file in it, blocks the push.
+
+Each layer scores a technique by the number of pack rules
 (or validated pack rules) that map to it, with the rule IDs and `art:<technique> #<n> <session>`
 in the comment. A scored sub-technique also emits its parent with `showSubtechniques` on and no
 score, unless the parent is itself mapped. No entry names a tactic. `coverage.json` carries the
@@ -1451,13 +1483,16 @@ The prose around the section never types a number that counts something. `claims
 Markdown files and refuses every digit-bearing token outside the section that is not an
 identifier or a listed literal, naming file, line and token. A spelled-out ratio ("twelve of
 eighteen", "twelve out of eighteen") or percentage ("twelve percent") is refused too, as
-`claim-number-word`. Fenced and inline code are scanned like any other text. A file with no
+`claim-number-word`, with emphasis marks (`*` or `_`) or `&nbsp;` and `&#160;` between its words, with a determiner ("the twelve of the eighteen"), a hyphen
+("twelve-of-eighteen") or a line break inside the ratio, and with "hundred" or "thousand" in the
+spelled percentage. Fenced and inline code are scanned like any other text. A fence closes only
+on the same character at least as long as the one that opened it, so a shorter fence line inside a longer fence does not end it. A file with no
 section is still checked as prose. A decimal digit outside ASCII (fullwidth, Arabic-Indic and
 the like) is refused as `claim-number`, because it reads as a number to a person and matches no
 pattern here. Digits inside an `http://` or `https://` URL, in a link destination or bare, are an
 address and are not refused; the text of a link is scanned like any prose, so `[13 of 18](https://example.org/)`
 is refused on the text. The URL ends at whitespace, and trailing punctuation and an unbalanced closing bracket are not
-part of it.
+part of it, so a number touching the closing bracket of a link, as in `[s](https://example.org/)13%`, is reported.
 
 ```bash
 bun tools/coverage.ts claims phase-b-detection/README.md
@@ -1467,7 +1502,8 @@ bun tools/coverage.ts claims --against <lab root> <post.md> <page.md>   # files 
 A copy of the section in another file, at any heading level, has to equal the lab's current
 section byte for byte, apart from the heading line; any other copy is refused as
 `claim-section-differs`. `--against` names the lab root whose pack, records and section the files
-are held to, and defaults to `--root`. The lab's own writeup is held to its section the same way.
+are held to, and defaults to `--root`. A post is compared with a rebuild from that root's inputs, not with the section its writeup
+holds, so a stale writeup there does not excuse a stale copy. The lab's own writeup is held to its section the same way.
 
 What counts as an identifier, by pattern, and where a registry exists the identifier has to be in it:
 
@@ -1477,10 +1513,10 @@ What counts as an identifier, by pattern, and where a registry exists the identi
 | technique ID | `T` and four digits, with an optional `.` and three | in the pinned 19.2 list, else `claim-technique-unknown` |
 | ART test | a technique ID, a space, `#` and digits | the technique in the pinned list |
 | session ID | `<date>T<time>Z-<six hex>` | a record under `phase-b-detection/art-runs/`, else `claim-session-unknown` |
-| date, clock time | ISO dates with an optional time, and `hh:mm` forms | a real day and a real time |
+| date, clock time | ISO dates with an optional time and zone offset, and `hh:mm` forms | a real day, a real time and a real offset (up to 14:00, in quarter hours; `+99:99` is a count) |
 | tactic ID | `TA` and four digits | by pattern only |
 | digest | 40 or 64 hex digits | by pattern only |
-| version | a `v` prefix, or exactly three dotted parts | by pattern only |
+| version | a `v` and digits with up to three more dotted parts (a bare `v2` is accepted), or exactly three dotted parts | by pattern only |
 | list marker | a number and `.` or `)` opening a list item | by pattern only |
 
 A bare `19.2` is a decimal number, not a version, so it needs a literal. Literals live in
@@ -1497,6 +1533,8 @@ blog post checked alone cannot mark a literal unused.
 
 ### Fetch
 
+`fetch` needs `tools/leak-denylist.txt`, because it scans the evidence with `leakcheck.ts`. The file is gitignored, so a fresh clone has none, and then the scan does not run and `fetch` exits 2.
+
 `fetch` sends one `_msearch` over `ssh -o BatchMode=yes <alias> 'cd ~/talonsoclab/deploy/soc-recon
 && bin/idx "/_msearch" --data-binary @-'` per session record, with the NDJSON on stdin and the
 command as an argv array. The alias is held to a strict pattern first. The first query asks for
@@ -1509,7 +1547,7 @@ and, per alert, only the index name, document ID, rule ID and level, `rule.mitre
 index time, event time, system time, event ID, channel and image file name. Fetch refuses to
 write when any shard failed, when the answer was truncated or a count is only a lower bound,
 and when the repo leak scan (`leakcheck.ts --paths`, as `art-harness.ts` runs it) flags the text.
-Every session is fetched and checked before the first file is written.
+A record that carries no run or cleanup times has no window to ask for: `fetch` skips it and prints a line naming the session. Every session is fetched and checked before the first file is written.
 
 ### Limits
 
@@ -1519,21 +1557,45 @@ Every session is fetched and checked before the first file is written.
 - A count that happens to equal a known rule ID ("62123 alerts") passes as an identifier, because
   the pattern cannot tell a rule from a count. A `v`-prefixed number passes by pattern, whatever
   it counts.
-- `fetch` has run against the live index once (2026-11-23, two sessions, four Sysmon alerts,
-  135 of 135 shards). That run confirmed the query's field names, the date `format` and the
-  document-ID pattern for Sysmon alerts. Not yet seen live: a Defender alert (rules 62123 and
-  62124, whose event time comes from `systemTime`), an alert that does not count, and a failed
-  shard. The fixtures under `tools/fixtures/coverage/` carry the same four alerts with
+- `fetch` has run against the live index for every session record checked in. The evidence
+  files under `phase-b-detection/validation/` hold Sysmon alerts, Defender alerts (rules 62123 and
+  62124, whose event time comes from `systemTime`) and alerts that did not count, so the query's
+  field names, the date `format` and the document-ID pattern have been seen live for each.
+  Not yet seen live: a failed shard. The fixtures under `tools/fixtures/coverage/` carry
   placeholder document IDs; their control and shard counts are synthetic.
+- Identifier kinds still let a count through, because each is a pattern and no pattern knows what
+  it counts: a clock time ("12:18 rules"), a three-part version ("12.6.0 rules"), digits attached to a
+  URL with no space ("https://example.org/x,13"), a number written in a glyph that is not a
+  decimal digit (a Roman numeral, a circled digit, a vulgar fraction), and a fraction in words
+  ("one half").
+- A local hook cannot stop an author who does not run it: `git commit --no-verify` skips the
+  pre-commit hook, `git push --no-verify` skips the pre-push hook, and an author can change either
+  hook or the tools it runs. The hook also runs code from the working tree on the author's own
+  machine, and these are the ways that code, or the bytes it reads, can be made to give the wrong
+  answer. A `bunfig.toml` in the working tree is read by Bun when the hook runs the staged tool, so an
+  untracked one can load code into the check. A staged `coverage.ts` that judges itself can return
+  success without checking anything, because the hook only holds it to be a regular file. On a
+  case-insensitive disk, a path that differs from a built path only in letter case names the same
+  file there but a different path in git, and the hook's path patterns are not made to treat the
+  two as one. A checkout filter, below,
+  changes the bytes the check reads.
+- A checkout filter configured in the repo (a smudge filter or a line-ending conversion) changes
+  the bytes of the copy the hook makes, and the hook does not switch it off. It is outside the
+  hook's reach.
 - The Navigator app version in the layers is a named constant in `coverage.ts` (5.3.2, the hosted
   app; the 4.5 layer spec requires at least 4.9.0). Both layers were opened in the hosted app on
   2026-11-23, as committed in `d492869`: it reports v5.3.2, loads the ATT&CK 19.2 bundle from the
   layer's `"attack": "19"` with no upgrade prompt, and colors every scored technique in each of
-  its tactics and nothing else (16 techniques in 22 cells, and 11 in 17). A rebuilt layer has not
-  been opened until someone opens it. The hosted app is a moving target: when it drops 19.2 or
+  its tactics and nothing else (16 techniques in 22 cells, and 11 in 17). A layer rebuilt since
+  then has not been opened until someone opens it. The hosted app is a moving target: when it drops 19.2 or
   changes version, this check is stale.
 - The tool does not check that a test's ART technique agrees with the `<mitre>` ID of the rule
   it is meant to fire.
+- Evidence is joined to a rule by its ID, not by what the rule matches. A rule that validated stays
+  validated when its pattern is edited later, as long as its ID, level and ATT&CK mapping stay the
+  same and the record and evidence files are unchanged: the old alert still counts. A change to
+  the level or the mapping changes the outputs, and `check` says so; a change to the pattern
+  does not. Editing a validated rule's pattern means running its test and `fetch` again by hand.
 - An evidence file is tied to a record by the record's SHA-256, so any edit to a record makes its
   evidence stale until `fetch` is run again. The fixtures carry the SHA-256 of the two real
   records, so they go stale the same way.

@@ -11,8 +11,20 @@
 # that fails closed when this file is missing. A repo-level core.hooksPath would
 # bypass the global dispatcher that calls the stub, so install.sh never sets one.
 set -euo pipefail
+# SECURITY: every git call below, and every one a tool makes, reads the objects the commit will
+# hold. A replace ref on HEAD or on a staged blob would otherwise show this hook other bytes.
+export GIT_NO_REPLACE_OBJECTS=1
 
 shared="deploy/soc-recon/wazuh/shared/"
+# The tool and the four files it imports, its whole closure: the check runs the staged copies of
+# these, never the working tree.
+tools=(
+  tools/coverage.ts
+  tools/wazuh-rules.ts
+  tools/art-harness.ts
+  tools/winevt-capture.ts
+  tools/winevt.ts
+)
 # What tools/coverage.ts builds from, the folder it writes, the writeup that holds the
 # generated results section, and the literals its prose may use.
 built=(
@@ -23,6 +35,7 @@ built=(
   phase-b-detection/coverage/
   phase-b-detection/README.md
   phase-b-detection/claims-literals.json
+  "${tools[@]}"
 )
 
 # *--- Entry Point ---*
@@ -45,9 +58,9 @@ fi
 if [ -n "$touched" ]; then
   bun "$root/tools/agentconf-check.ts" --offline --staged
 fi
-# ISA ISC-169, ISC-188 and ISC-189: a commit that touches a coverage input or output, or
-# the writeup, must hold outputs and a results section that equal a rebuild of the inputs
-# it holds, and a writeup with no count typed outside that section.
+# ISA ISC-169, ISC-188, ISC-189 and ISC-190: a commit that touches a coverage input or output,
+# the writeup or the tool itself, must hold outputs and a results section that equal a rebuild of
+# the inputs it holds, built by the tool it holds, and a writeup with no count typed outside that section.
 if ! changed=$(git -C "$root" diff --cached --name-only -- "${built[@]}"); then
   echo "pre-commit: git could not list the staged paths, so the coverage outputs cannot be checked. Commit blocked." >&2
   exit 1
@@ -60,11 +73,19 @@ if [ -n "$changed" ]; then
   trap 'rm -rf "$copy"' EXIT
   # SECURITY: the check reads a copy of the index, never the working tree, with replace
   # refs off, so it sees the bytes the commit will hold.
-  if ! git -C "$root" ls-files -z -- "${built[@]}" | GIT_NO_REPLACE_OBJECTS=1 git -C "$root" checkout-index -z --stdin --prefix="$copy/"; then
+  if ! git -C "$root" ls-files -z -- "${built[@]}" | git -C "$root" checkout-index -z --stdin --prefix="$copy/"; then
     echo "pre-commit: git could not copy the index, so the coverage outputs cannot be checked. Commit blocked." >&2
     exit 1
   fi
-  bun "$root/tools/coverage.ts" check --root "$copy"
+  # SECURITY: the tool that judges the commit is the staged one. A file missing from the index, or
+  # staged as a link, is not a tool this hook will run.
+  for t in "${tools[@]}"; do
+    if [ -L "$copy/$t" ] || [ ! -f "$copy/$t" ]; then
+      echo "pre-commit: $t is not a regular file in the index, so the coverage tool cannot run. Commit blocked." >&2
+      exit 1
+    fi
+  done
+  bun "$copy/tools/coverage.ts" check --root "$copy"
   # The path is given inside the copy: claims reads a file where it is told, not under --root.
-  bun "$root/tools/coverage.ts" claims "$copy/phase-b-detection/README.md" --root "$copy"
+  bun "$copy/tools/coverage.ts" claims "$copy/phase-b-detection/README.md" --root "$copy"
 fi
