@@ -77,11 +77,11 @@ updates, kernels included, and **never reboots the box**: `Unattended-Upgrade::A
 stays at its default of off. `wazuh-agent` is on its `Package-Blacklist` and held with
 `apt-mark hold` (runbook 05).
 
-Reboots stay manual on purpose. Every reboot brings the manager back by a plain start, whose
-init stops before its config copy (the multigroups trap, `docker-compose.yml` GOTCHA 2). S0.5's
-backup relies on that stop, so the trap stays in Phase A and its fix moves to Phase B together
-with an explicit hold for the backup. An automatic reboot could also land in the middle of a
-Tier 2 run (runbook 09).
+Reboots stay manual on purpose. Every reboot brings the manager back by a plain start. Since F7
+that start installs the checkout (`docker-compose.yml` GOTCHA 2), so a rule pulled but never
+installed goes live on the reboot. Before F7 the init stopped before its config copy (the
+multigroups trap). An automatic reboot could also land in the middle of a Tier 2 run, where the
+backup hold keeps that start from installing anything (runbook 09, § 2).
 
 A manual policy goes stale without telling you. In September unattended-upgrades moved the
 kernel from -27 to -34, and only a project review noticed. So a daily check turns a pending
@@ -101,7 +101,7 @@ age rules (runbook 06, section 6).
 ### Install
 
 Pull first, then install the new rule file on the manager the way every config change goes in
-(runbook 06, section 3, a force-recreate, never a plain restart). Then, from `deploy/soc-recon`:
+(runbook 06, section 3, a force-recreate). Then, from `deploy/soc-recon`:
 
 ```bash
 sudo install -o root -g root -m 0755 systemd/soc-recon-reboot-check.sh /usr/local/sbin/
@@ -117,8 +117,8 @@ systemctl list-timers 'soc-recon-*'      # four timers, each with a NEXT time
 `soc-recon-unit-failed@.service` is already installed (runbook 08, section 1).
 
 A manual `apt upgrade` that takes `docker-ce` or `containerd.io` restarts the Docker daemon, and
-every container comes back by a plain start, the same as after a reboot. Treat it like one: no
-Tier 2 run going, then the init check below. Both come from Docker's own repo, which
+every container comes back by a plain start, the same as after a reboot. Treat it like one: a
+checkout that matches what is installed, no Tier 2 run going, then the init check below. Both come from Docker's own repo, which
 unattended-upgrades does not track by default, so only a manual upgrade does this.
 
 A `docker-ce` upgrade is also when to check the four AppArmor profiles. They are copies of the
@@ -129,7 +129,8 @@ alerts when it is skipped.
 
 ### A controlled reboot
 
-When 100331 fires, reboot when no Tier 2 run is going and you can watch it come back:
+When 100331 fires, reboot when no Tier 2 run is going, the checkout matches what the manager has
+installed (runbook 06 § 3's loop prints nothing), and you can watch it come back:
 
 ```bash
 sudo reboot
@@ -139,10 +140,13 @@ docker compose ps                         # four containers, healthy
 docker compose logs -t --since 15m wazuh.manager | sed -n '/0-wazuh-init: executing/,/0-wazuh-init: exited/p'
 ```
 
-The manager's init says `exited 1`, and the only error before it is the multigroups copy from
-`data_tmp`: `Error executing command: 'cp -ar /var/ossec/data_tmp/permanent/var/ossec/var/multigroups/. /var/ossec/var/multigroups'`,
-with every other permanent path reported as already mounted. That is the accepted trap. Any other error is a real failure. Check that all three
-agents are Active in the dashboard, and that 100330 fires about 5 min after boot.
+The manager's init says `exited 0`, after `Left /var/ossec/var/multigroups empty: no restore
+source, ...`, `Identified Wazuh configuration files to mount...` and the copy lines, with every
+other permanent path reported as already mounted. An `exited 75` with the line
+`Backup hold /srv/tier2/HOLD is in place...` means a Tier 2 hold stands: see runbook 09, § 2.
+Before F7 the accepted line was `exited 1`, after the failed multigroups copy from `data_tmp`.
+Any other error is a real failure. Check that all three agents are Active in the dashboard,
+and that 100330 fires about 5 min after boot.
 
 ## Acceptance — Phase 0.1
 

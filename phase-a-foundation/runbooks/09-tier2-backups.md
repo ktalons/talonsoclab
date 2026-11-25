@@ -107,9 +107,10 @@ It stops at the first failure:
    restore's signer. The drive is a real mounted volume with no link on the path and 4 GB free,
    rechecked before each write.
 2. **On the box** (`deploy/soc-recon/bin/tier2-snapshot`): it refuses unless every service runs
-   and matches the checkout (next section), starts its watchdog, stops the stack, and streams each
-   volume through the manager image's `tar` into `age`. Then it brings the stack back with a
-   **new** manager container, waits for `0-wazuh-init: exited 0`, and checks it again.
+   and matches the checkout (next section), starts its watchdog, writes the backup hold, stops the
+   stack, and streams each volume through the manager image's `tar` into `age`. Then it releases
+   the hold, brings the stack back with a **new** manager container, waits for
+   `0-wazuh-init: exited 0`, and checks it again.
 3. **Copy and verify:** `rsync` to `<drive>/talonsoclab/tier2/<project>/<stamp>/`, check
    `MANIFEST`, and require each of the four archives to fail `tar -tzf` raw and pass
    `age -d | tar -tzf -`.
@@ -131,18 +132,60 @@ the compose hash, the image ID behind the tag, every config-mount file against t
 (runbook 06's loop), and every single-file bind against what its container sees, with a ctime
 check for in-place edits. It names what differs. Install it (the manager: runbook 06 section 3;
 another service: `docker compose up -d --force-recreate <service>`) or revert it, then back up
-again. It also refuses a bad recipient and a leftover `.pending-restart`.
+again. It also refuses a bad recipient, a leftover `.pending-restart` and a backup hold.
 
 If the checkout changes during the run, the restart starts the old containers by saved ID instead
-of recreating them, and the run fails, leaving the old manager on its old config
-(`0-wazuh-init: exited 1`) until the change is installed. A second hash, a second guard run and
-a ctime check catch later changes but cannot stop them: certs, the cont-init script and the
-indexer and dashboard configs are single-file binds re-read on any start. **Change nothing on the
-box while a backup runs.**
+of recreating them, and the run fails. The old manager stays on its old config
+(`0-wazuh-init: exited 75`) until you release the hold (next section). A second hash, a second
+guard run and a ctime check catch later changes but cannot stop them: certs, the two cont-init
+scripts and the indexer and dashboard configs are single-file binds re-read on any start. **Change
+nothing on the box while a backup runs.**
 
-The held path relies on the measured behaviour of the `wazuh-manager:4.14.6` init, so prove it
-again on scratch after a manager image change (runbook 02, § 5). The config-mount check covers
-content and new files only, because the init's `cp -r` installs nothing else.
+The config-mount check covers content and new files only, because the init's `cp -r` installs
+nothing else.
+
+### The backup hold
+
+Since F7 the manager runs its own copy of the init
+([`wazuh/cont-init/0-wazuh-init`](../../deploy/soc-recon/wazuh/cont-init/0-wazuh-init)). Every
+start installs the checkout: a recreate, a `restart`, a reboot, a Docker daemon restart. So a
+`git pull` followed by any restart or reboot installs what was pulled. The commit gates are what
+stand in front of a bad rule file.
+
+A backup must not install, so the box script writes a hold before it stops the stack:
+`deploy/soc-recon/state/tier2/HOLD`, exactly `hold <epoch>` and a newline, replaced by rename.
+The manager sees it at `/srv/tier2/HOLD`. While anything of that name exists, a file, a link or a
+folder, every start skips the config copy, runs the rest of the init, logs
+`Backup hold /srv/tier2/HOLD is in place...` and exits 75. The hold is on disk, so a reboot or a
+daemon restart in the stopped window finds it.
+
+Only the run's own restart removes it: on unchanged inputs, right before it recreates the
+manager, and only when every step before that worked. A restart that fails after that point
+writes it again, so the hold is gone only after a restart that fully worked. A held run, a
+crash, a failed restart, the watchdog's held restart and a reboot all leave it. Then a new backup refuses, `bin/tier2-start`
+refuses, and the stuck-hold probe raises a level 10 alert once it is over an hour old. To see
+and release it:
+
+```bash
+cd ~/talonsoclab/deploy/soc-recon
+bin/tier2-hold status
+```
+
+`status` prints the hold's time, whether a run or its watchdog holds the lock, and any
+`.pending-restart`. If the stack is not fully back, recover it first (next section). Then review
+what the checkout changed since the last install (runbook 06 § 3's loop), revert what should not
+go in, release, and install:
+
+```bash
+bin/tier2-hold release
+docker compose up -d --no-deps --force-recreate --pull never wazuh.manager
+docker compose logs wazuh.manager | grep '0-wazuh-init: exited'     # want exited 0
+```
+
+`release` refuses while a run or its watchdog holds the lock, while a run's `.pending-restart`
+stands, as root, and for a folder of that name (look, then remove it by hand). Re-run the scratch
+suite's held cases after a manager image change (runbook 02, § 5), and re-diff the owned init
+against the new image's (its header has the command).
 
 ### When a run dies (Recovery)
 
@@ -152,18 +195,22 @@ or the OOM killer, a detached watchdog started before the stop restarts the stac
 about 100 s.
 
 A box reboot mid-run kills the watchdog too, and the stack stays down. After a reboot, or when
-`last-run.log` ends in `WARN: the stack is not fully back`, bring it back by hand. If the log says
-the old manager was started because the checkout changed, review that change first, because the
-recreate installs it:
+`last-run.log` ends in `WARN: the stack is not fully back`, bring it back by hand. Every way a run
+ends there leaves the hold, unless the log also says `cannot write the backup hold`.
+`bin/tier2-hold status` shows it. Under the hold this start installs nothing and the init says
+`exited 75`; without it, `exited 0`:
 
 ```bash
 cd ~/talonsoclab/deploy/soc-recon
 docker compose start wazuh.indexer
 docker compose up -d --no-deps --force-recreate --pull never wazuh.manager
 docker compose start
-docker compose logs wazuh.manager | grep '0-wazuh-init: exited'     # want exited 0
+docker compose logs wazuh.manager | grep '0-wazuh-init: exited'     # 75 under a hold, else 0
 rm -f ~/tier2/soc-recon/.pending-restart ~/tier2/soc-recon/.restart-ids
 ```
+
+If a hold stands, release it as in the section above: review, `bin/tier2-hold release`, recreate,
+and want `exited 0`.
 
 If the restart failed after all four archives were written, they stay on the box as
 `~/tier2/<project>/.<stamp>.failed`, unpruned and unmarked: the freshest copy of the state. Take
@@ -192,7 +239,24 @@ Once a day the manager's logcollector runs `soc-recon-tier2-age.sh`, which print
 | `ERROR <reason>` | 100321 | 10 | the marker cannot be trusted, or the probe failed or ran past 8 s |
 | anything else | 100321 | 10 | every output that is not exactly the OK line |
 
-The probe reads the marker's own time, never its mtime, and writes nothing. Its record:
+A second probe watches the backup hold (F7). Once a day the logcollector runs
+`soc-recon-tier2-hold.sh` under the alias `soc-recon tier2 hold`. It reads `/srv/tier2/HOLD`,
+the marker the backup writes while it holds config installs, and prints one line:
+
+| Output | Rule | Level | Means |
+|---|---|---|---|
+| `OK hold=none` | 100322 | 3 | no hold stands |
+| `OK hold=0d00h` or `OK hold=0d01h` | 100322 | 3 | a hold at most one hour old, as during a backup |
+| `STUCK hold=<d>d<hh>h` | 100323 | 10 | a hold is over one hour old |
+| `ERROR <reason>` | 100323 | 10 | the marker is a link, not a regular file, unreadable or not one hold line, or the probe failed |
+| anything else | 100323 | 10 | every output that is not exactly an OK line |
+
+Clear a stuck hold with `bin/tier2-hold release` after the review in "The backup hold" above.
+Rules 100322 and 100323 have not yet run in the engine. Their cases wait in
+`tools/fixtures/tier2-hold/shapes.json` for a logtest run on the scratch manager.
+
+Each probe reads its marker's own time, never its mtime, and writes nothing. The age probe's
+record:
 
 ```bash
 cd ~/talonsoclab/deploy/soc-recon
@@ -248,8 +312,10 @@ docker compose logs wazuh.manager | grep '0-wazuh-init: exited'     # want exite
 `bin/tier2-start` runs `docker compose up -d --force-recreate --pull never` only when all four
 volumes carry the record's token. After a restore cut off from the box, it refuses and names the
 half-filled volumes and their holders: `docker rm -f` the holders, `docker volume rm` the
-volumes, then restore again. **Never start a restored stack with plain `docker compose up`:** it
-adopts any volume with compose's labels, finished or not.
+volumes, then restore again. It also refuses while a backup hold stands, because the manager
+would start without installing the checkout (§ 2, The backup hold). **Never start a restored
+stack with plain `docker compose up`:** it adopts any volume with compose's labels, finished or
+not.
 
 Carry on with PHOENIX. The vulnerability dashboard stays empty until `vd` refetches.
 
@@ -274,6 +340,9 @@ collide and sort in time order.
   record of the seal or names a newer stamp.
 - **Drive ownership.** Check `mount` shows no `noowners`. To turn ownership on, run
   `sudo diskutil enableOwnership /Volumes/<drive>`.
+- **The hold** is a gitignored file, so `git clean -x` deletes it and the next start installs. It
+  stops config-mount copies only: a single-file bind changed while it stands (a cert, either
+  cont-init script, the init itself) goes live on the next start.
 - **A touch or chmod on a single-file bind** refuses every backup until its service restarts.
 - **Only single-file binds are compared** for the indexer and dashboard.
 - **One Mac run at a time.** SIGKILL leaves `~/.config/talon/tier2-backup.lock`; `rmdir` clears it.
@@ -306,3 +375,8 @@ collide and sort in time order.
 - [ ] No age identity anywhere on the box or in the repo
 - [ ] Installed by one force-recreate; the first real backup verifies; the first 100320 reaches
       the indexer
+- [ ] The backup hold (F7, ISC-170, 172 and 175): a normal run ends with no hold and a held run
+      with one; under a hold a plain start, `restart`, a daemon restart and a reboot install
+      nothing and the init exits 75, and the same start without it installs and exits 0; a
+      backup, `bin/tier2-start` and `bin/tier2-hold release` refuse as stated. The scratch
+      drills for it are written and have not run yet

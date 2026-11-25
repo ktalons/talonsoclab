@@ -1,0 +1,31 @@
+<!--
+  soc-recon Tier 2 backup hold (F7, ISC-173): grades the daily probe that reads
+  the marker the Tier 2 backup writes while it holds config installs. A marker
+  left behind leaves every restart of the manager with its config uninstalled,
+  silently. Runbook 09.
+
+  The probe's output arrives from the manager's own logcollector (full_command
+  with alias "soc-recon tier2 hold"). 100322 takes every run and is the daily
+  heartbeat; 100323 takes any line that is not exactly an OK shape, so STUCK,
+  ERROR, an empty run and anything unexpected all alert at level 10.
+
+  NOTE: 100320 and 100321 match the age probe's alias, and these match only
+  this one, so neither tier 2 probe's output reaches the other's rules.
+-->
+<group name="local,soc_recon,tier2_hold,">
+
+  <rule id="100322" level="3">
+    <if_sid>530</if_sid>
+    <match>^ossec: output: 'soc-recon tier2 hold':</match>
+    <description>soc-recon: Tier 2 backup hold probe ran, no hold is stuck.</description>
+  </rule>
+
+  <rule id="100323" level="10">
+    <if_sid>100322</if_sid>
+    <!-- Only what the probe can print as OK passes: no marker, or a marker at
+         most one hour old, which reads 0d00h up to 0d01h. Any other OK alerts. -->
+    <regex type="pcre2" negate="yes">^ossec: output: 'soc-recon tier2 hold':\nOK hold=(?:none|0d0[01]h)\n?\z</regex>
+    <description>soc-recon: a Tier 2 backup hold is over one hour old or its probe failed.</description>
+  </rule>
+
+</group>

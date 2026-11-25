@@ -114,17 +114,28 @@ curl -skI https://localhost:443 | head -1
 
 A Tier 2 backup (runbook 09) that sees the checkout or the image change during its run starts
 the old manager container instead of recreating it, so that no config-mount file is installed
-(single-file binds are re-read on any start; runbook 09, section 2). That holds
-only because `wazuh-manager:4.14.6`'s init exits before its config copy when a container is
-started a second time. It is a measured property of that image, not something the backup script
-can enforce, and a new image may behave differently.
+(single-file binds are re-read on any start; runbook 09, section 2). Until F7 that held only
+because `wazuh-manager:4.14.6`'s init exited before its config copy when a container was started
+a second time. Since F7 it holds because the manager runs this repo's own copy of that init,
+which skips the copy while the backup hold stands. That copy is the stock script with two marked
+blocks, and it shadows whatever the new image ships.
 
-So after any manager image change, and before the first backup on it, prove it again on a scratch
-stack running the new image: start a backup, append a line to a rule file in the scratch checkout
-while it archives, and want all three of these: the run fails with `WARN: the checkout, the
-compose file or the image changed during the run`, the manager container is the same one as
-before, and the rule file inside it is unchanged. If any of them fails, do not back up on that
-image until the backup script is changed to match.
+So after any manager image change, and before the first start on it, hash the new image's script
+in a throwaway container, so the bound copy is not what you read:
+
+```bash
+docker run --rm --read-only --network none --entrypoint sha256sum <image> /etc/cont-init.d/0-wazuh-init
+```
+
+A hash other than the one in the copy's header means upstream changed it: diff it against
+`bun tools/wazuh-init.ts stock` (the stock text the copy was made from) and re-make the copy
+first. Then, before the first backup on that image, prove
+the held path on a scratch stack running the new image: start a backup, append a line to a rule
+file in the scratch checkout while it archives, and want all of these: the run fails with
+`WARN: the checkout, the compose file or the image changed during the run`, the manager
+container is the same one as before, its init says `exited 75`, and the rule file inside it is
+unchanged. If any of them fails, do not back up on that image until the backup script is changed
+to match.
 
 ## Acceptance — Phase 0.5
 

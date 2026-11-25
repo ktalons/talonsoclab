@@ -62,6 +62,11 @@ refuse() {
 # *--- Checks ---*
 
 cd -P -- "$(dirname -- "$0")/.." || die "cannot find the deploy dir"
+# Under a backup hold the manager's init installs no config-mount file and exits
+# 75, so a restored stack would run the volumes' config, not the checkout's.
+if [ -e state/tier2/HOLD ] || [ -L state/tier2/HOLD ]; then
+    die "a backup hold is in place (state/tier2/HOLD); check it with bin/tier2-hold status (runbook 09, section 2)"
+fi
 docker compose config -q || die "the compose file does not validate"
 project=$(docker compose config | awk 'NR == 1 && $1 == "name:" { print $2 }')
 [[ $project =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die "unexpected compose project name: $project"

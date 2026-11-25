@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# ******************************************************************************
+# *Title: tier2-hold*
+# *Author: Kyle Versluis*
+# *Description: Shows or releases the Tier 2 backup hold on the manager's init.*
+# ******************************************************************************
+# Run as the login user on the box, from anywhere (runbook 09, section 2):
+#   bin/tier2-hold status    what holds, since when, and whether a run is going
+#   bin/tier2-hold release   removes state/tier2/HOLD, so the next manager start installs
+# bin/tier2-snapshot writes the hold before it stops the stack, and only its own
+# restart on unchanged inputs removes it. A run that ended held or died leaves it,
+# and while it stands every manager start skips the config copy (init exits 75).
+# Release refuses while a run or its watchdog holds the snapshot lock, or while a
+# run's .pending-restart says the stack is not back. Nothing here starts,
+# stops or recreates a container. Exit: 0 done (status: no hold), 3 status found
+# a hold, 1 refused or failed, 2 usage.
+
+# *--- Configuration ---*
+
+set -u -o pipefail
+PATH=/usr/local/bin:/usr/bin:/bin
+export PATH
+export LC_ALL=C
+# NOTE: an exported CDPATH makes cd print the directory.
+unset CDPATH
+umask 077
+
+HOLD=state/tier2/HOLD
+# The one line bin/tier2-snapshot writes: "hold <ten-digit epoch>" and a newline,
+# checked byte by byte in hold_kind, so a NUL or CR cannot pass as a marker.
+HOLD_SIZE=16
+
+die() {
+    printf 'tier2-hold: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    printf 'usage: bin/tier2-hold status|release\n' >&2
+    exit 2
+}
+
+# *--- Helper Functions ---*
+
+# hold_kind: what sits at HOLD, typed before anything reads it. A FIFO would
+# block the read, and test -f follows a link.
+hold_kind() {
+    if [ -L "$HOLD" ]; then
+        echo link
+    elif ! [ -e "$HOLD" ]; then
+        echo none
+    elif [ -d "$HOLD" ]; then
+        echo folder
+    elif ! [ -f "$HOLD" ]; then
+        echo other
+    elif [ "$(stat -c %s -- "$HOLD" 2>/dev/null)" != "$HOLD_SIZE" ]; then
+        echo malformed
+    elif [[ $(head -c "$HOLD_SIZE" -- "$HOLD" | od -An -v -tx1 | tr -d ' \n') =~ ^686f6c6420(3[0-9]){10}0a$ ]]; then
+        echo marker
+    else
+        echo malformed
+    fi
+}
+
+# The snapshot runs' dir, named by the compose project as bin/tier2-start reads it.
+# Fails when compose cannot render the file, so release can refuse.
+runs_dir() {
+    local project
+    project=$(docker compose config 2>/dev/null | awk 'NR == 1 && $1 == "name:" { print $2 }') || return 1
+    [[ $project =~ ^[a-z0-9][a-z0-9_-]*$ ]] || return 1
+    printf '%s\n' "$HOME/tier2/$project"
+}
+
+# *--- Entry Point ---*
+
+[ "$#" -eq 1 ] || usage
+case $1 in status | release) ;; *) usage ;; esac
+# NOTE: root's home holds no snapshot lock, so its lock check would always pass.
+[ "$(id -u)" -ne 0 ] || die "run as the login user, not root: the snapshot lock is under that user's home"
+cd -P -- "$(dirname -- "$0")/.." || die "cannot find the deploy dir"
+
+kind=$(hold_kind)
+out=$(runs_dir) || out=
+
+if [ "$1" = status ]; then
+    case $kind in
+        none) echo "hold: none; every manager start installs the checkout" ;;
+        marker)
+            read -r _ epoch <"$HOLD"
+            echo "hold: since $(date -u -d "@$epoch" +%Y-%m-%dT%H:%M:%SZ), $((($(date +%s) - epoch) / 60)) min ago"
+            ;;
+        *) echo "hold: $kind at $HOLD, not a marker bin/tier2-snapshot wrote; it still holds" ;;
+    esac
+    if [ -z "$out" ]; then
+        echo "snapshot lock: unknown, compose cannot render the project name"
+    elif ! [ -d "$out" ] || [ -L "$out" ]; then
+        echo "snapshot lock: free, no run has used $out"
+    else
+        # NOTE: opened read-only, so status writes nothing; flock needs no write.
+        if ! [ -f "$out/.lock" ] || (flock -n 9) 9<"$out/.lock"; then
+            echo "snapshot lock: free"
+        else
+            echo "snapshot lock: held by a tier2-snapshot run or its watchdog"
+        fi
+        if [ -e "$out/.pending-restart" ]; then
+            echo "pending restart: $out/.pending-restart, the stack may not be back (runbook 09, When a run dies)"
+        fi
+        if [ -f "$out/last-run.log" ]; then
+            echo "last run: $(tail -n 1 -- "$out/last-run.log")"
+        fi
+    fi
+    if [ "$kind" != none ]; then
+        echo "next: review what the checkout changed since the last install (runbook 06, section 3), then"
+        echo "  bin/tier2-hold release"
+        echo "  docker compose up -d --no-deps --force-recreate --pull never wazuh.manager"
+        exit 3
+    fi
+    exit 0
+fi
+
+# Release.
+if [ "$kind" = none ]; then
+    echo "tier2-hold: no hold to release"
+    exit 0
+fi
+# SECURITY: only what bin/tier2-snapshot could have written, or a link, goes. A
+# folder of that name is not one of its markers; look before removing it by hand.
+case $kind in
+    folder | other) die "$HOLD is a $kind, not a marker; inspect it and remove it by hand" ;;
+esac
+[ -n "$out" ] || die "compose cannot render the project name, so the snapshot lock cannot be checked"
+if [ -e "$out" ] || [ -L "$out" ]; then
+    if ! [ -d "$out" ] || [ -L "$out" ]; then
+        die "$out is not a plain directory"
+    fi
+    # Held until this exits. A run always leaves its lock file, so none means no
+    # run ever started here, and a new one refuses while the hold stands.
+    if [ -f "$out/.lock" ]; then
+        exec 9<"$out/.lock" || die "cannot open the snapshot lock"
+        flock -n 9 || die "a tier2-snapshot run or its watchdog holds the lock; wait for it to end, then check again"
+    fi
+    if [ -e "$out/.pending-restart" ]; then
+        die "a run left $out/.pending-restart: bring the stack back first (runbook 09, When a run dies)"
+    fi
+fi
+rm -f -- "$HOLD" || die "cannot remove $HOLD"
+if [ -e "$HOLD" ] || [ -L "$HOLD" ]; then
+    die "$HOLD is still there"
+fi
+echo "tier2-hold: released; the next manager start installs the checkout. To install now:"
+echo "  docker compose up -d --no-deps --force-recreate --pull never wazuh.manager"
+echo "  docker compose logs wazuh.manager | grep '0-wazuh-init: exited'     # want exited 0"

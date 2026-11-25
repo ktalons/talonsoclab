@@ -12,7 +12,10 @@
 #   snapshot <stamp> <dir>
 # and nothing else is printed to stdout. Before it stops anything it starts a
 # detached copy of itself (--watchdog) that restarts the stack if this run dies
-# in a way its own EXIT trap cannot catch: SIGKILL, or the OOM killer.
+# in a way its own EXIT trap cannot catch: SIGKILL, or the OOM killer. It also
+# writes the backup hold, state/tier2/HOLD, which keeps every manager start from
+# installing the checkout until a restart recreates the manager on unchanged
+# inputs (ISA F7, runbook 09 section 2; bin/tier2-hold inspects and releases it).
 
 # *--- Configuration ---*
 
@@ -40,6 +43,8 @@ INIT_WAIT=240
 HEALTH_WAIT=300
 
 STAMP_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z$'
+# The hold marker's one line. The stuck-hold probe reads the same 16 bytes.
+HOLD_RE='^hold [0-9]{10}$'
 # Bech32 data characters: lowercase, no 1, b, i or o.
 RECIPIENT_RE='^age1[02-9ac-hj-np-z]{58}$'
 
@@ -131,21 +136,34 @@ touched() {
     done
 }
 
+# write_hold: state/tier2/HOLD, exactly "hold <ten-digit epoch>" and a newline,
+# replaced by rename so neither the init nor the stuck-hold probe reads half of
+# it. -T, so a folder in its place fails the write instead of taking the file.
+write_hold() {
+    local m
+    m="hold $(date +%s)"
+    [[ $m =~ $HOLD_RE ]] || return 1
+    printf '%s\n' "$m" >"$HOLD.tmp" && chmod 644 -- "$HOLD.tmp" && mv -f -T -- "$HOLD.tmp" "$HOLD"
+}
+
 # Brings the stack back: the indexer first so filebeat finds it, then a new
-# manager container (a plain start fails 0-wazuh-init, compose GOTCHA 2), then
+# manager container (its log then holds only this start's init line), then
 # everything else. PENDING goes only when every step worked, so a failed restart
 # leaves the watchdog something to retry. --pull never: the install guard
 # checked the image the recreate must use.
 # SECURITY: PENDING carries the inputs' hash from before the stop. If anything a
 # recreate would read changed since, a recreate would install it, so the old
-# manager container is started instead (its init then exits 1 and every daemon
-# runs the old config): bar 1 outranks a clean init.
-# WARN: "installs nothing" is measured on wazuh-manager 4.14.6 and re-proven on
-# 4.14.9 (same init scripts), whose init exits before its config copy on a second
-# start. Re-prove it on any new image before its first backup (runbook 02, section 5). It covers config-mount files only:
-# docker start re-reads every bind source, so a single-file bind changed during
-# the run (a cert, the cont-init script, an indexer or dashboard config) goes
-# live on the start (runbook 09, section 2).
+# manager container is started instead under the backup hold (its init skips
+# the config copy and exits 75, and every daemon runs the old config): bar 1
+# outranks a clean init. The hold is released only on unchanged inputs, right
+# before the recreate, and only when every step before it worked. A round that
+# then fails writes it again, so the hold is absent only after a round that
+# fully worked.
+# WARN: "installs nothing" is a property of the owned init (wazuh/cont-init/
+# 0-wazuh-init, ISA F7), proven on scratch (runbook 09, section 2). It covers
+# config-mount files only: docker start re-reads every bind source, so a
+# single-file bind changed during the run (a cert, a cont-init script, the init
+# itself included, an indexer or dashboard config) goes live on the start.
 restart() {
     local ok=1 s up svcs want now id
     [ -e "$PENDING" ] || return 0
@@ -154,6 +172,13 @@ restart() {
     now=$(inputs | sha256sum) || now=
     if [ -n "$want" ] && [ "${now%% *}" = "$want" ]; then
         retry docker compose start wazuh.indexer || ok=
+        # The one place the hold goes: the inputs match what the manager ran, so
+        # the recreate's init installs nothing new and must run unheld to exit 0.
+        # After a failed step it stays, and the recreate under it installs nothing.
+        if [ -n "$ok" ] && ! rm -f -- "$HOLD"; then
+            say "WARN: cannot release the backup hold $HOLD"
+            ok=
+        fi
         retry docker compose up -d --no-deps --force-recreate --pull never wazuh.manager || ok=
         retry docker compose start || ok=
         # NOTE: compose start exits 0 for a service with no container (5.6.0,
@@ -180,16 +205,30 @@ restart() {
             say "WARN: no saved container IDs to start"
             ok=
         fi
-        while read -r s id; do
-            [ -n "$id" ] || continue
-            retry docker start "$id" || ok=
-            if [ "$(docker inspect -f '{{.State.Running}}' "$id" 2>>"$LOG" 9>&-)" != true ]; then
-                say "WARN: $s is not running after the restart"
-                ok=
-            fi
-        done <"$IDS"
+        # SECURITY: without the hold this start installs the change. An earlier
+        # try on unchanged inputs may have released it before failing, so it is
+        # written again; when it cannot be, nothing starts.
+        if ! [ -e "$HOLD" ] && ! [ -L "$HOLD" ] && ! write_hold; then
+            say "WARN: cannot write the backup hold $HOLD, so nothing is started: a start without it would install the change"
+            ok=
+        else
+            while read -r s id; do
+                [ -n "$id" ] || continue
+                retry docker start "$id" || ok=
+                if [ "$(docker inspect -f '{{.State.Running}}' "$id" 2>>"$LOG" 9>&-)" != true ]; then
+                    say "WARN: $s is not running after the restart"
+                    ok=
+                fi
+            done <"$IDS"
+        fi
     fi
     if [ -z "$ok" ]; then
+        # SECURITY: a round that released the hold and then failed must not leave the
+        # box unheld: PENDING stays, and a reboot or plain start before the next round
+        # would install whatever the checkout holds by then. That round releases again.
+        if ! [ -e "$HOLD" ] && ! [ -L "$HOLD" ] && ! write_hold; then
+            say "WARN: cannot write the backup hold $HOLD again: until it stands, any start of the manager installs the checkout"
+        fi
         say "WARN: the stack is not fully back (runbook 09, Recovery)"
         return 1
     fi
@@ -210,6 +249,7 @@ if [ "${1-}" = --watchdog ]; then
         die "watchdog: bad arguments"
     fi
     cd -P -- "$(dirname -- "$0")/.." || die "watchdog: cannot find the deploy dir"
+    HOLD=$PWD/state/tier2/HOLD
     OUT=$HOME/tier2/$project
     LOG=$OUT/last-run.log
     PENDING=$OUT/.pending-restart
@@ -259,6 +299,14 @@ DEPLOY=$PWD
 # NOTE: $0 is relative when the Mac runs this, and the cd above broke it.
 SELF=$DEPLOY/bin/tier2-snapshot
 RECIPIENT=$DEPLOY/tier2.recipient
+HOLD=$DEPLOY/state/tier2/HOLD
+
+# A hold means a run is in progress, or one ended held or died with the stack
+# stopped. A new run must not release it with its own restart, nor archive over
+# it. First, because the guard below would name the change and suggest a recreate.
+if [ -e "$HOLD" ] || [ -L "$HOLD" ]; then
+    die "a backup hold is in place ($HOLD): a run holds it, or an earlier one ended held or died; check with bin/tier2-hold status, then runbook 09, section 2"
+fi
 
 for c in docker age sha256sum flock; do
     command -v "$c" >/dev/null || die "$c is not installed"
@@ -529,6 +577,14 @@ done
 } >"$IDS" || die "cannot record the containers"
 [ "$(awk 'NF == 2' "$IDS" | wc -l)" -eq "$(wc -w <<<"$services")" ] || die "cannot record the containers"
 printf '%s %s\n' "$stamp" "$fp" >"$PENDING" || die "cannot write $PENDING"
+# The hold, after PENDING so the restart that removes it always runs, and before
+# the stop so a reboot or a Docker daemon restart in the stopped window finds it.
+# A run that cannot write it takes PENDING back and stops nothing.
+if ! write_hold; then
+    rm -f -- "$PENDING" "$HOLD.tmp"
+    die "cannot write the backup hold $HOLD"
+fi
+say "backup hold written ($(<"$HOLD")) for run $stamp, inputs $fp"
 say "stopping the stack ($project) at $stamp; progress in $LOG"
 # NOTE: two minutes for the indexer to flush before SIGKILL, not compose's 10 s.
 # The lock stays open for it, so a watchdog never restarts during a stop.
@@ -583,7 +639,7 @@ mv -T -- "$part" "$OUT/$stamp" || die "cannot promote $part"
 # The archives are complete from here on. A stack that does not come back is
 # still a failed run, so the Mac writes no marker for it.
 if [ -n "$held" ]; then
-    die "snapshot $stamp is complete, but the checkout or image changed during the run: the old manager runs, its init exits 1; install or revert the change (runbook 09, section 2), then back up"
+    die "snapshot $stamp is complete, but the checkout or image changed during the run: the old manager runs under the backup hold, its init exits 75; review the change, then release the hold and install it, or revert it (bin/tier2-hold, runbook 09, section 2), then back up"
 fi
 mgr=$(docker compose ps -q wazuh.manager)
 waited=0

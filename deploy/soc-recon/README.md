@@ -19,16 +19,18 @@ generate-indexer-certs.yml  one-shot TLS cert generator, run once before the fir
 bin/idx                  indexer API helper: admin client certificate (--cacert/--cert/--key), never a password in argv
 bin/tier2-snapshot       stops the stack and archives its four state volumes through age (runbook 09; run by tools/tier2-backup.sh)
 bin/tier2-start          starts the stack after tools/tier2-restore.sh, only on a finished restore's volumes (runbook 09 section 4)
+bin/tier2-hold           shows or releases the Tier 2 backup hold that keeps manager starts from installing (runbook 09 section 2)
 config/                  indexer, dashboard and manager config; *.example templates for the two gitignored secret files
 systemd/                 host timers plus the scripts they run, installed root-owned: Suricata log rotation, daily ET Open
                          updates, manager log retention (runbook 08), and the OnFailure handler that makes a failed run alert
-state/tier2/             the Tier 2 backup marker, read-only to the manager at /srv/tier2 (the marker itself is gitignored)
+state/tier2/             the Tier 2 backup marker and backup hold, read-only to the manager at /srv/tier2 (both gitignored)
 tier2.recipient.example  the age public key Tier 2 archives are encrypted to (tier2.recipient is gitignored)
 apparmor/                one AppArmor profile per service, a copy of docker-default under the service's name (apparmor/README.md)
 wazuh/SECURITY.md        credential rotation and keeping secrets out of argv
 wazuh/authd.pass.example placeholder for the agent enrollment password (wazuh/authd.pass is gitignored)
 wazuh/audit/             auditd execve rules for phase-a-linux endpoints
-wazuh/cont-init/         filebeat init override that keeps the indexer password out of argv
+wazuh/cont-init/         two stock init overrides: filebeat's keeps the indexer password out of argv; the manager's
+                         installs the checkout on every start, except under a Tier 2 backup hold (compose GOTCHA 2)
 wazuh/ism/               retention policy (version-controlled on purpose)
 wazuh/shared/            per-group agent config pushed to endpoints
 wazuh/custom-rules/      local Suricata tuning, job age and Tier 2 age rules (live); Sigma-converted XML lands here in Phase B

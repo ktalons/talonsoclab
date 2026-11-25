@@ -1,0 +1,190 @@
+{
+  "note": "Events for the stuck-hold rules 100322 and 100323 (ISC-173). Each event is the logged text of a full_command run: the alias line, a newline, the probe's output. want is the id wazuh-logtest reports as the last rule to match (100322 pass, 100323 alert, - means the last rule is neither of them: an age rule, 100320 or 100321, or the stock 530). Feed each event with log_format full_command and location 'soc-recon tier2 hold' (the age drill in Plans/t2-tests/suite.sh does the same for its alias). tools/tier2-hold.test.ts checks every want against the shipped rule text offline; only the scratch manager proves it against the real engine.",
+  "shapes": [
+    {
+      "name": "ok-none",
+      "want": "100322",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=none"
+    },
+    {
+      "name": "ok-0d00h",
+      "want": "100322",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=0d00h"
+    },
+    {
+      "name": "ok-0d01h",
+      "want": "100322",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=0d01h"
+    },
+    {
+      "name": "ok-trailing-newline",
+      "want": "100322",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=0d01h\n"
+    },
+    {
+      "name": "stuck",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nSTUCK hold=0d01h"
+    },
+    {
+      "name": "stuck-days",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nSTUCK hold=123d23h"
+    },
+    {
+      "name": "error-link",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR the marker is a link"
+    },
+    {
+      "name": "error-not-regular",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR the marker is not a regular file"
+    },
+    {
+      "name": "error-unreadable",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR cannot read the marker"
+    },
+    {
+      "name": "error-shape",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR the marker is not one hold line"
+    },
+    {
+      "name": "error-future",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR the marker is dated after the clock"
+    },
+    {
+      "name": "error-clock",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR cannot read the clock"
+    },
+    {
+      "name": "error-dir",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR cannot read /srv/tier2"
+    },
+    {
+      "name": "error-dir-link",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR /srv/tier2 is a link"
+    },
+    {
+      "name": "error-deadline",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR the probe ran past 8 s"
+    },
+    {
+      "name": "error-killed",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR the probe ran past 8 s, or was killed"
+    },
+    {
+      "name": "error-crash",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nERROR the probe stopped before reporting"
+    },
+    {
+      "name": "empty",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\n"
+    },
+    {
+      "name": "ok-alone",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK"
+    },
+    {
+      "name": "ok-hours-only",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=0d1h"
+    },
+    {
+      "name": "ok-0d02h",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=0d02h"
+    },
+    {
+      "name": "ok-1d00h",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=1d00h"
+    },
+    {
+      "name": "ok-three-digit-hours",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=0d001h"
+    },
+    {
+      "name": "ok-extra-field",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=0d01h stale=hold"
+    },
+    {
+      "name": "ok-none-trailing",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=none trailing"
+    },
+    {
+      "name": "ok-two-lines",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=0d01h\nOK hold=0d01h"
+    },
+    {
+      "name": "ok-then-error",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=0d01h\nERROR something"
+    },
+    {
+      "name": "ok-leading-blank",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\n\nOK hold=0d01h"
+    },
+    {
+      "name": "ok-trailing-blank",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK hold=0d01h\n\n"
+    },
+    {
+      "name": "ok-leading-space",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\n OK hold=0d01h"
+    },
+    {
+      "name": "lowercase-ok",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nok hold=0d01h"
+    },
+    {
+      "name": "age-shape-under-hold-alias",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\nOK tier2=0d01h"
+    },
+    {
+      "name": "bash-error",
+      "want": "100323",
+      "event": "ossec: output: 'soc-recon tier2 hold':\n/var/ossec/etc/probes/soc-recon-tier2-hold.sh: line 3: syntax error"
+    },
+    {
+      "name": "age-probe-ok-not-hold",
+      "want": "-",
+      "event": "ossec: output: 'soc-recon tier2 age':\nOK tier2=0d01h"
+    },
+    {
+      "name": "age-probe-stale-not-hold",
+      "want": "-",
+      "event": "ossec: output: 'soc-recon tier2 age':\nSTALE tier2=none"
+    },
+    {
+      "name": "other-alias",
+      "want": "-",
+      "event": "ossec: output: 'other probe':\nOK hold=none"
+    },
+    {
+      "name": "hold-output-under-age-alias",
+      "want": "-",
+      "event": "ossec: output: 'soc-recon tier2 age':\nSTUCK hold=0d02h"
+    }
+  ]
+}

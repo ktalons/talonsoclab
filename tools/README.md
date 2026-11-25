@@ -345,6 +345,34 @@ It cannot see a `COMPOSE_FILE` set in the box's `.env`, which profiles the kerne
 loaded, or what a running
 container is confined by: `docker inspect` and `aa-status` on the box answer that.
 
+## wazuh-init
+
+`wazuh-init.ts` holds the manager's own `0-wazuh-init`
+([`deploy/soc-recon/wazuh/cont-init/0-wazuh-init`](../deploy/soc-recon/wazuh/cont-init/0-wazuh-init))
+to the stock script it shadows (ISA F7). The copy differs from stock in two marked blocks and an
+added comment header, nothing else. Block 1 fixes the restart trap: on any start after a
+container's first, the stock script failed to restore the always-empty `var/multigroups` and
+exited before its config copy. Block 2 is the Tier 2 backup hold: while `/srv/tier2/HOLD` exists,
+the copy is skipped and the script exits 75 (runbook 09, § 2).
+
+Each block keeps the stock lines it replaced as `#|` lines. The check drops the header, puts
+those lines back, and wants the result to hash to the pinned stock SHA-256 with exactly two
+blocks. One changed byte outside a block, a removed line or a third block fails it.
+
+```bash
+bun tools/wazuh-init.ts check             # 0 findings, or one line per finding
+bun tools/wazuh-init.ts stock             # the rebuilt stock text, to diff against a new image's
+bun test tools/wazuh-init.test.ts         # the check's plants, and both scripts run in a sandbox
+bun test tools/tier2-hold-scripts.test.ts # the hold in tier2-snapshot and tier2-hold, docker stubbed
+bun test tools/tier2-hold-probe.test.ts   # the hold probe on planted markers, graded by rules 100322 and 100323
+```
+
+The sandbox runs the stock and the owned text on the Mac, every absolute path moved under a
+scratch folder and GNU-only options mapped to BSD ones. It shows the trap on the stock text, the
+fix and the hold on the owned text, and the owned text equal to stock wherever neither applies.
+What only the box can show (s6 running the bound script, the image's real `permanent_data.env`,
+docker, `flock`, a reboot) is left to the scratch-stack drills.
+
 ## agentconf-check
 
 `agentconf-check.ts` runs every shared agent group config

@@ -245,7 +245,9 @@ manager forward.
   2026-10-22: a test file planted on 10-21 broke analysisd on the next boot.
 - **A plain restart still skips the config copy.** All three cont-init scripts are unchanged in
   4.14.9, so the multigroups trap in [runbook 06](06-suricata-ids-dashboards.md) § 3 still applies.
-  The upgrade itself is safe because `up -d` makes new containers.
+  The upgrade itself is safe because `up -d` makes new containers. *(Later, F7: the manager now
+  runs its own fixed copy of `0-wazuh-init`, so a plain restart installs. On the next upgrade,
+  re-diff that copy against the new image's script before the first start.)*
 
 ## Acceptance
 

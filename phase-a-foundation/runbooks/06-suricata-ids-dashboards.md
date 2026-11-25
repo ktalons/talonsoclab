@@ -12,9 +12,9 @@
 > **Why it matters for a SOC:** the endpoint agents see the hosts; Suricata sees the *wire*. Its
 > alerts land beside Sysmon and auditd, so one query shows host and network evidence together.
 >
-> **The load-bearing lesson is section 3:** a Wazuh manager restart does NOT apply git-shipped
-> configuration, and nothing says so. Read it before changing anything under
-> `deploy/soc-recon/wazuh/`.
+> **The load-bearing lesson is section 3:** a stock Wazuh manager restart does NOT apply
+> git-shipped configuration, and nothing says so. Since F7 this lab's manager runs a fixed init
+> that does. Read it before changing anything under `deploy/soc-recon/wazuh/`.
 >
 > Steps are tagged **[BOX]** (SOC host) or **[API]** (dashboard saved-objects API). Nothing here
 > takes a password as an argument.
@@ -76,29 +76,36 @@ grep -o '"in_iface":"[a-z0-9]*"' /var/log/suricata/eve.json | head -1     # must
 The `<localfile>` lives in git at `deploy/soc-recon/wazuh/shared/phase-a-linux/agent.conf` and
 reaches the agent as group config. It is **not** edited on a running manager.
 
-> ### The manager restart trap — read this
+> ### The manager restart trap, and its fix — read this
 >
-> `docker compose restart wazuh.manager` **does not apply this file.** Neither does
-> `stop` + `start`. Only a **new container** does:
+> **Until F7 (2026-11)**, `docker compose restart wazuh.manager` did not apply this file, and
+> neither did `stop` + `start`. Only a new container did. The stock init script
+> (`/etc/cont-init.d/0-wazuh-init`) restores any empty `PERMANENT_DATA` path from
+> `/var/ossec/data_tmp`, then deletes that backup after its first run. A restarted container
+> keeps its filesystem, so on the next init the still-empty `/var/ossec/var/multigroups` had no
+> restore source, and the script exited **before `mount_files` copies `/wazuh-config-mount` into
+> `/var/ossec`**. s6 logged `0-wazuh-init: exited 1` and started the daemons anyway: the manager
+> was Up, every agent stayed Active, and it ran the old configuration.
+>
+> **Now** the manager runs its own copy of that script
+> (`deploy/soc-recon/wazuh/cont-init/0-wazuh-init`), which leaves that dir empty instead. Every
+> start applies the checkout: a recreate, a `restart`, a reboot, a Docker daemon restart. So a
+> `git pull` plus any restart or reboot installs what was pulled. A recreate is still the usual
+> install, because its log holds only that start's lines:
 >
 > ```bash
 > docker compose up -d --force-recreate wazuh.manager
 > ```
 >
-> **Why.** The init script (`/etc/cont-init.d/0-wazuh-init`) restores any empty
-> `PERMANENT_DATA` path from `/var/ossec/data_tmp`, then deletes that backup after its first run.
-> A restarted container keeps its filesystem, so on the next init the still-empty
-> `/var/ossec/var/multigroups` has no restore source, and the script exits **before
-> `mount_files` copies `/wazuh-config-mount` into `/var/ossec`**. s6 logs
-> `0-wazuh-init: exited 1` and starts the daemons anyway: the manager is Up, every agent stays
-> Active, and it runs the old configuration.
+> The one exception is a Tier 2 backup hold (`state/tier2/HOLD`, runbook 09 § 2): while it
+> stands, no start copies anything and the init says `exited 75`.
 >
 > **Always verify the copy landed rather than trusting the restart:**
 > ```bash
 > docker compose logs --since 3m wazuh.manager | grep -E "Identified Wazuh|cont-init.d\] 0-wazuh-init"
 > ```
 > Want `Identified Wazuh configuration files to mount...`, the per-file `'/wazuh-config-mount/...' -> '/var/ossec/...'`
-> lines, and `0-wazuh-init: exited 0`. An `exited 1` means nothing was applied.
+> lines, and `0-wazuh-init: exited 0`. An `exited 1` or `exited 75` means nothing was applied.
 
 Then prove delivery, not staging: the manager's `merged.mg` md5 must match the hash the agent
 reports.
@@ -344,8 +351,8 @@ bin/idx '/wazuh-alerts-*/_search' -d "$q" |
   jq -r '.hits.hits[]._source | "\(.timestamp) \(.rule.id) \(.full_log | split("\n") | last)"'
 ```
 
-**Install.** The probe, its rules and the localfile ride `/wazuh-config-mount`, so they apply only
-on a new container (section 3). No sudo. A recreate also copies every other config-mount file,
+**Install.** The probe, its rules and the localfile ride `/wazuh-config-mount`, so they apply on
+the manager's next start (section 3). No sudo. A recreate also copies every other config-mount file,
 so check first what else it would change. The loop is one line in single quotes, so every `$`
 expands inside the container and a paste cannot split it:
 
