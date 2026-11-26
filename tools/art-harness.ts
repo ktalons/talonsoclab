@@ -12,6 +12,7 @@ import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSyn
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { sshArgv } from "./winevt-capture.ts";
+import { readRulesDir, RulesError, ruleTextDigests } from "./wazuh-rules.ts";
 
 // *--- Configuration ---*
 
@@ -29,7 +30,14 @@ export const YAML_MODULE = "powershell-yaml";
 export const YAML_VERSION = "0.4.12";
 const ALLOWLIST_FORMAT = "talonsoclab-art-allowlist/1";
 const MANIFEST_FORMAT = "talonsoclab-art-manifest/1";
-const RECORD_FORMAT = "talonsoclab-art-session/1";
+// Format 2 adds ruleFiles and each test's ruleText; format 1 records predate them and are bound by the baseline in coverage.
+const RECORD_FORMAT = "talonsoclab-art-session/2";
+// The rules checkout a session binds its tests to, and where the manager keeps the files it loaded.
+export const RULES_DIR = "deploy/soc-recon/wazuh/custom-rules";
+export const MANAGER_RULES_DIR = "/var/ossec/etc/rules/custom";
+// Run from the box's checkout: sha256sum of every top-level rules file inside the manager container.
+export const MANAGER_COMMAND = `cd ~/talonsoclab/deploy/soc-recon && docker compose exec -T wazuh.manager sh -c 'sha256sum ${MANAGER_RULES_DIR}/*.xml'`;
+const MANAGER_MS = 120_000;
 const ATOMICS_REPO = "redcanaryco/atomic-red-team";
 export const STAGED_ROOT = "C:\\AtomicRedTeam";
 const ATOMICS = "atomics";
@@ -49,6 +57,8 @@ const SAFE_SESSION = /^\d{8}T\d{6}Z-[0-9a-f]{6}$/;
 const SAFE_DESC = /^talonsoclab-b4-\d{8}T\d{6}Z-[0-9a-f]{6}$/;
 const SAFE_VERSION = /^\d{1,4}(?:\.\d{1,6}){1,3}$/;
 const SHA_HEX = /^[0-9a-f]{64}$/;
+const SAFE_RULE_FILE = /^[A-Za-z0-9._-]{1,120}\.xml$/;
+const MANAGER_LINE = new RegExp(`^([0-9a-f]{64})  ${MANAGER_RULES_DIR.replace(/\//g, "\\/")}\\/([A-Za-z0-9._-]{1,120}\\.xml)$`);
 const COMMIT_HEX = /^[0-9a-f]{40}$/;
 const ISO_UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,7})?Z$/;
 // The pack ranges: EID-3 rules 100340-100399, the B.3 rules 100400-100499.
@@ -161,6 +171,22 @@ export interface RemoteResult {
 /** Runs one PowerShell payload on the Dell. The tests and the self-test pass a fake. */
 export type Remote = (payload: string, timeoutMs: number) => RemoteResult;
 
+/** Runs one shell command on the host of the Wazuh manager. The tests and the self-test pass a fake. */
+export type ManagerRemote = (command: string, timeoutMs: number) => RemoteResult;
+
+/** What the checkout's rules folder holds: the hash of each top-level file, and the text digest of each loaded rule. */
+export interface RuleState {
+  files: Record<string, string>;
+  digests: Map<number, string>;
+}
+
+/** How the manager's installed rules files differ from the checkout's, by file name. */
+export interface RuleFileDiff {
+  different: string[];
+  missing: string[];
+  extra: string[];
+}
+
 /** What the Dell reports of its staged tree. */
 export interface Listing {
   missingRoot: boolean;
@@ -225,6 +251,8 @@ export interface TestRecord {
   testNumber: number;
   testName: string;
   rules: number[];
+  // The SHA-256 of the text of each listed rule in the checkout the session started from (ruleTextDigests), by rule id.
+  ruleText: Record<string, string>;
   run: StepRecord;
   cleanup: StepRecord;
 }
@@ -238,6 +266,8 @@ export interface SessionRecord {
   timedOut: string[];
   allowlistSha256: string;
   manifestSha256: string;
+  // The SHA-256 of each top-level rules file, by name: what the checkout and the manager were compared on.
+  ruleFiles: Record<string, string>;
   atomicsCommit: string;
   module: { name: string; version: string };
   timeoutSeconds: number;
@@ -258,6 +288,10 @@ export interface SessionOptions {
   allowlistText: string;
   manifestText: string;
   sessionId?: string;
+  // A run reads the manager's installed rules files before anything is sent; check-prereqs needs neither.
+  manager?: ManagerRemote;
+  // The rules folder of the checkout; the repo's own unless a test points elsewhere.
+  rulesDir?: string;
   // Raw remote output and snapshots, never the committed record. Gitignored in real runs.
   raw: (name: string, data: string) => void;
   // Writes the record after the in-process leak guard passed; returns where it went.
@@ -1102,6 +1136,99 @@ export function sshRemote(host: string): Remote {
   };
 }
 
+// *--- Rules Files ---*
+
+/** The real manager host: ssh with an argv array and no stdin. */
+export function sshManagerRemote(host: string): ManagerRemote {
+  if (!SAFE_HOST.test(host)) refuse("the ssh host alias holds characters an alias never has");
+  return (command, timeoutMs) => {
+    try {
+      const r = Bun.spawnSync(sshArgv(host, command), { stdout: "pipe", stderr: "pipe", timeout: timeoutMs });
+      return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString(), timedOut: r.exitedDueToTimeout === true };
+    } catch {
+      return { code: null, out: "", err: "", timedOut: false };
+    }
+  };
+}
+
+/** The checkout's top-level rules files by SHA-256 and every loaded rule's text digest; a link or an odd file name stops it. */
+export function localRuleState(dir: string): RuleState {
+  const files: Record<string, string> = {};
+  let names: string[];
+  try {
+    names = readdirSync(dir).filter((n) => /\.xml$/i.test(n)).sort(byOrdinal);
+  } catch {
+    return setup(`${relative(ROOT, dir) || dir} cannot be read`);
+  }
+  for (const name of names) {
+    const st = lstatSync(join(dir, name));
+    if (st.isDirectory()) continue;
+    if (!st.isFile()) setup(`${name} in the rules folder is a link or not a regular file`);
+    if (!SAFE_RULE_FILE.test(name)) setup(`${name.slice(0, 40)} in the rules folder is not a rules file name the manager check can compare`);
+    files[name] = sha256(readFileSync(join(dir, name)));
+  }
+  try {
+    return { files, digests: ruleTextDigests(readRulesDir(dir).rules) };
+  } catch (e) {
+    if (e instanceof RulesError) return setup(`the rules folder does not read: ${e.message}`);
+    throw e;
+  }
+}
+
+/** The manager's `sha256sum` listing as file name to hash; any other line, an empty listing or a repeated name stops it. */
+export function parseManagerListing(out: string): Record<string, string> {
+  const text = out.endsWith("\n") ? out.slice(0, -1) : out;
+  if (text === "") setup("the manager listed no rules file");
+  const files: Record<string, string> = {};
+  for (const [i, line] of text.split("\n").entries()) {
+    const m = MANAGER_LINE.exec(line);
+    if (!m) setup(`line ${i + 1} of the manager's rules listing is not a SHA-256 and a file under ${MANAGER_RULES_DIR}`);
+    if (Object.hasOwn(files, m![2])) setup(`the manager's rules listing names ${m![2]} twice`);
+    files[m![2]] = m![1];
+  }
+  return files;
+}
+
+/** Ask the manager for its installed rules files; a failed or malformed answer is a setup failure that shows nothing remote. */
+export function readManagerFiles(remote: ManagerRemote, raw: (name: string, data: string) => void = () => {}): Record<string, string> {
+  const r = remote(MANAGER_COMMAND, MANAGER_MS);
+  raw("00-manager.out", r.out);
+  raw("00-manager.err", r.err);
+  if (r.timedOut) setup(`the manager read did not finish in ${MANAGER_MS / 1000} s`);
+  if (r.code === null) setup("ssh to the manager could not start or was killed");
+  if (r.code !== 0) setup(`the manager read exited ${r.code}; its output is not shown, since it can hold host names`);
+  return parseManagerListing(r.out);
+}
+
+/** The file names whose hash differs, the checkout files the manager lacks, and the manager files the checkout lacks. */
+export function diffRuleFiles(local: Record<string, string>, manager: Record<string, string>): RuleFileDiff {
+  const names = (pick: (n: string) => boolean, from: string[]) => from.filter(pick).sort(byOrdinal);
+  return {
+    different: names((n) => Object.hasOwn(manager, n) && manager[n] !== local[n], Object.keys(local)),
+    missing: names((n) => !Object.hasOwn(manager, n), Object.keys(local)),
+    extra: names((n) => !Object.hasOwn(local, n), Object.keys(manager)),
+  };
+}
+
+const ruleFilesDiffer = (d: RuleFileDiff) => d.different.length + d.missing.length + d.extra.length > 0;
+
+/** The difference in words, every file named: these names are checked file names, never the host. */
+function describeRuleFiles(d: RuleFileDiff): string {
+  return [d.different.length ? `different on the manager: ${d.different.join(", ")}` : "", d.missing.length ? `missing on the manager: ${d.missing.join(", ")}` : "", d.extra.length ? `extra on the manager: ${d.extra.join(", ")}` : ""].filter(Boolean).join("; ");
+}
+
+/** The read-only check-manager command: pass, or the differences; exit 1 on a difference, a setup failure stops it as exit 2. */
+export function checkManager(remote: ManagerRemote, dir: string, log: (line: string) => void): ExitCode {
+  const state = localRuleState(dir);
+  const diff = diffRuleFiles(state.files, readManagerFiles(remote));
+  if (ruleFilesDiffer(diff)) {
+    log(`DIFF ${describeRuleFiles(diff)}`);
+    return EXIT.failed;
+  }
+  log(`PASS the manager's ${plural(Object.keys(state.files).length, "rules file")} match ${RULES_DIR}`);
+  return EXIT.ok;
+}
+
 // *--- Answers ---*
 
 /** The object in the last line of a step's stdout, which must be the tagged base64 answer. */
@@ -1430,6 +1557,16 @@ export function runSession(o: SessionOptions): SessionOutcome {
     if (manifest.owed.length) refuse(`the manifest still owes ${manifest.owed.join(", ")}: stage it and rebuild the manifest before a session`);
     const digest = treeDigest(manifest.files);
 
+    // A run binds each test to the rule text of the checkout, so the manager must hold that text first (ISC-210). Nothing has gone to the Dell yet.
+    let rules: RuleState | null = null;
+    if (o.mode === "run") {
+      if (!o.manager) refuse("a run needs the manager remote, to compare its installed rules files with the checkout");
+      rules = localRuleState(o.rulesDir ?? resolve(ROOT, RULES_DIR));
+      const diff = diffRuleFiles(rules.files, readManagerFiles(o.manager!, o.raw));
+      if (ruleFilesDiffer(diff)) setup(`the rules files installed on the manager differ from ${RULES_DIR} (${describeRuleFiles(diff)}); no test was sent (ISC-210)`);
+      for (const e of tests) for (const rule of e.rules) if (!rules.digests.has(rule)) setup(`rule ${rule} of ${e.guid} is not in ${RULES_DIR}; no test was sent`);
+    }
+
     // Every remote call is saved raw under the session's folder and never printed. Only a
     // payload that never arrived (nothing ran) is retried, once; every other failure stands.
     const call = (name: string, step: string, payload: string, timeoutMs: number): Record<string, unknown> => {
@@ -1499,7 +1636,17 @@ export function runSession(o: SessionOptions): SessionOutcome {
     const stepMs = o.timeoutSeconds * 1000 + STEP_SLACK_MS;
     const blank = (status: string): StepRecord => ({ startUtc: null, endUtc: null, status, exitCode: null });
     // Every selected test is in the record; one never sent after a failure stays "not-sent".
-    const records: TestRecord[] = tests.map((e) => ({ guid: e.guid, technique: e.technique, testNumber: e.testNumber, testName: e.testName, rules: e.rules, run: blank("not-sent"), cleanup: blank("not-sent") }));
+    const bound = rules as RuleState;
+    const records: TestRecord[] = tests.map((e) => ({
+      guid: e.guid,
+      technique: e.technique,
+      testNumber: e.testNumber,
+      testName: e.testName,
+      rules: e.rules,
+      ruleText: Object.fromEntries(e.rules.map((r) => [String(r), bound.digests.get(r) as string])),
+      run: blank("not-sent"),
+      cleanup: blank("not-sent"),
+    }));
     for (const [i, e] of tests.entries()) {
       const rec = records[i];
       let stop = false;
@@ -1579,6 +1726,7 @@ export function runSession(o: SessionOptions): SessionOutcome {
       timedOut: timedOutGuids,
       allowlistSha256: sha256(o.allowlistText),
       manifestSha256: sha256(o.manifestText),
+      ruleFiles: bound.files,
       atomicsCommit: al.atomicsCommit,
       module: { name: MODULE_NAME, version: MODULE_VERSION },
       timeoutSeconds: o.timeoutSeconds,
@@ -1680,6 +1828,19 @@ export function cleanDell(m: Manifest): FakeDell {
   };
 }
 
+/** The manager's `sha256sum` output for the given files, as the real command prints it. */
+export function managerListing(files: Record<string, string>): string {
+  return Object.entries(files).map(([name, hash]) => `${hash}  ${MANAGER_RULES_DIR}/${name}\n`).join("");
+}
+
+/** A fake manager that prints the given listing and logs each command it was asked. */
+export function fakeManager(files: Record<string, string>, asked: string[] = []): ManagerRemote {
+  return (command) => {
+    asked.push(command);
+    return { code: 0, out: managerListing(files), err: "", timedOut: false };
+  };
+}
+
 // Built at run time, as winevt.test.ts does, so no private address sits in the source.
 const plantedV4 = () => [10, 20, 30, 41].join(".");
 
@@ -1745,8 +1906,10 @@ export function selfTest(log: (line: string) => void = console.log): boolean {
   try {
     const { m, text, flipped } = selfTestManifest(al, allowlistText, tmp);
     const two = al.tests.filter((t) => !t.runsFetchedCode).slice(0, 2).map((t) => t.guid);
+    const rulesDir = resolve(ROOT, RULES_DIR);
+    const local = localRuleState(rulesDir).files;
     // lost: how many deliveries the fake drops (exit 96, nothing run) before it answers again.
-    const session = (d: FakeDell, guids: string[] | "all" = two, lost = 0) => {
+    const session = (d: FakeDell, guids: string[] | "all" = two, lost = 0, manager: ManagerRemote = fakeManager(local)) => {
       const sent: { step: string; payload: string }[] = [];
       const written: string[] = [];
       const base = fakeRemote(d, sent, al);
@@ -1766,6 +1929,8 @@ export function selfTest(log: (line: string) => void = console.log): boolean {
         allowlistText,
         manifestText: text,
         sessionId: "20261122T030000Z-abcdef",
+        manager,
+        rulesDir,
         raw: () => {},
         writeRecord: (_id, json) => {
           written.push(json);
@@ -1819,11 +1984,30 @@ export function selfTest(log: (line: string) => void = console.log): boolean {
     const once = session(cleanDell(m), two, 1);
     const neverOk = never.out.exit === EXIT.setup && never.sent.length === 2 && never.out.messages.join().includes("did not arrive");
     checks.push(["a payload that never arrives is sent twice, then stops the session before any test", neverOk && once.out.exit === EXIT.ok && once.ran === 2]);
+
+    const first = Object.keys(local)[0];
+    const second = Object.keys(local)[1];
+    const { [first]: _dropped, ...without } = local;
+    const faults: [Record<string, string>, string][] = [
+      [{ ...local, [first]: "0".repeat(64) }, first],
+      [without, first],
+      [{ ...local, "planted_extra.xml": "1".repeat(64) }, "planted_extra.xml"],
+    ];
+    const stopped = faults.every(([files, name]) => {
+      const s = session(cleanDell(m), two, 0, fakeManager(files));
+      return s.out.exit === EXIT.setup && s.sent.length === 0 && s.written.length === 0 && s.out.messages.join().includes(name) && s.out.messages.join().includes("ISC-210");
+    });
+    const bad = session(cleanDell(m), two, 0, () => ({ code: 0, out: `${"2".repeat(64)}  /elsewhere/${second}\n`, err: "", timedOut: false }));
+    checks.push(["a different, missing, extra or malformed rules file on the manager stops the session before any test (ISC-210)", stopped && bad.out.exit === EXIT.setup && bad.sent.length === 0]);
+
+    const rec = clean.out.record;
+    const bound = !!rec && rec.format === RECORD_FORMAT && JSON.stringify(rec.ruleFiles) === JSON.stringify(local) && rec.tests.every((t) => t.rules.every((r) => SHA_HEX.test(t.ruleText[String(r)] ?? "")));
+    checks.push(["a session that passed the manager check writes a format 2 record with the rules files and each test's rule text (ISC-209)", bound]);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
   for (const [name, ok] of checks) log(`${ok ? "OK  " : "BAD "} self-test ${name}`);
-  return checks.length === 7 + CATEGORIES.length && checks.every(([, ok]) => ok);
+  return checks.length === 9 + CATEGORIES.length && checks.every(([, ok]) => ok);
 }
 
 // *--- Entry Point ---*
@@ -1832,9 +2016,12 @@ const USAGE = `usage: bun tools/art-harness.ts check-allowlist --atomics <checko
        bun tools/art-harness.ts build-manifest --module <dir> [--module <dir>] --atomics <checkout> [--check]
        bun tools/art-harness.ts stage --module <dir> [--module <dir>] --atomics <checkout> --out <new dir>
        bun tools/art-harness.ts check-prereqs --host <ssh alias> (--guid <guid>... | --all) [--timeout <s>]
-       bun tools/art-harness.ts run --host <ssh alias> (--guid <guid>... | --all) [--timeout <s>] [--allow-remote-code]
+       bun tools/art-harness.ts run --host <ssh alias> --manager <ssh alias> (--guid <guid>... | --all) [--timeout <s>] [--allow-remote-code]
+       bun tools/art-harness.ts check-manager --manager <ssh alias>
        bun tools/art-harness.ts --self-test
 
+run reads the manager's installed rules files first and sends no test when any differs from ${RULES_DIR}.
+check-manager only reads: it prints PASS or the differing, missing and extra file names.
 exit 0 ok, 1 failed check or session, 2 setup failure (no test sent), 3 refused (nothing sent)`;
 
 interface Cli {
@@ -1843,6 +2030,7 @@ interface Cli {
   modules: string[];
   out?: string;
   host?: string;
+  manager?: string;
   guids: string[];
   all: boolean;
   timeout: number;
@@ -1863,6 +2051,7 @@ function parseCli(argv: string[]): Cli {
     else if (a === "--module") c.modules.push(resolve(value()));
     else if (a === "--out") c.out = resolve(value());
     else if (a === "--host") c.host = value();
+    else if (a === "--manager") c.manager = value();
     else if (a === "--guid") c.guids.push(value());
     else if (a === "--all") c.all = true;
     else if (a === "--timeout") {
@@ -1914,8 +2103,14 @@ function main(argv: string[]): ExitCode {
     console.error(`art-harness: wrote ${MANIFEST_PATH}, ${plural(m.files.length, "file")}${m.owed.length ? `; still owed: ${m.owed.join(", ")}` : ""}`);
     return EXIT.ok;
   }
+  if (c.cmd === "check-manager") {
+    if (!c.manager || !SAFE_HOST.test(c.manager)) refuse("--manager must be an ssh alias");
+    return checkManager(sshManagerRemote(c.manager), resolve(ROOT, RULES_DIR), (l) => console.log(l));
+  }
   if (c.cmd === "run" || c.cmd === "check-prereqs") {
     if (!c.host || !SAFE_HOST.test(c.host)) refuse("--host must be an ssh alias");
+    if (c.cmd === "run" && (!c.manager || !SAFE_HOST.test(c.manager))) refuse("run needs --manager <ssh alias>, the host of the Wazuh manager");
+    if (c.cmd === "check-prereqs" && c.manager) refuse("check-prereqs reads only the Dell and takes no --manager");
     if (c.all === c.guids.length > 0) refuse("give either --all or one or more --guid");
     const id = newSessionId();
     const out = runSession({
@@ -1924,6 +2119,7 @@ function main(argv: string[]): ExitCode {
       timeoutSeconds: c.timeout,
       allowRemoteCode: c.allowRemoteCode,
       remote: sshRemote(c.host!),
+      manager: c.cmd === "run" ? sshManagerRemote(c.manager!) : undefined,
       allowlistText,
       manifestText: existsSync(resolve(ROOT, MANIFEST_PATH)) ? readFileSync(resolve(ROOT, MANIFEST_PATH), "utf8") : "",
       sessionId: id,

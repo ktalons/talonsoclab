@@ -12,7 +12,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rea
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { EXIT, type ExitCode, type SessionRecord, type TestRecord } from "./art-harness.ts";
-import { isPack, readRulesDir, repeatedIds, RulesError } from "./wazuh-rules.ts";
+import { isPack, readRulesDir, repeatedIds, RulesError, ruleTextDigests } from "./wazuh-rules.ts";
 
 // *--- Configuration ---*
 
@@ -23,6 +23,8 @@ const CROSSWALK = "phase-b-detection/attack/crosswalk.json";
 const RECORD_DIR = "phase-b-detection/art-runs";
 const VALIDATION_DIR = "phase-b-detection/validation";
 const MISSES = `${VALIDATION_DIR}/misses.json`;
+const BASELINE_FILE = "rule-text-baseline.json";
+const BASELINE = `${VALIDATION_DIR}/${BASELINE_FILE}`;
 const COVERAGE_DIR = "phase-b-detection/coverage";
 const OUT_EXISTS = "layer-rule-exists.json";
 const OUT_VALIDATED = "layer-validated.json";
@@ -46,7 +48,10 @@ const LOGTEST_FIXTURE = "tools/fixtures/logtest/transcript-20261106.txt";
 
 const TSV_FORMAT = "talonsoclab-attack-techniques/1";
 const CROSSWALK_FORMAT = "talonsoclab-attack-crosswalk/1";
-const RECORD_FORMAT = "talonsoclab-art-session/1";
+// Format 1 is the nine checked-in records, bound to the rule text by the frozen baseline; format 2 carries its own digests.
+const RECORD_FORMAT_1 = "talonsoclab-art-session/1";
+const RECORD_FORMAT_2 = "talonsoclab-art-session/2";
+const BASELINE_FORMAT = "talonsoclab-rule-text-baseline/1";
 const ALERTS_FORMAT = "talonsoclab-art-alerts/1";
 const MISSES_FORMAT = "talonsoclab-art-misses/1";
 const COVERAGE_FORMAT = "talonsoclab-coverage/1";
@@ -59,6 +64,9 @@ export const ATTACK_SHA256 = "dc1639caa5501d720e280cf1cbd8fbe009884a0c9b3e6e9ed9
 // The SHA-256 of the checked-in technique list itself. The header check alone compares the list
 // with counts taken from its own rows, so an edited row that keeps the counts would pass it.
 export const ATTACK_TSV_SHA256 = "b065979e96c053f4a576f8a83795bba352d00b229c8c5f3210b3e8f4b19e3b46";
+// The SHA-256 of the frozen rule-text baseline. Another copy of the file, edited by a byte, is refused:
+// the baseline is what lets a format 1 record count, so it may not move without this line moving.
+export const BASELINE_SHA256 = "f43997747ee6e7b5d2bd32f0ce5b5f94efcfed42b28f5fa2c4e8fa5cf2009dd6";
 const ATTACK_COLLECTION = `enterprise-attack ${ATTACK_VERSION}`;
 const REGENERATE = `bun tools/coverage.ts refresh-attack <path to enterprise-attack-${ATTACK_VERSION}.json>`;
 
@@ -99,6 +107,7 @@ export const UNKNOWN_IMAGE = "<unknown process>";
 const UNKNOWN_IMAGE_ESCAPED = "&lt;unknown process&gt;";
 const SAFE_TACTICS =/^[a-z]+(?:-[a-z]+)*(?:,[a-z]+(?:-[a-z]+)*)*$/;
 const SAFE_HEX64 = /^[0-9a-f]{64}$/;
+const SAFE_RULE_FILE = /^[A-Za-z0-9._-]{1,120}\.xml$/;
 const ISO_UTC = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.(\d{1,9}))?Z$/;
 
 const USAGE = `usage: bun tools/coverage.ts <command> [options]
@@ -123,6 +132,13 @@ options
   --root <dir>                 treat <dir> as the repo root (the self-test and the tests)
   --against <dir>              claims only: the lab root whose pack, records and section
                                the files are held to (default: --root)
+
+rule text
+  an alert counts only while the rule's text is the text it fired under. A format 2 record
+  carries a digest of each rule's text from the day it ran; the nine format 1 records are
+  bound by the frozen validation/rule-text-baseline.json, whose SHA-256 this tool pins.
+  A rule's text is the group name and element of the rule and of every rule joined to it
+  by if_sid or if_matched_sid, in either direction.
 
 exit 0 ok, 1 failed, 2 setup problem, 3 refused
 `;
@@ -149,6 +165,7 @@ export interface Layout {
   records: string;
   validation: string;
   misses: string;
+  baseline: string;
   coverage: string;
   writeup: string;
   literals: string;
@@ -188,6 +205,21 @@ export interface RunWindow {
   position: number;
   start: bigint;
   end: bigint;
+  // The digest of each listed rule's text this test was bound to; null for a format 1 record.
+  ruleText: Record<string, string> | null;
+}
+
+/** The frozen digests that bind the format 1 records to the rule text of the commit they ran against. */
+export interface Baseline {
+  commit: string;
+  sessions: string[];
+  rules: Record<string, string>;
+}
+
+/** What the rules folder holds now, and the baseline a format 1 record is bound by. */
+export interface Binding {
+  current: Map<number, string>;
+  baseline: Baseline;
 }
 
 export type Record0 = Pick<SessionRecord, "format" | "session" | "verdict" | "failures"> & { tests: TestRecord[] };
@@ -343,6 +375,7 @@ export function layoutFor(root: string): Layout {
     records: join(r, RECORD_DIR),
     validation: join(r, VALIDATION_DIR),
     misses: join(r, MISSES),
+    baseline: join(r, BASELINE),
     coverage: join(r, COVERAGE_DIR),
     writeup: join(r, WRITEUP),
     literals: join(r, LITERALS),
@@ -710,10 +743,62 @@ export function loadPack(l: Layout, crosswalk: Map<string, CrosswalkEntry>): Pac
   return out;
 }
 
+// -- The rule text a record is bound to --
+
+/** The digest of each rule's component text in the rules folder as it stands now. */
+export function loadDigests(l: Layout): Map<number, string> {
+  checkFolder(l, l.rules);
+  try {
+    return ruleTextDigests(readRulesDir(l.rules).rules);
+  } catch (e) {
+    if (e instanceof RulesError) return refuse("rules-xml", rel(l, l.rules), e.message);
+    throw e;
+  }
+}
+
+/** The frozen baseline: pinned by its SHA-256 before it is read, then held to its shape. The pin is a parameter only so a test can reach the shape checks; every caller passes the constant. */
+export function loadBaseline(l: Layout, pin: string = BASELINE_SHA256): Baseline {
+  const file = rel(l, l.baseline);
+  const bytes = readBytes(l, l.baseline, (item, message) => setup("input-missing", item, message));
+  if (sha256(bytes) !== pin) refuse("baseline-pin", file, `${file} is not the frozen baseline: its SHA-256 differs from the one this tool pins`);
+  const doc = readJson(decode(bytes, file), file);
+  if (!isObject(doc)) return refuse("baseline-shape", file, `${file} must be one JSON object`);
+  exactKeys(doc, ["format", "commit", "sessions", "rules"], "baseline-shape", file);
+  if (doc.format !== BASELINE_FORMAT) refuse("baseline-shape", file, `${file} format must be ${BASELINE_FORMAT}`);
+  if (typeof doc.commit !== "string" || !/^[0-9a-f]{40}$/.test(doc.commit)) refuse("baseline-shape", file, `${file} commit must be 40 hex characters`);
+  if (!Array.isArray(doc.sessions) || !doc.sessions.every((x) => typeof x === "string" && SAFE_SESSION.test(x))) return refuse("baseline-shape", file, `${file} sessions must be a list of session ids`);
+  if (!isObject(doc.rules)) return refuse("baseline-shape", file, `${file} rules must be an object of pack rule ids to SHA-256 digests`);
+  for (const [id, digest] of Object.entries(doc.rules)) {
+    if (!/^\d+$/.test(id) || !isPack(Number(id)) || typeof digest !== "string" || !SAFE_HEX64.test(digest)) refuse("baseline-shape", file, `${file} rules: ${id.slice(0, 20)} is not a pack rule id with a SHA-256 digest`);
+  }
+  return { commit: doc.commit, sessions: doc.sessions as string[], rules: doc.rules as Record<string, string> };
+}
+
 // -- The session records --
 
 // A time in a record has seven decimals, the form the harness writes; a shorter one would look exact when it is not.
 const RECORD_TIME = /\.\d{7}Z$/;
+
+/** A format 2 record's ruleFiles: the hash of each rule file the manager held, by file name. */
+function recordRuleFiles(x: unknown, file: string): void {
+  const item = `${file} ruleFiles`;
+  if (!isObject(x) || Object.keys(x).length === 0) return refuse("record-rule-files", item, `${item} must be a non-empty object of file names to SHA-256 hashes`);
+  for (const [name, hash] of Object.entries(x)) {
+    if (!SAFE_RULE_FILE.test(name)) refuse("record-rule-files", item, `${item} names ${name.slice(0, 40)}, which is not a rule file name`);
+    if (typeof hash !== "string" || !SAFE_HEX64.test(hash)) refuse("record-rule-files", item, `${item}: the hash for ${name} is not 64 lowercase hex characters`);
+  }
+}
+
+/** A format 2 test's ruleText: one digest for each rule the test lists, and for no other. */
+function recordRuleText(x: unknown, rules: number[], at: string): Record<string, string> {
+  const item = `${at} ruleText`;
+  if (!isObject(x)) return refuse("record-rule-text", item, `${item} must be an object of rule ids to SHA-256 digests`);
+  const want = rules.map(String).sort(ordinal);
+  const have = Object.keys(x).sort(ordinal);
+  if (want.length !== have.length || want.some((k, i) => k !== have[i])) refuse("record-rule-text", item, `${item} must name exactly the rules the test lists`);
+  for (const [id, digest] of Object.entries(x)) if (typeof digest !== "string" || !SAFE_HEX64.test(digest)) refuse("record-rule-text", item, `${item}: the digest for rule ${id} is not 64 lowercase hex characters`);
+  return x as Record<string, string>;
+}
 
 /**
  * One record, whose every field this tool reads is checked; it holds its run windows. Given bytes, it
@@ -724,7 +809,9 @@ export function parseRecord(file: string, input: string | Uint8Array): Session {
   const text = typeof input === "string" ? input : decode(input, file);
   const doc = readJson(text, file);
   if (!isObject(doc)) return refuse("record-shape", file, `${file} must be one JSON object`);
-  if (doc.format !== RECORD_FORMAT) refuse("record-format", file, `${file} format must be ${RECORD_FORMAT}`);
+  if (doc.format !== RECORD_FORMAT_1 && doc.format !== RECORD_FORMAT_2) refuse("record-format", file, `${file} format must be ${RECORD_FORMAT_1} or ${RECORD_FORMAT_2}`);
+  const bound = doc.format === RECORD_FORMAT_2;
+  if (bound) recordRuleFiles(doc.ruleFiles, file);
   if (typeof doc.session !== "string" || !SAFE_SESSION.test(doc.session)) refuse("record-session", file, `${file} has no session id in the pattern`);
   if (doc.verdict !== "pass" && doc.verdict !== "fail") refuse("record-verdict", file, `${file} verdict must be pass or fail`);
   if (!Array.isArray(doc.failures) || !doc.failures.every((f) => typeof f === "string")) refuse("record-shape", file, `${file} failures must be a list of text`);
@@ -764,9 +851,10 @@ export function parseRecord(file: string, input: string | Uint8Array): Session {
     if (!isInt(raw.testNumber) || raw.testNumber < 1) refuse("record-test", at, `${at} testNumber must be a whole number from 1`);
     if (typeof raw.testName !== "string") refuse("record-test", at, `${at} has no testName`);
     if (!Array.isArray(raw.rules) || !raw.rules.every((r) => isInt(r) && isPack(r))) refuse("record-rules", at, `${at} rules must be pack rule ids`);
+    const ruleText = bound ? recordRuleText(raw.ruleText, raw.rules as number[], at) : null;
     const run = step(raw, "run", at);
     step(raw, "cleanup", at);
-    if (run) windows.push({ guid, technique: raw.technique as string, testNumber: raw.testNumber as number, rules: raw.rules as number[], position, start: run.start, end: run.end });
+    if (run) windows.push({ guid, technique: raw.technique as string, testNumber: raw.testNumber as number, rules: raw.rules as number[], position, start: run.start, end: run.end, ruleText });
     tests.push(raw as unknown as TestRecord);
   });
   const span = starts.length ? { from: starts.reduce((a, b) => (b < a ? b : a)), to: ends.reduce((a, b) => (b > a ? b : a)) } : null;
@@ -900,8 +988,8 @@ export function loadEvidence(l: Layout, sessions: Session[]): Evidence[] {
   const bySession = new Map(sessions.map((s) => [s.record.session, s]));
   const out: Evidence[] = [];
   const seen = new Set<string>();
-  const names = listFiles(l, l.validation, /^(?:misses\.json|[^/]+\.alerts\.json)$/, "validation-file");
-  for (const name of names.filter((n) => n !== "misses.json")) {
+  const names = listFiles(l, l.validation, /^(?:misses\.json|rule-text-baseline\.json|[^/]+\.alerts\.json)$/, "validation-file");
+  for (const name of names.filter((n) => n !== "misses.json" && n !== BASELINE_FILE)) {
     const file = `${rel(l, l.validation)}/${name}`;
     const text = decode(readBytes(l, join(l.validation, name), (item, message) => setup("input-missing", item, message)), file);
     const e = parseEvidence(file, text, bySession);
@@ -914,8 +1002,14 @@ export function loadEvidence(l: Layout, sessions: Session[]): Evidence[] {
 
 // -- What counts as validated --
 
+/** The digest of a rule's text a test was bound to: its own for a format 2 record, the baseline's for a format 1 one, none when nothing binds it. */
+function boundDigest(s: Session, w: RunWindow, rule: number, baseline: Baseline): string | undefined {
+  if (w.ruleText) return w.ruleText[String(rule)];
+  return baseline.sessions.includes(s.record.session) ? baseline.rules[String(rule)] : undefined;
+}
+
 /** Each pack alert as counted or not, and the first counted alert for each rule. */
-export function classify(sessions: Session[], evidence: Evidence[], pack: PackRule[]): { counted: Map<number, Counted>; uncounted: Uncounted[] } {
+export function classify(sessions: Session[], evidence: Evidence[], pack: PackRule[], binding: Binding): { counted: Map<number, Counted>; uncounted: Uncounted[] } {
   const inXml = new Set(pack.map((r) => r.id));
   const bySession = new Map(sessions.map((s) => [s.record.session, s]));
   const candidates = new Map<number, { c: Counted; order: [string, number, bigint, string, string] }[]>();
@@ -950,7 +1044,15 @@ export function classify(sessions: Session[], evidence: Evidence[], pack: PackRu
         note("session-verdict-not-pass");
         continue;
       }
-      const w = [...listed].sort((x, y) => x.position - y.position)[0];
+      // An alert counts only against the rule text it was run on: the digest the test is bound to must be the one now in the folder.
+      const now = binding.current.get(a.ruleId);
+      const states = listed.map((x) => boundDigest(s, x, a.ruleId, binding.baseline) ?? null);
+      const holds = listed.filter((_, i) => states[i] !== null && states[i] === now);
+      if (!holds.length) {
+        note(states.some((d) => d !== null) ? "rule-text-changed" : "rule-text-unbound");
+        continue;
+      }
+      const w = [...holds].sort((x, y) => x.position - y.position)[0];
       const c: Counted = { rule: a.ruleId, session: ev.session, test: w.guid, art: `${w.technique} #${w.testNumber}`, index: a.index, id: a.id, eventTime: a.eventTime, indexTime: a.timestamp };
       const list = candidates.get(a.ruleId) ?? [];
       inAWindow.add(`${a.index}/${a.id}`);
@@ -1168,7 +1270,7 @@ export function buildAll(l: Layout): Built {
   const pack = loadPack(l, crosswalk);
   const sessions = loadRecords(l);
   const evidence = loadEvidence(l, sessions);
-  const { counted, uncounted } = classify(sessions, evidence, pack);
+  const { counted, uncounted } = classify(sessions, evidence, pack, { current: loadDigests(l), baseline: loadBaseline(l) });
   const validated = [...counted.keys()].sort((a, b) => a - b);
   assertSubset(validated, pack);
   const misses = parseMisses(readInput(l, l.misses), rel(l, l.misses), pack, counted, sessions, evidence);
@@ -1827,6 +1929,8 @@ export function makeScratch(withEvidence: boolean): string {
   mkdirSync(join(dir, RECORD_DIR), { recursive: true });
   for (const s of [EV1, EV2]) cpSync(join(ROOT, RECORD_DIR, `${s}.json`), join(dir, RECORD_DIR, `${s}.json`));
   mkdirSync(join(dir, VALIDATION_DIR), { recursive: true });
+  // The frozen baseline, byte for byte: its pin is a constant of this file, so a scratch root needs the real one.
+  cpSync(join(ROOT, BASELINE), join(dir, BASELINE));
   writeJsonFile(join(dir, MISSES), { format: MISSES_FORMAT, entries: [] });
   // The writeup and its literals list start empty of numbers, so build adds the section and claims has something to read.
   writeFileSync(join(dir, WRITEUP), SKELETON);
@@ -1855,7 +1959,33 @@ const controlSection = (root: string) => {
   return lines.slice(a, lines.findIndex((x, i) => i > a && SOURCE_LINE.test(x)) + 1).join("\n");
 };
 
+// The rule-text plants edit the scratch rules folder or the session records, then run check: the control's outputs must no longer match.
+const EID1_FILE = `${RULES_DIR}/local_eid1_pack.xml`;
+const TENTH = "20261122T000001Z-000001";
+const editRuleText = (root: string) => writeText(root, EID1_FILE, readFileSync(join(root, EID1_FILE), "utf8").replace(String.raw`\\cmdkey\.exe$`, String.raw`\\cmdkey2\.exe$`));
+// The first session's record in format 2, bound to the digests of the folder as it stands in the scratch root.
+const toFormat2 = (root: string, bind: (id: number) => string) => {
+  editJson(root, `${RECORD_DIR}/${EV1}.json`, (r) => {
+    r.format = RECORD_FORMAT_2;
+    r.ruleFiles = { "local_eid1_pack.xml": "2".repeat(64) };
+    for (const t of r.tests) t.ruleText = Object.fromEntries(t.rules.map((id: number) => [String(id), bind(id)]));
+  });
+  rehash(root);
+};
+const digestsIn = (root: string) => ruleTextDigests(readRulesDir(join(root, RULES_DIR)).rules);
+// A check that must fail on the validated layer, the first output a lost validation moves.
+const lostValidation = (name: string, mutate: (r: string) => void): Plant => ({ name, mutate, argv: ["check"], exit: EXIT.failed, code: "output-differs", item: `${COVERAGE_DIR}/${OUT_VALIDATED}` });
+
 const missEntry = (e: Record<string, unknown>) => (root: string) => editJson(root, MISSES, (m) => m.entries.push(e));
+
+/** Changes that must leave the four rules validated: the other side of each rule-text plant. */
+export const HOLDS: { name: string; mutate: (root: string) => void }[] = [
+  {
+    name: "ISC-207: a comment and blank lines outside every rule element",
+    mutate: (r) => writeText(r, EID1_FILE, `<!-- a note added later -->\n\n${readFileSync(join(r, EID1_FILE), "utf8")}\n\n`),
+  },
+  { name: "ISC-209: a format 2 record that carries the digest of the folder as it stands", mutate: (r) => toFormat2(r, (id) => digestsIn(r).get(id) as string) },
+];
 
 /** Every planted refusal: the mutation, the exit it must end in, and the check and item that must be named. */
 export const PLANTS: Plant[] = [
@@ -1899,6 +2029,25 @@ export const PLANTS: Plant[] = [
   { name: "check on a writeup with no results section", mutate: (r) => writeText(r, WRITEUP, SKELETON), argv: ["check"], exit: EXIT.refused, code: "section-missing", item: WRITEUP },
   { name: "check on a writeup with two results sections", mutate: (r) => writeText(r, WRITEUP, `${SKELETON}\n${SECTION_HEADING}\n\nfirst\n\n${SECTION_HEADING}\n\nsecond\n`), argv: ["check"], exit: EXIT.refused, code: "section-duplicate", item: `${WRITEUP}:9 ${SECTION_TITLE}` },
   { name: "build with no writeup", mutate: (r) => rmSync(join(r, WRITEUP)), exit: EXIT.refused, code: "writeup-missing", item: WRITEUP },
+  lostValidation("ISC-207: the pattern of a validated rule edited, its evidence untouched", editRuleText),
+  lostValidation("ISC-209: a format 2 record that carries the digest from before an edit", (r) => {
+    const before = digestsIn(r);
+    editRuleText(r);
+    toFormat2(r, (id) => before.get(id) as string);
+  }),
+  lostValidation("ISC-211: a tenth format 1 record, outside the baseline, in place of the first", (r) => {
+    const rec = readJsonFile(join(r, RECORD_DIR, `${EV1}.json`));
+    const ev = readJsonFile(join(r, evPath(EV1)));
+    rmSync(join(r, RECORD_DIR, `${EV1}.json`));
+    rmSync(join(r, evPath(EV1)));
+    writeJsonFile(join(r, RECORD_DIR, `${TENTH}.json`), { ...rec, session: TENTH });
+    writeJsonFile(join(r, evPath(TENTH)), { ...ev, session: TENTH });
+    rehash(r);
+  }),
+  { name: "ISC-211: the frozen baseline edited by one digest", mutate: (r) => editJson(r, BASELINE, (b) => (b.rules["100410"] = "0".repeat(64))), exit: EXIT.refused, code: "baseline-pin", item: BASELINE },
+  lostValidation("ISC-212: a level 0 child of a validated rule, added in another file", (r) =>
+    writeText(r, `${RULES_DIR}/local_planted_child.xml`, `<group name="local,planted_child,">\n  <rule id="100900" level="0">\n    <if_sid>100410</if_sid>\n    <description>A planted child.</description>\n  </rule>\n</group>\n`),
+  ),
   claimPlant("a ratio typed in prose", "Rules validated: 13 of 18 so far.\n", "claim-number", "13 of 18"),
   claimPlant("a percentage typed in prose", "About 70% were caught.\n", "claim-number", "70%"),
   claimPlant("a spelled-out ratio typed in prose", "We validated twelve of eighteen rules.\n", "claim-number-word", "twelve of eighteen"),
@@ -1936,6 +2085,21 @@ export function selfTest(log: (line: string) => void): boolean {
     const clean = run(["claims", join(control, WRITEUP), "--root", control], quiet);
     log(`${clean.exit === EXIT.ok ? "OK  " : "FAIL"} control writeup passes claims`);
     if (clean.exit !== EXIT.ok) ok = false;
+    // Each control changes something that must not move a validation, builds it, and expects the same four rules.
+    for (const c of HOLDS) {
+      const root = mkdtempSync(join(tmpdir(), "coverage-hold-"));
+      try {
+        cpSync(control, root, { recursive: true });
+        c.mutate(root);
+        const r = run(["build", "--root", root], quiet);
+        const got = r.exit === EXIT.ok ? readJsonFile(join(root, COVERAGE_DIR, OUT_SUMMARY)).validatedRules : null;
+        const good = JSON.stringify(got) === JSON.stringify([100400, 100407, 100410, 100411]);
+        if (!good) ok = false;
+        log(`${good ? "OK  " : "FAIL"} control: ${c.name}`);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
     for (const p of PLANTS) {
       const root = mkdtempSync(join(tmpdir(), "coverage-plant-"));
       try {

@@ -11,6 +11,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { parseRecord } from "./coverage.ts";
+import { readRulesDir, ruleTextDigests } from "./wazuh-rules.ts";
 import {
   ALLOWLIST_PATH,
   ATOMICS_COMMIT,
@@ -28,9 +30,16 @@ import {
   diffSnapshots,
   EXIT,
   fakeRemote,
+  checkManager,
+  diffRuleFiles,
+  fakeManager,
   fill,
   gateScript,
   HarnessError,
+  localRuleState,
+  MANAGER_COMMAND,
+  type ManagerRemote,
+  managerListing,
   MANIFEST_PATH,
   type Manifest,
   MODULE_NAME,
@@ -40,13 +49,17 @@ import {
   PAYLOAD_MISSING,
   STDIN_WAIT_MS,
   parseGate,
+  parseManagerListing,
   parseManifest,
   parseSnapshot,
   parseStep,
   type Remote,
   type RemoteResult,
   readCleanup,
+  readManagerFiles,
   readPrereqs,
+  RULES_DIR,
+  sshManagerRemote,
   readRun,
   recordFindings,
   redactName,
@@ -159,6 +172,10 @@ function fixtureTree(withYaml = true) {
 
 const FIX = fixtureTree();
 
+// The checkout's own rules folder, hashed once: the fake manager mirrors it, so no live count or hash is pinned here.
+const RULES_PATH = resolve(ROOT, RULES_DIR);
+const LOCAL = localRuleState(RULES_PATH);
+
 const answer = (o: unknown, code = 0): RemoteResult => ({ code, out: `${TAG}${Buffer.from(JSON.stringify(o)).toString("base64")}\n`, err: "", timedOut: false });
 const stepOf = (payload: string) => /^# talonsoclab-art step=([a-z-]+)$/m.exec(payload)?.[1] ?? "";
 
@@ -187,6 +204,8 @@ function session(d = cleanDell(FIX.m), extra: Partial<SessionOptions> = {}, over
     timeoutSeconds: 120,
     allowRemoteCode: false,
     remote,
+    manager: fakeManager(LOCAL.files),
+    rulesDir: RULES_PATH,
     allowlistText: ALLOW_TEXT,
     manifestText: FIX.text,
     sessionId: SESSION,
@@ -1049,13 +1068,207 @@ describe("record redaction (ISC-156)", () => {
   });
 });
 
+// *--- Manager Rules ---*
+
+// Independent of the harness's own code path: the digests the format 2 record must carry, from the checkout the tests read.
+const INDEPENDENT = ruleTextDigests(readRulesDir(RULES_PATH).rules);
+const FIRST = Object.keys(LOCAL.files)[0];
+const SECOND = Object.keys(LOCAL.files)[1];
+const PLANTED_EXTRA = "planted_extra.xml";
+
+describe("manager rules check (ISC-209, ISC-210)", () => {
+  test("parseManagerListing reads the real command's output shape, name by hash", () => {
+    expect(parseManagerListing(managerListing(LOCAL.files))).toEqual(LOCAL.files);
+    expect(Object.keys(LOCAL.files).length).toBeGreaterThan(0);
+  });
+  test("parseManagerListing refuses every other shape, naming the line", () => {
+    const good = `${"a".repeat(64)}  /var/ossec/etc/rules/custom/x.xml`;
+    const bad = [
+      `${"A".repeat(64)}  /var/ossec/etc/rules/custom/x.xml`,
+      `${"a".repeat(63)}  /var/ossec/etc/rules/custom/x.xml`,
+      `${"a".repeat(64)} /var/ossec/etc/rules/custom/x.xml`,
+      `${"a".repeat(64)}  /var/ossec/etc/rules/other/x.xml`,
+      `${"a".repeat(64)}  /var/ossec/etc/rules/custom/sub/x.xml`,
+      `${"a".repeat(64)}  /var/ossec/etc/rules/custom/x.txt`,
+      `${"a".repeat(64)}  /var/ossec/etc/rules/custom/*.xml`,
+      "sha256sum: /var/ossec/etc/rules/custom/*.xml: No such file or directory",
+      "",
+    ];
+    for (const line of bad) expect(() => parseManagerListing(`${good}\n${line}\n`)).toThrow(/line 2/);
+    expect(() => parseManagerListing("")).toThrow(/no rules file/);
+    expect(() => parseManagerListing(`${good}\n${good}\n`)).toThrow(/twice/);
+    expect(() => parseManagerListing(`${good}\n\n`)).toThrow(/line 2/);
+  });
+  test("readManagerFiles asks the one command and treats any failed read as a setup failure that shows nothing remote", () => {
+    const asked: string[] = [];
+    expect(readManagerFiles(fakeManager(LOCAL.files, asked))).toEqual(LOCAL.files);
+    expect(asked).toEqual([MANAGER_COMMAND]);
+    const failing = (r: Partial<RemoteResult>): ManagerRemote => () => ({ code: 0, out: "", err: "secret-host-name", timedOut: false, ...r });
+    expect(() => readManagerFiles(failing({ code: 255, out: "secret-host-name" }))).toThrow(/exited 255/);
+    expect(() => readManagerFiles(failing({ code: null }))).toThrow(/could not start/);
+    expect(() => readManagerFiles(failing({ timedOut: true }))).toThrow(/did not finish/);
+    try {
+      readManagerFiles(failing({ code: 1, out: "secret-host-name" }));
+    } catch (e) {
+      expect((e as Error).message).not.toContain("secret-host-name");
+    }
+  });
+  test("diffRuleFiles names a different, a missing and an extra file", () => {
+    const { [FIRST]: _gone, ...rest } = LOCAL.files;
+    expect(diffRuleFiles(LOCAL.files, LOCAL.files)).toEqual({ different: [], missing: [], extra: [] });
+    expect(diffRuleFiles(LOCAL.files, { ...LOCAL.files, [SECOND]: "0".repeat(64) })).toEqual({ different: [SECOND], missing: [], extra: [] });
+    expect(diffRuleFiles(LOCAL.files, rest)).toEqual({ different: [], missing: [FIRST], extra: [] });
+    expect(diffRuleFiles(LOCAL.files, { ...LOCAL.files, [PLANTED_EXTRA]: "1".repeat(64) })).toEqual({ different: [], missing: [], extra: [PLANTED_EXTRA] });
+  });
+
+  const nothingSent = (r: Run, asked: string[]) => {
+    expect(r.out.exit).toBe(EXIT.setup);
+    expect(r.sent).toEqual([]);
+    expect(r.written).toEqual([]);
+    expect(asked).toEqual([MANAGER_COMMAND]);
+  };
+  test("a differing rules file on the manager sends no test, no restore point and writes no record, naming the file", () => {
+    const asked: string[] = [];
+    const r = session(cleanDell(FIX.m), { manager: fakeManager({ ...LOCAL.files, [FIRST]: "0".repeat(64) }, asked) });
+    nothingSent(r, asked);
+    expect(r.out.messages.join()).toContain(`different on the manager: ${FIRST}`);
+    expect(count(r, "restore")).toBe(0);
+  });
+  test("a rules file missing on the manager is refused before any step, naming the file", () => {
+    const asked: string[] = [];
+    const { [FIRST]: _gone, ...rest } = LOCAL.files;
+    const r = session(cleanDell(FIX.m), { manager: fakeManager(rest, asked) });
+    nothingSent(r, asked);
+    expect(r.out.messages.join()).toContain(`missing on the manager: ${FIRST}`);
+  });
+  test("an extra rules file on the manager is refused before any step, naming the file", () => {
+    const asked: string[] = [];
+    const r = session(cleanDell(FIX.m), { manager: fakeManager({ ...LOCAL.files, [PLANTED_EXTRA]: "1".repeat(64) }, asked) });
+    nothingSent(r, asked);
+    expect(r.out.messages.join()).toContain(`extra on the manager: ${PLANTED_EXTRA}`);
+  });
+  test("a malformed manager line is refused before any step", () => {
+    const asked: string[] = [];
+    const r = session(cleanDell(FIX.m), {
+      manager: (command) => {
+        asked.push(command);
+        return { code: 0, out: `${managerListing(LOCAL.files)}not a hash line\n`, err: "", timedOut: false };
+      },
+    });
+    nothingSent(r, asked);
+    expect(r.out.messages.join()).toContain("line ");
+  });
+  test("a failed manager read is a setup failure before any step and never shows the manager's own output", () => {
+    const asked: string[] = [];
+    const r = session(cleanDell(FIX.m), {
+      manager: (command) => {
+        asked.push(command);
+        return { code: 255, out: "labhost-manager", err: "labhost-manager", timedOut: false };
+      },
+    });
+    nothingSent(r, asked);
+    expect(r.out.messages.join()).not.toContain("labhost-manager");
+  });
+  test("a run with no manager remote is refused before any step", () => {
+    const r = session(cleanDell(FIX.m), { manager: undefined });
+    expect(r.out.exit).toBe(EXIT.refused);
+    expect(r.sent).toEqual([]);
+  });
+  test("a listed rule that is not in the rules folder stops the session before any test", () => {
+    const dir = temp("rules-without-the-first-test-rules");
+    const gone = new Set(E.rules);
+    const kept = readRulesDir(RULES_PATH).rules.filter((x) => !gone.has(x.id));
+    // A folder holding one file with a rule the tests do not list: every listed rule is then absent.
+    writeFileSync(join(dir, "local_only.xml"), `<group name="x,">\n  <rule id="${kept[0].id}" level="3"><description>d</description></rule>\n</group>\n`);
+    const files = localRuleState(dir).files;
+    const r = session(cleanDell(FIX.m), { rulesDir: dir, manager: fakeManager(files) });
+    expect(r.out.exit).toBe(EXIT.setup);
+    expect(r.sent).toEqual([]);
+    expect(r.out.messages.join()).toContain("is not in");
+  });
+  test("a matching manager lets the session run and writes a format 2 record that coverage reads", () => {
+    const r = session();
+    expect(r.out.exit).toBe(EXIT.ok);
+    expect(r.written).toHaveLength(1);
+    const rec = JSON.parse(r.written[0]) as SessionRecord;
+    expect(rec.format).toBe("talonsoclab-art-session/2");
+    expect(rec.ruleFiles).toEqual(LOCAL.files);
+    const parsed = parseRecord("record.json", r.written[0]);
+    expect(parsed.record.format).toBe("talonsoclab-art-session/2");
+    expect(parsed.windows.length).toBe(SAFE_TWO.length);
+    for (const t of rec.tests) {
+      expect(Object.keys(t.ruleText).sort()).toEqual(t.rules.map(String).sort());
+      for (const rule of t.rules) expect(t.ruleText[String(rule)]).toBe(INDEPENDENT.get(rule) as string);
+    }
+  });
+  test("check-prereqs needs no manager and never reads one", () => {
+    const asked: string[] = [];
+    const r = session(cleanDell(FIX.m), { mode: "check-prereqs", manager: fakeManager({}, asked), rulesDir: undefined });
+    expect(r.out.exit).toBe(EXIT.ok);
+    expect(asked).toEqual([]);
+    const none = session(cleanDell(FIX.m), { mode: "check-prereqs", manager: undefined });
+    expect(none.out.exit).toBe(EXIT.ok);
+  });
+  test("the manager is asked before the Dell is sent anything", () => {
+    const order: string[] = [];
+    const r = session(cleanDell(FIX.m), {
+      manager: (command) => {
+        order.push("manager");
+        return fakeManager(LOCAL.files)(command, 0);
+      },
+    }, (step) => {
+      order.push(step);
+      return undefined;
+    });
+    expect(r.out.exit).toBe(EXIT.ok);
+    expect(order[0]).toBe("manager");
+  });
+  test("checkManager prints PASS on a match and the differences otherwise, exiting 1 on a difference", () => {
+    const lines: string[] = [];
+    expect(checkManager(fakeManager(LOCAL.files), RULES_PATH, (l) => lines.push(l))).toBe(EXIT.ok);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^PASS /);
+    const diff: string[] = [];
+    expect(checkManager(fakeManager({ ...LOCAL.files, [FIRST]: "0".repeat(64), [PLANTED_EXTRA]: "1".repeat(64) }), RULES_PATH, (l) => diff.push(l))).toBe(EXIT.failed);
+    expect(diff[0]).toContain(FIRST);
+    expect(diff[0]).toContain(PLANTED_EXTRA);
+  });
+  test("localRuleState hashes each top-level file, skips a folder, and refuses a link or a name the manager check cannot compare", () => {
+    const rule = (id: number) => `<group name="g,">\n  <rule id="${id}" level="3"><description>d</description></rule>\n</group>\n`;
+    const dir = temp("rules-state");
+    writeFileSync(join(dir, "local_a.xml"), rule(100001));
+    mkdirSync(join(dir, "nested"));
+    writeFileSync(join(dir, "nested", "local_b.xml"), rule(100002));
+    const state = localRuleState(dir);
+    expect(Object.keys(state.files)).toEqual(["local_a.xml"]);
+    expect(state.files["local_a.xml"]).toBe(createHash("sha256").update(readFileSync(join(dir, "local_a.xml"))).digest("hex"));
+    expect([...state.digests.keys()]).toEqual([100001]);
+
+    const linked = temp("rules-link");
+    writeFileSync(join(linked, "real.xml"), rule(100003));
+    symlinkSync(join(linked, "real.xml"), join(linked, "local_link.xml"));
+    expect(() => localRuleState(linked)).toThrow(/link or not a regular file/);
+
+    const odd = temp("rules-odd-name");
+    writeFileSync(join(odd, "local a.xml"), rule(100004));
+    expect(() => localRuleState(odd)).toThrow(/not a rules file name/);
+
+    expect(() => localRuleState(join(dir, "no-such-folder"))).toThrow(/cannot be read/);
+  });
+  test("sshManagerRemote refuses an alias that is not a bare host alias", () => {
+    expect(() => sshManagerRemote("-oProxyCommand=x")).toThrow();
+    expect(() => sshManagerRemote("a b")).toThrow();
+    expect(typeof sshManagerRemote("an-alias")).toBe("function");
+  });
+});
+
 // *--- Self-Test and CLI ---*
 
 describe("self-test and CLI", () => {
   test("--self-test plants every fault and catches each", () => {
     const lines: string[] = [];
     expect(selfTest((l) => lines.push(l))).toBe(true);
-    expect(lines.length).toBe(7 + CATEGORIES.length);
+    expect(lines.length).toBe(9 + CATEGORIES.length);
     expect(lines.every((l) => l.startsWith("OK"))).toBe(true);
   });
 
@@ -1063,14 +1276,23 @@ describe("self-test and CLI", () => {
   test("the CLI refuses an unknown GUID with exit 3 and no session folder", () => {
     const runs = resolve(ROOT, "Plans/b4-harness/runs");
     const before = existsSync(runs) ? readdirSync(runs).length : 0;
-    const r = cli("run", "--host", "no-such-alias-for-tests", "--guid", "00000000-0000-4000-8000-000000000000");
+    const r = cli("run", "--host", "no-such-alias-for-tests", "--manager", "no-such-manager-for-tests", "--guid", "00000000-0000-4000-8000-000000000000");
     expect(r.exitCode).toBe(EXIT.refused);
     expect(r.stderr.toString()).toContain("not in atomics/allowlist.json");
     expect(existsSync(runs) ? readdirSync(runs).length : 0).toBe(before);
   });
   test("the CLI refuses a missing host, both --all and --guid, and an unknown argument", () => {
     expect(cli("run", "--all").exitCode).toBe(EXIT.refused);
-    expect(cli("run", "--host", "x", "--all", "--guid", E.guid).exitCode).toBe(EXIT.refused);
-    expect(cli("run", "--host", "x", "--bogus").exitCode).toBe(EXIT.refused);
+    expect(cli("run", "--host", "x", "--manager", "y", "--all", "--guid", E.guid).exitCode).toBe(EXIT.refused);
+    expect(cli("run", "--host", "x", "--manager", "y", "--bogus").exitCode).toBe(EXIT.refused);
+  });
+  test("the CLI refuses a run with no --manager or a bad one, and the other commands that take the wrong flag, before any ssh", () => {
+    const noManager = cli("run", "--host", "x", "--all");
+    expect(noManager.exitCode).toBe(EXIT.refused);
+    expect(noManager.stderr.toString()).toContain("--manager");
+    expect(cli("run", "--host", "x", "--manager", "-oProxyCommand=x", "--all").exitCode).toBe(EXIT.refused);
+    expect(cli("check-manager").exitCode).toBe(EXIT.refused);
+    expect(cli("check-manager", "--manager", "bad alias").exitCode).toBe(EXIT.refused);
+    expect(cli("check-prereqs", "--host", "x", "--manager", "y", "--all").exitCode).toBe(EXIT.refused);
   });
 });

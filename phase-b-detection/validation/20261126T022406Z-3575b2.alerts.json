@@ -1,0 +1,68 @@
+{
+  "format": "talonsoclab-art-alerts/1",
+  "session": "20261126T022406Z-3575b2",
+  "recordSha256": "09d4d2dbf9b1b38385c4a1fa0718d3379ab278ace2a8b63803d8442007d028ea",
+  "query": {
+    "index": "wazuh-alerts-*",
+    "agent": "001",
+    "rules": [
+      62123,
+      62124,
+      100340,
+      100341,
+      100342,
+      100343,
+      100344,
+      100400,
+      100401,
+      100402,
+      100403,
+      100404,
+      100405,
+      100406,
+      100407,
+      100408,
+      100409,
+      100410,
+      100411,
+      100412
+    ],
+    "fromUtc": "2026-11-26T02:23:30.554Z",
+    "toUtc": "2026-11-26T02:25:35.078Z"
+  },
+  "shards": {
+    "alerts": {
+      "total": 135,
+      "successful": 135,
+      "skipped": 132,
+      "failed": 0
+    },
+    "control": {
+      "total": 135,
+      "successful": 135,
+      "skipped": 132,
+      "failed": 0
+    }
+  },
+  "control": {
+    "agent001Alerts": 88
+  },
+  "alerts": [
+    {
+      "index": "wazuh-alerts-4.x-2026.11.26",
+      "id": "EMerFaIBzLVHNgEHRm0V",
+      "ruleId": 100411,
+      "ruleLevel": 10,
+      "mitre": [
+        "T1033"
+      ],
+      "agentId": "001",
+      "timestamp": "2026-11-26T02:24:32.928Z",
+      "eventTime": "2026-11-26T02:24:31.553Z",
+      "systemTime": "2026-11-26T02:24:31.5586222Z",
+      "eventId": 1,
+      "channel": "Microsoft-Windows-Sysmon/Operational",
+      "image": "whoami.exe"
+    }
+  ]
+}

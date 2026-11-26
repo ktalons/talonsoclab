@@ -1,0 +1,76 @@
+{
+  "format": "talonsoclab-art-session/2",
+  "session": "20261126T022406Z-3575b2",
+  "verdict": "pass",
+  "failures": [],
+  "timedOut": [],
+  "allowlistSha256": "46900ff2fbddfdfd72864212b4f1dcd3f17b85dbfa4291e61de92b05c8457502",
+  "manifestSha256": "559f19bbfb66a912ff92d598d2ca59bb2a1933ca3a9deaf28a746fb4c674ecf2",
+  "ruleFiles": {
+    "local_eid11_pack.xml": "755cb31c841f13095fd45751aec6c37439f1c56421c065255ace9a2f708f74a6",
+    "local_eid13_pack.xml": "38c1ca8b4c8dedee9778079f6a8720adf8af8cb194c94eff504b45ead2fd92d7",
+    "local_eid1_pack.xml": "475867162f1ea9ae932e9c6c7ecc9228e407b26ec5797ffa22ed3b257b07181a",
+    "local_eid22_pack.xml": "88828d98e9e7c54d181b118546793f91c7d2e3260ceda92a251b030bcac12180",
+    "local_eid3_pack.xml": "2d7b29ea9a5adcc7de93b640290270b83ccb87cf7449275f9b79c0fa2ff11544",
+    "local_job_age.xml": "4e5c8ec4fd0e5ce595ce9d6347c679969ee6dc27f55d746d59d0cfbd92b0f77a",
+    "local_noise_baseline.xml": "f39c82aec8d39e978b2a0222fb8fd442ea2d2bff76d1eb6509001e7eb84932ac",
+    "local_reboot_check.xml": "52951c660e5c61232862408dc237e6e08932e5999e4dbea3f62b656ce9f3e465",
+    "local_suricata_tuning.xml": "072cf33c5bb122907099e938fff0b4a7d028779a867427337899aa081dd5c161",
+    "local_tier2_age.xml": "9dfb135bea949169a4a966a246afb75a2edb7777b582f611ae942556832f7830",
+    "local_tier2_hold.xml": "80e8a760fc7f5e300fdcca0ccf32fe934cab1b64674d6b0d304148b19c2f641b"
+  },
+  "atomicsCommit": "a0e3f9bc69fed2fd711bd1f1aa87a40c33482fe6",
+  "module": {
+    "name": "Invoke-AtomicRedTeam",
+    "version": "2.3.0"
+  },
+  "timeoutSeconds": 120,
+  "gateUtc": "2026-11-26T02:24:10.1949240Z",
+  "defenderGate": {
+    "realTimeProtection": true,
+    "exclusionPath": [
+      "C:\\AtomicRedTeam"
+    ],
+    "pass": true
+  },
+  "restorePoint": {
+    "description": "talonsoclab-b4-20261126T022406Z-3575b2",
+    "createdUtc": "2026-11-26T02:24:12.8899420Z"
+  },
+  "tests": [
+    {
+      "guid": "aab580c7-cc30-4a7c-b5a9-46a29066b022",
+      "technique": "T1033",
+      "testNumber": 8,
+      "testName": "User Discovery - whoami",
+      "rules": [
+        100411
+      ],
+      "ruleText": {
+        "100411": "6de845e271e746529193b869f80ce79850c307b5a6a3f64d29fc18ca586fcdfb"
+      },
+      "run": {
+        "startUtc": "2026-11-26T02:24:30.5544610Z",
+        "endUtc": "2026-11-26T02:24:31.6800763Z",
+        "status": "exited",
+        "exitCode": 0
+      },
+      "cleanup": {
+        "startUtc": "2026-11-26T02:24:34.1600734Z",
+        "endUtc": "2026-11-26T02:24:35.0788024Z",
+        "status": "completed",
+        "exitCode": null
+      }
+    }
+  ],
+  "stateDiff": {
+    "verdict": "no-difference",
+    "items": []
+  },
+  "stagedAfter": {
+    "verdict": "unchanged",
+    "changed": 0,
+    "missing": 0,
+    "extra": 0
+  }
+}

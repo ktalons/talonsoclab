@@ -158,7 +158,7 @@ The rule-exists layer scores 16 techniques and the validated layer scores 13 tec
 | 100411 | 10 | T1033 | validated | T1033 #8 | 20261122T035219Z-95651d |
 | 100412 | 10 | T1590 | validated | T1614 #1 | 20261123T090325Z-4b506a |
 
-Source: `coverage.json`, SHA-256 09f3d4cb9a461654b3832e4899b6f272e79eaee384f18b35a5e78d6710e1a9ce.
+Source: `coverage.json`, SHA-256 f27edd21766481461ffa725794ff5748599c70f1a9a61ee998b18dd555c8c045.
 
 ## The misses and what each showed
 

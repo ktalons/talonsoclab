@@ -6,6 +6,7 @@
 
 // *--- Imports ---*
 
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
@@ -58,6 +59,10 @@ export interface WazuhRule {
   // Each [tacticID, techniqueID] pair Wazuh keeps, which it holds apart from the <id> list.
   mitrePairs: [string, string][];
   description: string;
+  // The enclosing <group name> value exactly as written, and the rule element's own text from
+  // "<rule" through "</rule>" as the file holds it; ruleTextDigests hashes both.
+  groupName: string;
+  source: string;
   // Elements that occur more than once in the rule. ifSid holds the parents of every <if_sid>
   // joined as Wazuh joins them, and mitre the ids of every <mitre> block Wazuh keeps.
   repeated: string[];
@@ -72,6 +77,9 @@ interface XmlNode {
   text: string;
   // The start tag as written, shortened, for error messages.
   tag: string;
+  // Where the element sits in the file: from its "<" to just past its closing ">".
+  start: number;
+  end: number;
 }
 
 // *--- Helper Functions ---*
@@ -142,7 +150,7 @@ function readXml(xml: string, file: string): XmlNode[] {
       if (xml[i] !== ">") throw fail(`the / that closes ${seen()} is followed by more than spaces before >, which os_xml reads as attributes of a closed element`);
     }
     if (!name) throw fail(`an element with no name at ${seen()}`);
-    const node: XmlNode = { name, attrs: [], children: [], text: "", tag: "" };
+    const node: XmlNode = { name, attrs: [], children: [], text: "", tag: "", start: from, end: from };
     while (!selfClosed && xml[i] !== ">") {
       while (isSpace(xml[i])) i++;
       if (i >= xml.length) throw fail(`${seen()} has no closing >`);
@@ -211,6 +219,8 @@ function readXml(xml: string, file: string): XmlNode[] {
         }
         const [node, selfClosed] = readStart();
         if (!selfClosed) node.children = readContent(node);
+        // i now stands just past the element's closing ">", self-closed or not.
+        node.end = i;
         out.push(node);
         run = 0;
         continue;
@@ -258,7 +268,7 @@ function readMitre(rule: XmlNode, fail: (problem: string) => RulesError): { ids:
 }
 
 /** One rule element as the lint and logtest see it, given its <group> name value. */
-function readRule(node: XmlNode, file: string, groupName: string): WazuhRule {
+function readRule(node: XmlNode, file: string, groupName: string, xml: string): WazuhRule {
   const fail = (problem: string) => new RulesError(`${file}: ${problem} in ${node.tag}`);
   for (const [a] of node.attrs) if (!RULE_ATTRS.has(a.toLowerCase())) throw fail(`attribute ${a} is not a <rule> attribute Wazuh knows`);
   const attr = (name: string) => node.attrs.find(([a]) => a.toLowerCase() === name)?.[1] ?? "";
@@ -330,6 +340,8 @@ function readRule(node: XmlNode, file: string, groupName: string): WazuhRule {
     mitre: ids,
     mitrePairs: pairs,
     description: kids(node, "description")[0]?.text.trim() ?? "",
+    groupName,
+    source: xml.slice(node.start, node.end),
     repeated: ["mitre", "if_sid"].filter((n) => kids(node, n).length > 1),
   };
 }
@@ -365,7 +377,7 @@ export function parseRules(xml: string, file: string): WazuhRule[] {
     if (!group.children.length) throw new RulesError(`${file}: ${group.tag} holds no <rule>, and Wazuh fails the whole file on it`);
     for (const child of group.children) {
       if (!is(child, "rule")) throw new RulesError(`${file}: ${child.tag} is inside a <group> but is not a <rule>`);
-      out.push(readRule(child, file, group.attrs[0][1]));
+      out.push(readRule(child, file, group.attrs[0][1], xml));
     }
   }
   return out;
@@ -404,4 +416,42 @@ export function readRulesDir(dir: string, root = dir, named = dir) {
   };
   walk(dir, true);
   return { rules, skippedRules, skippedFiles };
+}
+
+// A rule's text digest covers its whole component, the loaded rules joined by if_sid or
+// if_matched_sid in either direction to any depth, so a level 0 child added beside it changes
+// it. A parent that is not loaded (a stock rule) joins nothing. Each rule hashes as its id, its
+// enclosing group name and its element text, each ended by a newline, in ascending id.
+/** The SHA-256 of each loaded rule's component text, keyed by rule id; a component shares one. */
+export function ruleTextDigests(rules: WazuhRule[]): Map<number, string> {
+  const byId = new Map<number, WazuhRule[]>();
+  for (const r of rules) byId.set(r.id, [...(byId.get(r.id) ?? []), r]);
+  const links = new Map<number, Set<number>>([...byId.keys()].map((id) => [id, new Set<number>()]));
+  const join2 = (a: number, b: number) => {
+    if (a === b || !links.has(a) || !links.has(b)) return;
+    links.get(a)!.add(b);
+    links.get(b)!.add(a);
+  };
+  for (const r of rules) {
+    for (const p of r.ifSid) join2(r.id, Number(p));
+    if (r.ifMatchedSid !== undefined) join2(r.id, r.ifMatchedSid);
+  }
+  const out = new Map<number, string>();
+  for (const start of byId.keys()) {
+    if (out.has(start)) continue;
+    const members = new Set<number>([start]);
+    const queue = [start];
+    for (let q = queue.pop(); q !== undefined; q = queue.pop()) {
+      for (const n of links.get(q)!) {
+        if (members.has(n)) continue;
+        members.add(n);
+        queue.push(n);
+      }
+    }
+    const h = createHash("sha256");
+    for (const id of [...members].sort((a, b) => a - b)) for (const r of byId.get(id)!) h.update(`${r.id}\n${r.groupName}\n${r.source}\n`);
+    const digest = h.digest("hex");
+    for (const id of members) out.set(id, digest);
+  }
+  return out;
 }

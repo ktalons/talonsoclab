@@ -1116,7 +1116,8 @@ bun tools/art-harness.ts check-allowlist --atomics ~/code/atomic-red-team
 bun tools/art-harness.ts build-manifest --module <Invoke-AtomicRedTeam dir> [--module <powershell-yaml dir>] --atomics ~/code/atomic-red-team [--check]
 bun tools/art-harness.ts stage --module <dir> [--module <dir>] --atomics ~/code/atomic-red-team --out <new dir>
 bun tools/art-harness.ts check-prereqs --host <ssh alias> (--guid <guid>... | --all)
-bun tools/art-harness.ts run --host <ssh alias> (--guid <guid>... | --all) [--timeout <s>] [--allow-remote-code]
+bun tools/art-harness.ts run --host <ssh alias> --manager <ssh alias> (--guid <guid>... | --all) [--timeout <s>] [--allow-remote-code]
+bun tools/art-harness.ts check-manager --manager <ssh alias>   # read-only: do the manager's rule files match the checkout
 bun tools/art-harness.ts --self-test       # every planted fault through a fake Dell, offline
 bun test tools/art-harness.test.ts         # the same and more, offline
 ```
@@ -1192,7 +1193,13 @@ fail to load under .NET Framework; `scp` sets none.
 1. **Refusals, before ssh.** A GUID not in the allowlist, a test that runs fetched code without
    `--allow-remote-code`, a manifest that does not match the allowlist or still owes a module,
    and a bad timeout each stop the run with exit 3 (ISC-152).
-2. **Gate.** The Dell lists every file under `C:\AtomicRedTeam` with its size and SHA-256, and
+2. **Manager rules check** (`run` only, ISC-210). Before anything is sent to the Dell, the tool
+   asks the Wazuh manager's host, over ssh, for the SHA-256 of every file in
+   `/var/ossec/etc/rules/custom/` and compares that with every top-level `*.xml` in
+   `deploy/soc-recon/wazuh/custom-rules/`. A file whose hash differs, a file the manager lacks and
+   a file the manager has that the checkout does not each stop the run with exit 2, and the
+   message names the files, never a host. See The manager check below.
+3. **Gate.** The Dell lists every file under `C:\AtomicRedTeam` with its size and SHA-256, and
    counts links and reparse points. One changed, missing or extra file, a link, or no folder
    means no test is sent (ISC-155). Changed and missing files are named from the manifest; an
    extra file is counted, never named, since its name came from the Dell. The same check refuses
@@ -1201,12 +1208,12 @@ fail to load under .NET Framework; `scp` sets none.
    (one entry, compared without regard to case), and no process, extension or address
    exclusion; a null or empty entry counts as none, on the Dell and on the Mac, so PowerShell's
    `@($null).Count` of 1 never passes as one exclusion (ISC-150). The ssh token must be elevated.
-3. **Restore point.** `Checkpoint-Computer` with a description unique to the session, then the
+4. **Restore point.** `Checkpoint-Computer` with a description unique to the session, then the
    tool confirms exactly one restore point of that description exists and none did before. When
    Windows skips it (a second one inside 24 hours, unless `SystemRestorePointCreationFrequency`
    is 0) or the call fails, no test starts and the message says why and what the value is
    (ISC-154, ISC-157).
-4. **Snapshot.** The Dell returns definitions in eight categories: services (start mode,
+5. **Snapshot.** The Dell returns definitions in eight categories: services (start mode,
    account, binary path, delayed start, type; never whether it runs), scheduled tasks (actions,
    triggers, principal, enabled and hidden flags; never last or next run, state or result), Run
    and RunOnce under HKLM and HKCU in both registry views, WMI filters, consumers and bindings in
@@ -1216,7 +1223,7 @@ fail to load under .NET Framework; `scp` sets none.
    parameters, `Policies\System`, both Startup folders and `apppatch\Custom`). The last
    category is mine, beyond ISC-153's list, so a residue such as `EnableLUA` left at 0 fails the
    session.
-5. **Per test.** A run step, then a cleanup step whatever the run step did: a timeout, a
+6. **Per test.** A run step, then a cleanup step whatever the run step did: a timeout, a
    refusal or a remote error included. Each step re-checks on the Dell, before the module
    loads: the GUID against the allowed set the script carries, the elevated token, the staged
    tree's digest against the manifest's, the Defender gate, and the session's restore point.
@@ -1235,17 +1242,45 @@ fail to load under .NET Framework; `scp` sets none.
    and never writes them (the file branch of `Invoke-Process` is only reached for an interactive
    test, which the harness never asks for), so the removal is a guard against a later version
    leaving account or credential listings on disk.
-6. **After.** A second snapshot, diffed on the Mac by a pure function, and the staged tree
+7. **After.** A second snapshot, diffed on the Mac by a pure function, and the staged tree
    listed again. Any difference in either fails the session.
-7. **Record.** One JSON file per session in `phase-b-detection/art-runs/<session>.json`: the
-   allowlist and manifest hashes, the atomics commit, the module version, the restore point's
+8. **Record.** One JSON file per session in `phase-b-detection/art-runs/<session>.json`, format
+   `talonsoclab-art-session/2`: the allowlist and manifest hashes, `ruleFiles` (the hash of each
+   top-level rules file the manager was compared on, by file name), per test `ruleText` (the
+   digest of each rule the test lists, by rule id; see Rule text in the coverage section), the atomics commit, the module version, the restore point's
    description and creation time, the Defender gate, per GUID the UTC start and end and status of
    each step with the run's exit code, the GUIDs whose run timed out (`timedOut`), the diff's
    verdict with every item named, and the staged tree's verdict.
 
 `check-prereqs` runs the gate, then `Invoke-AtomicTest -CheckPrereqs` per test, with no restore
 point and no snapshot. It executes no test, but it does run each test's `prereq_command`; for
-the 17 tests those are `Test-Path` checks or nothing.
+the 17 tests those are `Test-Path` checks or nothing. It reads no manager and takes no
+`--manager`.
+
+### The manager check
+
+`run` takes a required `--manager <ssh alias>`, held to the same alias pattern as `--host`. It
+needs a different host from the Dell: the box that runs the Wazuh stack. The one remote command
+is `cd ~/talonsoclab/deploy/soc-recon && docker compose exec -T wazuh.manager sh -c 'sha256sum
+/var/ossec/etc/rules/custom/*.xml'`, sent through the same `ssh` argv builder as every other
+call, so the alias is only ever an argument. The read goes through an injected remote, as the
+Dell's does, so the tests never open ssh.
+
+The answer is parsed strictly. Each line must be 64 lowercase hex characters, two spaces and a
+file directly under `/var/ossec/etc/rules/custom/` ending in `.xml`; any other line, an empty
+listing or a file named twice is a setup failure that names the line number and no remote text.
+A non-zero exit, a timeout or an ssh that could not start is a setup failure too. A rule listed by
+a test that is not in the checkout's rules folder also stops the run, before the Dell is asked
+anything.
+
+`check-manager --manager <alias>` does the comparison alone and writes nothing. It prints one
+`PASS` line on a match (exit 0), or one `DIFF` line naming the different, missing and extra files
+(exit 1); a failed read is exit 2.
+
+A session that passes the check hashes each listed rule's text from the checkout (the same
+`ruleTextDigests` the coverage tool uses) into the record. The check says the manager held the
+same files at the start of the run. It does not see what the manager had loaded: see the limits
+under coverage.
 
 ### What the record never holds
 
@@ -1379,7 +1414,8 @@ The pack is the rules whose ID is in the pack ranges of `wazuh-rules.ts` (100340
 100400 to 100499), read from `deploy/soc-recon/wazuh/custom-rules/`. Today that is 18 rules.
 A pack rule is **validated** when an alert it raised from agent `001` has an event time inside
 the run window of a test whose `rules` list names that rule, in a session whose verdict is
-`pass`. Logtest output never counts, and the tool refuses a logtest transcript given as a session
+`pass`, and the rule's text when that test ran is the text in the rules folder now (Rule text,
+below). Logtest output never counts, and the tool refuses a logtest transcript given as a session
 record, evidence, the miss list, the crosswalk, the literals list or the technique list. The
 writeup and the files `claims` reads are prose, and are not checked for one.
 
@@ -1393,7 +1429,9 @@ refused as `evidence-time`. On any other channel the event time has to equal the
 that alert, and a difference is refused the same way.
 
 Everything else is listed in `coverage.json` with a reason: outside the run window (cleanup and
-gaps included), rule not in the test's `rules`, or session verdict not `pass`. A pack alert for
+gaps included), rule not in the test's `rules`, session verdict not `pass`, `rule-text-changed`
+(the text the test was bound to is not the text now) or `rule-text-unbound` (nothing binds the
+test to any text). A pack alert for
 a pack-range rule that is not in the XML and fired inside a run window is a refusal.
 
 A not-validated rule is either classified in `phase-b-detection/validation/misses.json` or
@@ -1416,8 +1454,9 @@ evidence, a second entry for one rule, or a field its class does not carry.
 |---|---|
 | `phase-b-detection/attack/enterprise-19.2-techniques.tsv` | every Enterprise 19.2 technique with its status, successor and tactics, written by `refresh-attack` from the pinned bundle |
 | `phase-b-detection/attack/crosswalk.json` | one entry for every ATT&CK ID a pack rule uses, mapping it to its 19.2 ID as `unchanged` or `revoked-by` |
-| `phase-b-detection/art-runs/*.json` | the session records of `art-harness.ts`; a step that was not sent carries no times (`record-step`), and every time a record carries has seven decimals (`record-time`) |
+| `phase-b-detection/art-runs/*.json` | the session records of `art-harness.ts`, format 1 or 2; a step that was not sent carries no times (`record-step`), and every time a record carries has seven decimals (`record-time`) |
 | `phase-b-detection/validation/<session>.alerts.json` | the evidence `fetch` writes, one file per session |
+| `phase-b-detection/validation/rule-text-baseline.json` | the frozen baseline that binds the nine format 1 records to rule text; the tool pins its SHA-256 and refuses any other bytes (`baseline-pin`) |
 | `phase-b-detection/validation/misses.json` | the hand-kept miss list |
 
 `refresh-attack` checks the bundle's SHA-256 against the pinned value
@@ -1426,6 +1465,35 @@ evidence, a second entry for one rule, or a field its class does not carry.
 rule's ID has no entry, when a target is absent, revoked or deprecated, when `unchanged` names an
 ID that is not active or maps elsewhere, or when `revoked-by` names anything but the successor
 the bundle records.
+
+### Rule text
+
+An alert counts only against the rule text the test ran on. Each pack rule has a digest of its
+text, computed from the rules folder by `ruleTextDigests` in `wazuh-rules.ts`: the bytes of its
+own `<rule>` element exactly as written, the name of its enclosing `<group>`, and the same for
+every loaded rule joined to it through `if_sid` or `if_matched_sid`, parent or child, to any
+depth. A parent that is not loaded (a stock rule) joins nothing. The joined rules form one
+component, hashed in ascending rule id, and every rule in it carries the one digest, so editing
+a level 0 child, which is how this lab tunes a rule, changes its parent's digest too. A comment
+inside a rule element changes the digest; whitespace or comments outside every rule element do
+not. A reindent inside an element expires the evidence on purpose: the cost is a rerun.
+
+Two record formats bind a test to a digest:
+
+- **Format 2** (`talonsoclab-art-session/2`, written by `art-harness.ts run`): the record
+  carries `ruleFiles` (file name to SHA-256, non-empty) and each test carries `ruleText`, one digest
+  for each rule the test lists and for no other. The tool refuses a record whose `ruleFiles` or
+  `ruleText` is missing or malformed (`record-rule-files`, `record-rule-text`).
+- **Format 1** (the nine records checked in before this existed): no digest was recorded, so
+  they are bound by `phase-b-detection/validation/rule-text-baseline.json`, which lists the nine
+  session ids and one digest per pack rule. It holds the digests of the files at commit
+  `4dcbaac`. A format 1 record whose session is not in the baseline is unbound and counts for
+  nothing. A new record is never bound this way.
+
+The baseline is frozen. It is not rewritten by `build`, and the tool refuses bytes other than the
+one it pins by SHA-256. It rests on the git history (no pack file changed between that commit
+and the sessions) and on a read of the manager on 2026-11-25 (its eleven installed rule files
+matched the checkout); nothing a session recorded.
 
 ### The outputs
 
@@ -1605,11 +1673,18 @@ A record that carries no run or cleanup times has no window to ask for: `fetch` 
   changes version, this check is stale.
 - The tool does not check that a test's ART technique agrees with the `<mitre>` ID of the rule
   it is meant to fire.
-- Evidence is joined to a rule by its ID, not by what the rule matches. A rule that validated stays
-  validated when its pattern is edited later, as long as its ID, level and ATT&CK mapping stay the
-  same and the record and evidence files are unchanged: the old alert still counts. A change to
-  the level or the mapping changes the outputs, and `check` says so; a change to the pattern
-  does not. Editing a validated rule's pattern means running its test and `fetch` again by hand.
+- Evidence is joined to a rule by its ID and by the digest of the rule's text (Rule text). Editing a
+  validated rule, or a rule tied to it through `if_sid` or `if_matched_sid`, expires its evidence
+  until its test is run again and `fetch` is run. These limits remain:
+  - A new sibling under the same stock parent that takes the event before the validated rule is
+    in no component of it, so the digest does not change.
+  - A relation through group names (`if_group`, `if_matched_group`) is not followed.
+  - Stock rules and decoders are held by the pinned manager image, not by a digest.
+  - The digest is of the files. The manager loads rules at its start, so a file changed in the
+    container since then, or a manager started before the files were installed, is not seen;
+    the harness's check reads the files at the start of the session, not the running ruleset.
+  - The nine format 1 records rest on the baseline, which rests on the git history and a read of
+    the manager on 2026-11-25, not on anything a session recorded.
 - An evidence file is tied to a record by the record's SHA-256, so any edit to a record makes its
   evidence stale until `fetch` is run again. The fixtures carry the SHA-256 of the two real
   records, so they go stale the same way.

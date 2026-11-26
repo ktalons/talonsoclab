@@ -11,17 +11,25 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rea
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { EXIT } from "./art-harness.ts";
+import { readRulesDir, ruleTextDigests } from "./wazuh-rules.ts";
 import {
   ATTACK_SHA256,
+  BASELINE_SHA256,
   buildAttackTsv,
+  classify,
   CoverageError,
   editJson,
   fetchAll,
   layoutFor,
   leakScanWith,
+  loadBaseline,
+  loadDigests,
+  loadEvidence,
+  loadRecords,
   makeScratch,
   msearchBody,
   NAVIGATOR_VERSION,
+  HOLDS,
   PLANTS,
   buildSection,
   parseAttackTsv,
@@ -43,6 +51,9 @@ const COVERAGE = "phase-b-detection/coverage";
 const VALIDATION = "phase-b-detection/validation";
 const RECORDS = "phase-b-detection/art-runs";
 const MISSES = `${VALIDATION}/misses.json`;
+const BASELINE = `${VALIDATION}/rule-text-baseline.json`;
+const RULES = "deploy/soc-recon/wazuh/custom-rules";
+const EID1 = `${RULES}/local_eid1_pack.xml`;
 const WRITEUP = "phase-b-detection/README.md";
 const LITERALS = "phase-b-detection/claims-literals.json";
 const FOUR = [100400, 100407, 100410, 100411];
@@ -303,8 +314,8 @@ describe("the checked-in outputs", () => {
     expect(s.complete).toBe(s.unclassified.length === 0);
     expect(s.unclassified.filter((id: number) => s.validatedRules.includes(id))).toEqual([]);
   });
-  test("the validation folder holds only the miss list and evidence files", () => {
-    for (const n of readdirSync(join(ROOT, VALIDATION)).filter((x) => !x.startsWith("."))) expect(n === "misses.json" || n.endsWith(".alerts.json")).toBe(true);
+  test("the validation folder holds only the miss list, the frozen baseline and evidence files", () => {
+    for (const n of readdirSync(join(ROOT, VALIDATION)).filter((x) => !x.startsWith("."))) expect(n === "misses.json" || n === "rule-text-baseline.json" || n.endsWith(".alerts.json")).toBe(true);
   });
   test("the crosswalk is sixteen identity entries", () => {
     const c = read(ROOT, "phase-b-detection/attack/crosswalk.json");
@@ -511,6 +522,275 @@ describe("what counts as validated", () => {
     });
     expect(build(root).exit).toBe(EXIT.ok);
     expect(summaryOf(root).uncounted[0]).toMatchObject({ rule: 100499, reason: "rule-not-in-xml" });
+  });
+});
+
+// *--- Rule text binding ---*
+
+// ISC-207, 209, 211 and 212: an alert counts only against the rule text it was run on.
+describe("rule text binding", () => {
+  const DIGEST_OLD = "1".repeat(64);
+  /** The rule element of 100410 as the scratch folder holds it, so a test can change one byte inside it. */
+  const IMAGE = String.raw`(?i)\\cmdkey\.exe$`;
+  const editRule = (root: string, to = String.raw`(?i)\\cmdkey2\.exe$`) => {
+    const path = join(root, EID1);
+    const text = readFileSync(path, "utf8");
+    expect(text).toContain(IMAGE);
+    writeFileSync(path, text.replace(IMAGE, to));
+  };
+  /** The digest of every loaded rule in a scratch root's folder, as the tool reads it. */
+  const digestsOf = (root: string) => ruleTextDigests(readRulesDir(join(root, RULES)).rules);
+  /** Turn a scratch record into a format 2 record bound to the digests the folder has now, or to the ones given. */
+  const asFormat2 = (root: string, session: string, bind?: (id: number) => string) => {
+    const now = digestsOf(root);
+    editJson(root, recPath(session), (r) => {
+      r.format = "talonsoclab-art-session/2";
+      r.ruleFiles = { "local_eid1_pack.xml": "2".repeat(64) };
+      for (const t of r.tests) t.ruleText = Object.fromEntries(t.rules.map((id: number) => [String(id), bind ? bind(id) : now.get(id)]));
+    });
+    rehash(root);
+  };
+  const validated = (root: string) => {
+    expect(build(root).exit).toBe(EXIT.ok);
+    return summaryOf(root);
+  };
+
+  test("the control binds every format 1 record through the baseline and validates the four", () => {
+    const root = scratch();
+    expect(validated(root).validatedRules).toEqual(FOUR);
+  });
+  test("ISC-207: a validated rule's pattern edited in a scratch copy is no longer validated, and check fails", () => {
+    const root = scratch();
+    expect(build(root).exit).toBe(EXIT.ok);
+    editRule(root);
+    const r = run(["check", "--root", root], quiet);
+    expect(r.exit).toBe(EXIT.failed);
+    expect(r.error?.code).toBe("output-differs");
+    expect(build(root).exit).toBe(EXIT.ok);
+    const s = summaryOf(root);
+    expect(s.validatedRules).toEqual([100400, 100407, 100411]);
+    expect(s.uncounted).toHaveLength(1);
+    expect(s.uncounted[0]).toMatchObject({ rule: 100410, session: EV1, reason: "rule-text-changed" });
+  });
+  test("ISC-207 control: a comment and blank lines outside every rule element leave the rule validated", () => {
+    const root = scratch();
+    expect(build(root).exit).toBe(EXIT.ok);
+    const path = join(root, EID1);
+    writeFileSync(path, `<!-- a note added later -->\n\n${readFileSync(path, "utf8").replace("<!-- SigmaHQ 07f8bdc2", "<!--   SigmaHQ 07f8bdc2")}\n\n`);
+    expect(run(["check", "--root", root], quiet).exit).toBe(EXIT.ok);
+    expect(summaryOf(root).validatedRules).toEqual(FOUR);
+  });
+  test("a change to the enclosing group name un-validates a rule", () => {
+    const root = scratch();
+    const path = join(root, EID1);
+    writeFileSync(path, readFileSync(path, "utf8").replace('<group name="local,eid1_pack,">', '<group name="local,eid1_pack,extra,">'));
+    const s = validated(root);
+    expect(s.validatedRules).toEqual([100400, 100407]);
+    expect(s.uncounted.map((u: { reason: string }) => u.reason)).toEqual(["rule-text-changed", "rule-text-changed"]);
+  });
+  test("ISC-212: a level 0 child of a validated rule, added in another file, un-validates it", () => {
+    const root = scratch();
+    writeFileSync(
+      join(root, RULES, "local_extra_child.xml"),
+      `<group name="local,extra_child,">\n  <rule id="100900" level="0">\n    <if_sid>100410</if_sid>\n    <field name="win.eventdata.commandLine" type="pcre2">(?i)planted</field>\n    <description>A planted child.</description>\n  </rule>\n</group>\n`,
+    );
+    const s = validated(root);
+    expect(s.validatedRules).toEqual([100400, 100407, 100411]);
+    expect(s.uncounted[0]).toMatchObject({ rule: 100410, reason: "rule-text-changed" });
+  });
+  test("ISC-212 control: a rule in another file that touches no validated rule changes nothing", () => {
+    const root = scratch();
+    writeFileSync(join(root, RULES, "local_unrelated.xml"), `<group name="local,unrelated,">\n  <rule id="100901" level="0">\n    <if_sid>61603</if_sid>\n    <description>Unrelated.</description>\n  </rule>\n</group>\n`);
+    expect(validated(root).validatedRules).toEqual(FOUR);
+  });
+  test("ISC-209: a format 2 record whose digest is the one in the folder now validates, edited text or not", () => {
+    const root = scratch();
+    editRule(root);
+    asFormat2(root, EV1);
+    const s = validated(root);
+    expect(s.validatedRules).toEqual(FOUR);
+    expect(s.uncounted).toEqual([]);
+  });
+  test("ISC-209: a format 2 record that carries the old digest does not validate against the edited text", () => {
+    const root = scratch();
+    const before = digestsOf(root);
+    editRule(root);
+    asFormat2(root, EV1, (id) => before.get(id) as string);
+    const s = validated(root);
+    // Only 100410's text moved: 100411 sits in the same record with its own, unchanged digest.
+    expect(s.validatedRules).toEqual([100400, 100407, 100411]);
+    expect(s.uncounted).toHaveLength(1);
+    expect(s.uncounted[0]).toMatchObject({ rule: 100410, reason: "rule-text-changed" });
+  });
+  test("ISC-209: a format 2 record is bound by its own digests, never by the baseline", () => {
+    const root = scratch();
+    asFormat2(root, EV1, () => DIGEST_OLD);
+    const s = validated(root);
+    expect(s.validatedRules).toEqual(SECOND);
+    expect(s.uncounted.map((u: { reason: string }) => u.reason)).toEqual(["rule-text-changed", "rule-text-changed"]);
+  });
+  test("a format 2 record is refused when its ruleFiles are missing or malformed", () => {
+    const bad: [string, (r: any) => void][] = [
+      ["missing", (r) => delete r.ruleFiles],
+      ["empty", (r) => (r.ruleFiles = {})],
+      ["a list", (r) => (r.ruleFiles = [])],
+      ["a short hash", (r) => (r.ruleFiles = { "local_eid1_pack.xml": "ab" })],
+      ["an upper-case hash", (r) => (r.ruleFiles = { "local_eid1_pack.xml": "A".repeat(64) })],
+      ["a hash that is a one-item list of 64 hex characters", (r) => (r.ruleFiles = { "local_eid1_pack.xml": ["a".repeat(64)] })],
+      ["a name with a folder", (r) => (r.ruleFiles = { "sub/local_eid1_pack.xml": "a".repeat(64) })],
+      ["a name that is not xml", (r) => (r.ruleFiles = { "local_eid1_pack.txt": "a".repeat(64) })],
+    ];
+    for (const [what, mutate] of bad) {
+      const root = scratch();
+      asFormat2(root, EV1);
+      editJson(root, recPath(EV1), mutate);
+      rehash(root);
+      const e = refusal(["build", "--root", root]);
+      expect([what, e.code]).toEqual([what, "record-rule-files"]);
+    }
+  });
+  test("a format 2 test is refused when its ruleText is missing, short, extra, or not hex", () => {
+    const bad: [string, (t: any) => void][] = [
+      ["missing", (t) => delete t.ruleText],
+      ["a list", (t) => (t.ruleText = [])],
+      ["empty for a listed rule", (t) => (t.ruleText = {})],
+      ["an extra id", (t) => (t.ruleText["100411"] = "a".repeat(64))],
+      ["the wrong id", (t) => (t.ruleText = { "100411": "a".repeat(64) })],
+      ["a short digest", (t) => (t.ruleText["100410"] = "abc")],
+      ["a digest that is not text", (t) => (t.ruleText["100410"] = 7)],
+      ["a digest that is a one-item list of 64 hex characters", (t) => (t.ruleText["100410"] = ["a".repeat(64)])],
+    ];
+    for (const [what, mutate] of bad) {
+      const root = scratch();
+      asFormat2(root, EV1);
+      editJson(root, recPath(EV1), (r) => mutate(r.tests[0]));
+      rehash(root);
+      const e = refusal(["build", "--root", root]);
+      expect([what, e.code]).toEqual([what, "record-rule-text"]);
+      expect(e.item).toContain("test 1");
+    }
+  });
+  test("a record in a format other than 1 or 2 is refused", () => {
+    const root = scratch();
+    editJson(root, recPath(EV1), (r) => (r.format = "talonsoclab-art-session/3"));
+    expect(refusal(["build", "--root", root]).code).toBe("record-format");
+  });
+  test("ISC-211: a tenth format 1 record, outside the baseline, validates nothing", () => {
+    const root = scratch();
+    const tenth = "20261122T000001Z-000001";
+    // The tenth record is the first session's record and evidence under a new name; the first session itself is gone.
+    const rec = JSON.parse(readFileSync(join(root, recPath(EV1)), "utf8"));
+    const ev = JSON.parse(readFileSync(join(root, evPath(EV1)), "utf8"));
+    rmSync(join(root, recPath(EV1)));
+    rmSync(join(root, evPath(EV1)));
+    writeFileSync(join(root, recPath(tenth)), `${JSON.stringify({ ...rec, session: tenth }, null, 2)}\n`);
+    writeFileSync(join(root, evPath(tenth)), `${JSON.stringify({ ...ev, session: tenth }, null, 2)}\n`);
+    rehash(root);
+    const s = validated(root);
+    expect(s.validatedRules).toEqual(SECOND);
+    expect(s.uncounted.map((u: { rule: number; session: string; reason: string }) => [u.rule, u.session, u.reason])).toEqual([
+      [100410, tenth, "rule-text-unbound"],
+      [100411, tenth, "rule-text-unbound"],
+    ]);
+  });
+  test("ISC-211: a baseline with no digest for a rule leaves that rule's alerts unbound", () => {
+    const root = scratch();
+    const l = layoutFor(root);
+    const sessions = loadRecords(l);
+    const evidence = loadEvidence(l, sessions);
+    const pack = [100400, 100407, 100410, 100411].map((id) => ({ id, level: 10, written: [], attack19: [] }));
+    const base = loadBaseline(l);
+    const current = loadDigests(l);
+    expect([...classify(sessions, evidence, pack, { current, baseline: base }).counted.keys()].sort()).toEqual(FOUR);
+    const { 100410: _gone, ...rules } = base.rules;
+    const out = classify(sessions, evidence, pack, { current, baseline: { ...base, rules } });
+    expect([...out.counted.keys()].sort()).toEqual([100400, 100407, 100411]);
+    expect(out.uncounted[0]).toMatchObject({ rule: 100410, reason: "rule-text-unbound" });
+    const gone = classify(sessions, evidence, pack, { current, baseline: { ...base, sessions: [] } });
+    expect([...gone.counted.keys()]).toEqual([]);
+  });
+  test("ISC-211: a changed baseline is refused by the pin", () => {
+    const root = scratch();
+    editJson(root, BASELINE, (b) => (b.rules["100410"] = "0".repeat(64)));
+    const e = refusal(["build", "--root", root]);
+    expect(e.code).toBe("baseline-pin");
+    expect(e.item).toBe(BASELINE);
+  });
+  test("ISC-211: a baseline that is not there is a setup problem, not a quiet unbinding", () => {
+    const root = scratch();
+    rmSync(join(root, BASELINE));
+    const r = run(["build", "--root", root], quiet);
+    expect(r.exit).toBe(EXIT.setup);
+    expect(r.error?.code).toBe("input-missing");
+  });
+  test("the pin is the SHA-256 of the checked-in baseline, and the baseline names the nine records and the eighteen rules", () => {
+    const bytes = readFileSync(join(ROOT, BASELINE));
+    expect(new Bun.CryptoHasher("sha256").update(bytes).digest("hex")).toBe(BASELINE_SHA256);
+    const b = JSON.parse(bytes.toString("utf8"));
+    expect(Object.keys(b)).toEqual(["format", "commit", "sessions", "rules"]);
+    expect(b.format).toBe("talonsoclab-rule-text-baseline/1");
+    expect(b.commit).toBe("4dcbaacb05b44b487ca198211d378ab1f4106815");
+    const formatOne = readdirSync(join(ROOT, RECORDS)).filter((n) => n.endsWith(".json") && JSON.parse(readFileSync(join(ROOT, RECORDS, n), "utf8")).format === "talonsoclab-art-session/1").map((n) => n.replace(/\.json$/, "")).sort();
+    // Records written after the baseline are format 2, so every format 1 record is named in it and nothing else is.
+    expect(b.sessions).toEqual(formatOne);
+    expect(Object.keys(b.rules).map(Number)).toEqual(PACK_IDS);
+  });
+  // The shape checks sit behind the pin, so a test reaches them by handing loadBaseline the pin of the bytes it wrote.
+  describe("the baseline's shape, behind the pin", () => {
+    const real = () => JSON.parse(readFileSync(join(ROOT, BASELINE), "utf8"));
+    const load = (text: string) => {
+      const root = scratch();
+      writeFileSync(join(root, BASELINE), text);
+      return caught(() => loadBaseline(layoutFor(root), new Bun.CryptoHasher("sha256").update(text).digest("hex")));
+    };
+    const withDoc = (edit: (b: any) => void) => {
+      const b = real();
+      edit(b);
+      return `${JSON.stringify(b, null, 2)}\n`;
+    };
+    test("the checked-in baseline passes its own shape checks when given its own pin", () => {
+      const root = scratch();
+      const b = loadBaseline(layoutFor(root));
+      expect(Object.keys(b)).toEqual(["commit", "sessions", "rules"]);
+      expect(load(readFileSync(join(ROOT, BASELINE), "utf8"))).toBeNull();
+    });
+    const bad: [string, string][] = [
+      ["a list instead of an object", "[]\n"],
+      ["null instead of an object", "null\n"],
+      ["an extra key", withDoc((b) => (b.note = "x"))],
+      ["a missing key", withDoc((b) => delete b.commit)],
+      ["another format name", withDoc((b) => (b.format = "talonsoclab-rule-text-baseline/2"))],
+      ["a commit that is not a string", withDoc((b) => (b.commit = 4))],
+      ["a commit of 39 hex characters", withDoc((b) => (b.commit = "a".repeat(39)))],
+      ["a commit in capitals", withDoc((b) => (b.commit = "A".repeat(40)))],
+      ["a commit that is a one-item list of 40 hex characters", withDoc((b) => (b.commit = ["a".repeat(40)]))],
+      ["sessions that are not a list", withDoc((b) => (b.sessions = {}))],
+      ["a session that is not a string", withDoc((b) => b.sessions.push(7))],
+      ["a session id that is not a safe one", withDoc((b) => b.sessions.push("../x"))],
+      ["a session id that is a one-item list holding a safe one", withDoc((b) => b.sessions.push([b.sessions[0]]))],
+      ["rules that are a list", withDoc((b) => (b.rules = []))],
+      ["a rule id that is not a number", withDoc((b) => (b.rules.abc = "0".repeat(64)))],
+      ["a rule id outside the pack", withDoc((b) => (b.rules["100999"] = "0".repeat(64)))],
+      ["a rule id that reads as a pack id but is not written as digits", withDoc((b) => (b.rules["100340.0"] = "0".repeat(64)))],
+      ["a digest that is not a string", withDoc((b) => (b.rules["100340"] = 1))],
+      ["a digest of 63 hex characters", withDoc((b) => (b.rules["100340"] = "0".repeat(63)))],
+      ["a digest in capitals", withDoc((b) => (b.rules["100340"] = "A".repeat(64)))],
+      ["a digest that is a one-item list of 64 hex characters", withDoc((b) => (b.rules["100340"] = ["0".repeat(64)]))],
+    ];
+    for (const [what, text] of bad) {
+      test(`refuses ${what}`, () => {
+        const e = load(text);
+        expect(e?.code).toBe("baseline-shape");
+      });
+    }
+  });
+  test("the validation folder takes the baseline and still refuses any other stray file", () => {
+    const root = scratch();
+    expect(build(root).exit).toBe(EXIT.ok);
+    writeFileSync(join(root, VALIDATION, "rule-text-baseline.copy.json"), "{}\n");
+    const e = refusal(["build", "--root", root]);
+    expect(e.code).toBe("validation-file");
+    expect(e.item).toBe(`${VALIDATION}/rule-text-baseline.copy.json`);
   });
 });
 
@@ -1448,7 +1728,8 @@ describe("self-test plants", () => {
     const lines = p.stdout.toString().trim().split("\n");
     expect(p.exitCode).toBe(0);
     expect(lines.every((l) => l.startsWith("OK  "))).toBe(true);
-    expect(lines).toHaveLength(PLANTS.length + 3);
+    // Three fixed lines (control build, control check, control claims), then one per control and one per plant.
+    expect(lines).toHaveLength(HOLDS.length + PLANTS.length + 3);
   });
 });
 

@@ -7,10 +7,11 @@
 // *--- Imports ---*
 
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isPack, parseRules, RulesError, readRulesDir } from "./wazuh-rules.ts";
+import { isPack, parseRules, RulesError, readRulesDir, ruleTextDigests } from "./wazuh-rules.ts";
 
 // *--- Configuration ---*
 
@@ -40,6 +41,8 @@ describe("parseRules", () => {
         mitre: ["T1105", " T1071 "],
         mitrePairs: [],
         description: "d",
+        groupName: "t,",
+        source: /<rule id="100340"[\s\S]*?<\/rule>/.exec(xml)![0],
         repeated: [],
       },
     ]);
@@ -196,7 +199,7 @@ describe("parseRules letter case", () => {
   test("reads element and attribute names in any case", () => {
     const xml = `<GROUP name="t,"><RULE ID="100340" Level="12"><IF_SID>61605</IF_SID><Description> d </Description><MITRE><ID>T1105</ID></MITRE></RULE></GROUP>`;
     expect(parseRules(xml, "x.xml")).toEqual([
-      { file: "x.xml", id: 100340, level: 12, ifSid: ["61605"], group: "t,", ifGroup: "", ifMatchedGroup: "", mitre: ["T1105"], mitrePairs: [], description: "d", repeated: [] },
+      { file: "x.xml", id: 100340, level: 12, ifSid: ["61605"], group: "t,", ifGroup: "", ifMatchedGroup: "", mitre: ["T1105"], mitrePairs: [], description: "d", groupName: "t,", source: xml.slice(xml.indexOf("<RULE"), xml.indexOf("</RULE>") + "</RULE>".length), repeated: [] },
     ]);
   });
 
@@ -400,6 +403,8 @@ describe("parseRules well-formedness", () => {
         mitre: ["T1105"],
         mitrePairs: [],
         description: "d",
+        groupName: "t,",
+        source: xml.slice(xml.indexOf("<rule"), xml.indexOf("</rule>") + "</rule>".length),
         repeated: [],
       },
     ]);
@@ -888,5 +893,137 @@ describe("readRulesDir", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// *--- Rule text digests ---*
+
+// One file's worth of rules in a named group; each entry is the rule element's own text.
+const file = (name: string, ...rules: string[]) => `<group name="${name}">${rules.join("\n")}</group>`;
+const r = (id: number, parent: string, extra = "") => `<rule id="${id}" level="10"><if_sid>${parent}</if_sid>${extra}<description>t</description></rule>`;
+const r0 = (id: number, parent: number) => `<rule id="${id}" level="0"><if_sid>${parent}</if_sid><description>quiet</description></rule>`;
+// The digest of each rule id across the given files, the way the tools load them.
+const digests = (...files: string[]) => ruleTextDigests(files.flatMap((x, i) => parseRules(x, `f${i}.xml`)));
+
+describe("ruleTextDigests", () => {
+  const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+
+  // The definition, written out a second way: id, group name and element text, each ended by a newline.
+  test("hashes id, group name and element text for each rule of the component in ascending id", () => {
+    const a = r(100341, "61605");
+    const b = r(100340, "100341");
+    const xml = file("t,", a, b);
+    const want = sha(`100340\nt,\n${b}\n100341\nt,\n${a}\n`);
+    expect(digests(xml).get(100340)).toBe(want);
+    expect(digests(xml).get(100341)).toBe(want);
+  });
+
+  test("one changed byte inside a rule element changes the digest", () => {
+    const before = digests(file("t,", r(100340, "61605"))).get(100340);
+    const after = digests(file("t,", r(100340, "61605").replace("61605", "61604"))).get(100340);
+    const level = digests(file("t,", r(100340, "61605").replace('level="10"', 'level="11"'))).get(100340);
+    expect(after).not.toBe(before);
+    expect(level).not.toBe(before);
+  });
+
+  test("the enclosing group name is part of the digest", () => {
+    expect(digests(file("t,", r(100340, "61605"))).get(100340)).not.toBe(digests(file("t,u,", r(100340, "61605"))).get(100340));
+  });
+
+  test("a comment or whitespace outside every rule element does not change it", () => {
+    const plain = digests(file("t,", r(100340, "61605"))).get(100340);
+    const noisy = digests(`<!-- a note -->\n\n  <group name="t,">\n\n  <!-- more -->  ${r(100340, "61605")}  \n\n</group>\n<!-- end -->\n`).get(100340);
+    expect(noisy).toBe(plain);
+  });
+
+  test("a comment inside a rule element does change it, since the element text is hashed as written", () => {
+    const plain = digests(file("t,", r(100340, "61605"))).get(100340);
+    const inside = digests(file("t,", r(100340, "61605", "<!-- x -->"))).get(100340);
+    expect(inside).not.toBe(plain);
+  });
+
+  // A level 0 child under a validated rule is the lab's tuning pattern, and it can mute it.
+  test("a rule added to the component, in another file, changes the digest; removing it changes it back", () => {
+    const base = file("t,", r(100340, "61605"));
+    const alone = digests(base).get(100340);
+    const withChild = digests(base, file("u,", r0(100390, 100340)));
+    expect(withChild.get(100340)).not.toBe(alone);
+    expect(withChild.get(100390)).toBe(withChild.get(100340));
+    expect(digests(base).get(100340)).toBe(alone);
+  });
+
+  test("the edge runs both ways: editing a parent changes its child's digest", () => {
+    const child = file("t,", r(100341, "100340"));
+    const one = digests(file("t,", r(100340, "61605")), child).get(100341);
+    const two = digests(file("t,", r(100340, "61604")), child).get(100341);
+    expect(two).not.toBe(one);
+  });
+
+  test("the component runs to any depth", () => {
+    const chain = (leaf: string) => digests(file("t,", r(100340, "61605"), r(100341, "100340"), r(100342, "100341"), leaf));
+    const a = chain(r0(100343, 100342)).get(100340);
+    const b = chain(r0(100343, 100342).replace("quiet", "other")).get(100340);
+    expect(a).not.toBe(b);
+  });
+
+  // A parent with two children is the case where an edge held in one direction only would drop a child from the parent's digest.
+  test("a parent with two children is one component: editing either child changes the parent's digest", () => {
+    const make = (a: string, b: string) => digests(file("t,", r(100340, "61605"), r0(100341, 100340).replace("quiet", a), r0(100342, 100340).replace("quiet", b)));
+    const base = make("quiet", "quiet");
+    expect(base.get(100341)).toBe(base.get(100340));
+    expect(base.get(100342)).toBe(base.get(100340));
+    for (const edited of [make("other", "quiet"), make("quiet", "other")]) {
+      expect(edited.get(100340)).not.toBe(base.get(100340));
+      expect(edited.get(100341)).toBe(edited.get(100340));
+      expect(edited.get(100342)).toBe(edited.get(100340));
+    }
+  });
+
+  // The same rules listed child first: a component must not depend on which rule the walk starts from.
+  test("a component is the same whichever of its rules is listed first", () => {
+    const parent = file("t,", r(100340, "61605"));
+    const kids = file("u,", r0(100341, 100340), r0(100342, 100340));
+    const forward = digests(parent, kids);
+    const backward = digests(kids, parent);
+    for (const id of [100340, 100341, 100342]) expect(backward.get(id)).toBe(forward.get(id));
+    expect(forward.get(100341)).toBe(forward.get(100340));
+  });
+
+  // A child with two parents ties them into one component, so editing either parent reaches the other.
+  test("a child with two parents joins them: editing either parent changes the other parent's digest", () => {
+    const make = (p: string, q: string) => digests(file("t,", r(100340, "61605", p), r(100341, "61605", q), r(100342, "100340,100341")));
+    const base = make("", "");
+    expect(base.get(100341)).toBe(base.get(100340));
+    expect(base.get(100342)).toBe(base.get(100340));
+    for (const edited of [make("<options>no_full_log</options>", ""), make("", "<options>no_full_log</options>")]) {
+      expect(edited.get(100340)).not.toBe(base.get(100340));
+      expect(edited.get(100341)).toBe(edited.get(100340));
+      expect(edited.get(100342)).toBe(edited.get(100340));
+    }
+  });
+
+  test("if_matched_sid joins a component too", () => {
+    const m = (parent: string) => `<rule id="100341" level="10"><if_matched_sid>100340</if_matched_sid><description>${parent}</description></rule>`;
+    const x = digests(file("t,", r(100340, "61605"), m("a"))).get(100340);
+    const y = digests(file("t,", r(100340, "61605"), m("b"))).get(100340);
+    expect(x).not.toBe(y);
+  });
+
+  // Stock parents are not in the folder, so two rules under one stock parent stay apart.
+  test("two rules under the same stock parent are separate components", () => {
+    const a = digests(file("t,", r(100340, "61605"), r(100341, "61605"))).get(100340);
+    const b = digests(file("t,", r(100340, "61605"), r(100341, "61605").replace("t</", "changed</"))).get(100340);
+    expect(b).toBe(a);
+  });
+
+  test("a rule that nothing joins keeps its own digest when another component changes", () => {
+    const solo = r(100350, "61605");
+    const one = digests(file("t,", r(100340, "61605"), solo)).get(100350);
+    const two = digests(file("t,", r(100340, "61604"), solo)).get(100350);
+    expect(two).toBe(one);
+  });
+
+  test("every loaded id gets a digest", () => {
+    expect([...digests(file("t,", r(100340, "61605"), r(100350, "61605"))).keys()]).toEqual([100340, 100350]);
   });
 });
